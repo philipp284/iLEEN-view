@@ -204,5 +204,105 @@ pruefe('ohne Geländehöhe bleibt das Mindestmaß', G.grenze(null) === 30);
     G.klemmen(new C3(12, 0, 0), kamera, weite).x === 12);
 }
 
+// ── Zugweite: wie weit EIN Zug die Kamera versetzen darf ──────────────────
+//
+// Riegel 1 (der gekürzte Griff) reicht nicht: `spin3D` legt aus dem Griffpunkt
+// nur eine Kugel und lässt `pan3D` Anfang und Ende selbst per `pickEllipsoid`
+// darauf suchen — der gekürzte Punkt ist dann längst vergessen. Streift der
+// Sehstrahl die Kugel flach, liegt der Schnittpunkt kilometerweit weg. Was
+// hier geprüft wird, ist der zweite Riegel: der gemessene Kameraweg selbst.
+
+G.zugEinstellen(1, 10);
+pruefe('am Boden versetzt ein Zug das Mindestmaß', G.zugweite(0) === 10);
+pruefe('unter dem Mindestmaß wird nicht enger', G.zugweite(3) === 10);
+pruefe('aus 100 m Höhe kommt man 100 m weit', G.zugweite(100) === 100);
+pruefe('aus 2 km Höhe 2 km — wer hoch steht, meint weite Wege', G.zugweite(2000) === 2000);
+pruefe('unter Grund zählt der Betrag', G.zugweite(-250) === 250);
+pruefe('ohne Höhe bleibt das Mindestmaß', G.zugweite(null) === 10);
+
+// ── Anteil bis zur Wegmarke ───────────────────────────────────────────────
+{
+  const v = (x, y, z) => ({ x, y, z: z || 0 });
+  const A = G.anteilBisGrenze;
+
+  pruefe('ein Schritt innerhalb der Marke bleibt ganz',
+    A(v(0, 0), v(10, 0), 100) === 1);
+  pruefe('genau auf die Marke ist noch ganz',
+    A(v(0, 0), v(100, 0), 100) === 1);
+  pruefe('doppelt so weit wird halbiert',
+    nahe(A(v(0, 0), v(200, 0), 100), 0.5));
+  pruefe('wer auf der Marke steht, kommt nicht weiter hinaus',
+    A(v(100, 0), v(50, 0), 100) === 0);
+  pruefe('zurück nach innen ist immer erlaubt',
+    A(v(200, 0), v(-150, 0), 100) === 1);
+
+  // Der lineare Dreisatz (L − |d|)/|e| gäbe hier 0,1 — er unterstellt, der
+  // Schritt zeige radial nach außen. Quer zur Marke passt viermal so viel.
+  const quer = A(v(90, 0), v(0, 100), 100);
+  pruefe('quer zur Marke gilt der Kreis, nicht der Dreisatz', nahe(quer, Math.sqrt(0.19)));
+  pruefe('und das ist mehr als der Dreisatz hergäbe', quer > 0.1);
+
+  pruefe('ein Schritt ohne Länge ändert nichts', A(v(0, 0), v(0, 0), 100) === 1);
+}
+
+// ── Guthaben aus der Zeigerbahn ───────────────────────────────────────────
+{
+  const S = G.schrittAnteil;
+  pruefe('gedecktes Tempo bleibt ungebremst', S(2, 5) === 1);
+  pruefe('genau gedeckt ist noch ungebremst', S(5, 5) === 1);
+  pruefe('ungedecktes Tempo wird anteilig gebremst', nahe(S(10, 2), 0.2));
+  pruefe('ohne Guthaben steht die Kamera', S(10, 0) === 0);
+  pruefe('ohne Schritt gibt es nichts zu bremsen', S(0, 0) === 1);
+}
+
+// ── Kamerastände mischen ──────────────────────────────────────────────────
+{
+  const R = 6378137;
+  const stand = (p, d, u) => ({ pos: p, dir: d, up: u });
+  const ziel = () => ({ pos: { x: 0, y: 0, z: 0 }, dir: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 0, z: 0 } });
+
+  const a = stand({ x: R, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  const w = 0.01;   // gut 60 km auf der Kugel — ein grober Zug
+  const b = stand({ x: R * Math.cos(w), y: R * Math.sin(w), z: 0 },
+                  { x: -Math.cos(w), y: -Math.sin(w), z: 0 }, { x: 0, y: 0, z: 1 });
+
+  const ganzA = G.standMischen(a, b, 0, ziel());
+  pruefe('f = 0 ist der Stand von vorher', nahe(ganzA.pos.x, R, 1e-6) && nahe(ganzA.pos.y, 0, 1e-6));
+  const ganzB = G.standMischen(a, b, 1, ziel());
+  pruefe('f = 1 ist der Stand von nachher', nahe(ganzB.pos.y, b.pos.y, 1e-6));
+
+  // Die Sehne liegt INNERHALB der Kugel. Ohne eigene Betragsmischung sänke die
+  // Kamera bei jedem Bild ein Stück — hier wären es rund 80 m.
+  const halb = G.standMischen(a, b, 0.5, ziel());
+  const radius = Math.hypot(halb.pos.x, halb.pos.y, halb.pos.z);
+  pruefe('der Abstand zum Erdmittelpunkt bleibt erhalten', nahe(radius, R, 1e-6));
+  const sehne = Math.hypot((a.pos.x + b.pos.x) / 2, (a.pos.y + b.pos.y) / 2);
+  pruefe('die rohe Sehne hätte die Kamera absacken lassen', R - sehne > 50);
+
+  pruefe('die Blickrichtung bleibt auf Länge 1',
+    nahe(Math.hypot(halb.dir.x, halb.dir.y, halb.dir.z), 1, 1e-9));
+  pruefe('und oben bleibt rechtwinklig zum Blick',
+    nahe(halb.dir.x * halb.up.x + halb.dir.y * halb.up.y + halb.dir.z * halb.up.z, 0, 1e-9));
+
+  // Ein schräger Stand, bei dem oben NICHT schon rechtwinklig steht.
+  const schief = stand({ x: R, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0.6, z: 0.8 });
+  const g = G.standMischen(a, schief, 0.5, ziel());
+  pruefe('auch aus schiefem Eingang kommt ein rechtwinkliger Stand',
+    nahe(g.dir.x * g.up.x + g.dir.y * g.up.y + g.dir.z * g.up.z, 0, 1e-9));
+  pruefe('und oben hat Länge 1', nahe(Math.hypot(g.up.x, g.up.y, g.up.z), 1, 1e-9));
+}
+
+// ── Der gemeldete Fall: 100 m über Grund, ein Zug ─────────────────────────
+{
+  // Vorher kam man bei flachem Blick kilometerweit. Jetzt ist bei 100 m Schluss,
+  // und der erste Sprung von 2 km wird auf diese 100 m gestutzt.
+  G.zugEinstellen(1, 10);
+  const marke = G.zugweite(100);
+  pruefe('die Wegmarke steht bei der Höhe über Grund', marke === 100);
+  const anteil = G.anteilBisGrenze({ x: 0, y: 0, z: 0 }, { x: 2000, y: 0, z: 0 }, marke);
+  pruefe('ein Sprung über 2 km wird auf die Marke gestutzt', nahe(anteil, 0.05));
+  pruefe('und damit auf 100 m Weg', nahe(anteil * 2000, marke));
+}
+
 console.log(fehler === 0 ? '\nAlle Prüfungen bestanden.' : `\n${fehler} Prüfung(en) fehlgeschlagen.`);
 process.exit(fehler === 0 ? 0 : 1);
