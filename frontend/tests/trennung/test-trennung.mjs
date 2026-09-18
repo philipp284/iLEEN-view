@@ -41,6 +41,7 @@ const VERBOTENE_DATEIEN = [
   // rechte Seite — Reiter am Panelgerüst
   'solar-panel.js', 'bimlp-panel.js', 'stalite-tool.js', 'geg-tool.js',
   'bericht.js', 'tragwerk-panel.js', 'volumen-panel.js',
+  'tragwerk-ergebnisse.css', 'werkzeuge-auswertung.css',
   // linke Seite — Gruppen und eigene Bereiche
   'ifclash-panel.js', 'room-concept-panel.js', 'bauplaner-panel.js',
   'konzept-panel.js', 'ifc-4d-panel.js',
@@ -80,6 +81,20 @@ pruefe('jedes eingebundene Skript liegt hier', fehlendeSkripte.length === 0,
 const fehlendeStyles = stylesheets.filter(lokal).filter((s) => !existsSync(join(FRONTEND, s)));
 pruefe('jedes eingebundene Stylesheet liegt hier', fehlendeStyles.length === 0,
   'fehlt: ' + fehlendeStyles.join(', '));
+
+// ── 3b · Keine verwaisten Dateien ──────────────────────────────────────────
+//
+// Eine Datei, die niemand einbindet, ist beim Zuschnitt vergessen worden. Sie
+// schadet nicht im Betrieb, liegt aber im öffentlichen Repo — und genau so ist
+// `tragwerk-ergebnisse.css` hier liegengeblieben, nachdem ihr `<link>` schon
+// entfernt war.
+const AUSNAHMEN = new Set(['vite.config.js', 'config.js', 'config.example.js']);
+const verwaist = readdirSync(FRONTEND)
+  .filter((f) => /\.(js|css)$/.test(f))
+  .filter((f) => !AUSNAHMEN.has(f))
+  .filter((f) => !eingebunden.includes(f) && !stylesheets.includes(f));
+pruefe('keine verwaiste Datei im Frontend', verwaist.length === 0,
+  'bindet niemand ein: ' + verwaist.join(', '));
 
 // ── 4 · Das Panelgerüst ist wirklich leer ──────────────────────────────────
 //
