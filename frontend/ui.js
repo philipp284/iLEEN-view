@@ -73,7 +73,145 @@ const BimViewerUI = {
   },
 
   // ─────────────────────────────────────────────────────────────────
-  // AKTIVITÄTSLEISTE UND PANELS
+  // AKTIVITÄTSLEISTE UND PANELS — DIE ANMELDUNG
+  // ─────────────────────────────────────────────────────────────────
+  //
+  // Die linke Leiste ist die Viewer-Seite. Ein Bereich darin ist angemeldet,
+  // nicht eingebaut — dieselbe Mechanik, die `right-panel.js` für die rechte
+  // Seite verwendet.
+  //
+  // Vorher war `addSection()` eine lokale Funktion in `createModernToolbar()`.
+  // Von außen war sie nicht erreichbar, und so haben sechs Module (pano-tour,
+  // bauplaner, konzept, flight-tracker, ifc-4d …) dieselben 35 Zeilen
+  // DOM-Aufbau abgeschrieben — samt dem Kunstgriff, den eigenen Knopf vor dem
+  // Einklapp-Knopf einzufügen, und samt einer eigenen Warteschleife, bis die
+  // Leiste im DOM steht. Sechs Kopien, die bei jeder Änderung am Panelgerüst
+  // einzeln nachzuziehen waren; eine davon lauschte auf das alte Ereignis
+  // `geobim:language-changed` und verschwand beim Sprachwechsel spurlos.
+  //
+  // Angemeldet wird so:
+  //
+  //     BimViewerUI.bereichAnmelden({
+  //       id: 'bericht', symbol: '📄', ordnung: 240,
+  //       titel: () => t('panel.bericht'),
+  //       inhalt: () => Bericht.markup(),           // String oder Funktion
+  //       beimOeffnen: () => Bericht.aktualisieren(),
+  //     });
+  //
+  // Ein Bereich mit Untergruppen gibt statt `inhalt` ein `gruppen`-Feld an;
+  // ein fremdes Modul hängt sich in einen bestehenden Bereich über
+  //
+  //     BimViewerUI.gruppeAnmelden('ifc', { key: 'pruefung', ordnung: 30,
+  //                                         label: () => t('group.pruefung'),
+  //                                         inhalt: () => Pruefung.markup(),
+  //                                         beimOeffnen: () => Pruefung.init() });
+  //
+  // `titel`, `label`, `inhalt` und `angeheftet` dürfen Funktionen sein und
+  // sollten es sein, wo `t()` im Spiel ist: der Sprachwechsel baut die Leiste
+  // neu auf und wertet sie dabei erneut aus. Als fester String eingetragen,
+  // bliebe die Beschriftung in der Sprache des Anmeldezeitpunkts stehen.
+  //
+  // `ordnung` bestimmt die Reihenfolge in der Leiste, nicht der Zeitpunkt der
+  // Anmeldung — sonst hinge die Anordnung der Symbole an der Reihenfolge der
+  // `<script>`-Zeilen in index.html. Die Viewer-Bereiche liegen auf 10…90,
+  // damit angemeldete Werkzeuge sich dazwischen und dahinter setzen können.
+
+  /** Die angemeldeten Bereiche. Reihenfolge entsteht über `ordnung`. */
+  _bereiche: [],
+
+  /** Steht die Leiste im DOM? Vor dem ersten Aufbau wird nur vorgemerkt. */
+  _leisteBereit: false,
+
+  /**
+   * Meldet einen Bereich an (oder überschreibt einen gleichnamigen).
+   *
+   * Vor dem ersten Aufbau wird nur vorgemerkt; danach wird die Leiste neu
+   * gebaut. Die Ladereihenfolge der Module ist damit gleichgültig.
+   */
+  bereichAnmelden(beschreibung) {
+    if (!beschreibung || !beschreibung.id) {
+      console.warn('[BimViewerUI] bereichAnmelden ohne id');
+      return;
+    }
+    const vorhanden = this._bereiche.find((b) => b.id === beschreibung.id);
+    if (vorhanden) {
+      // Gruppen, die sich fremde Module dazugehängt haben, überleben eine
+      // erneute Anmeldung des Bereichs — sonst risse ein spät geladenes
+      // Modul die Untergruppen eines früheren wieder heraus.
+      const fremde = vorhanden.gruppen.filter((g) => g._fremd);
+      Object.assign(vorhanden, beschreibung);
+      vorhanden.gruppen = (beschreibung.gruppen || []).concat(fremde);
+    } else {
+      this._bereiche.push(Object.assign({
+        symbol: '•',
+        titel: beschreibung.id,
+        ordnung: 500,
+        gruppen: [],
+        angeheftet: null,
+        inhalt: null,
+        beimOeffnen: null,
+      }, beschreibung));
+    }
+    this._leisteNeuBauen();
+  },
+
+  /**
+   * Hängt eine Untergruppe in einen bestehenden Bereich.
+   *
+   * Der Bereich muss vorher angemeldet sein. Die Viewer-Bereiche melden sich
+   * in `_viewerBereicheAnmelden()` an, gleich zu Beginn von `init()` — also
+   * bevor irgendein Werkzeugmodul dazu kommt, sich einzuhängen.
+   */
+  gruppeAnmelden(bereichId, gruppe) {
+    if (!gruppe || !gruppe.key) {
+      console.warn('[BimViewerUI] gruppeAnmelden ohne key');
+      return;
+    }
+    const bereich = this._bereiche.find((b) => b.id === bereichId);
+    if (!bereich) {
+      console.warn('[BimViewerUI] Bereich "' + bereichId + '" gibt es nicht — '
+                 + 'Gruppe "' + gruppe.key + '" bleibt draußen');
+      return;
+    }
+    const eintrag = Object.assign({ ordnung: 500, _fremd: true }, gruppe);
+    const i = bereich.gruppen.findIndex((g) => g.key === gruppe.key);
+    if (i >= 0) bereich.gruppen[i] = eintrag;
+    else bereich.gruppen.push(eintrag);
+    this._leisteNeuBauen();
+  },
+
+  /**
+   * Neuaufbau nach einer Anmeldung — gebündelt.
+   *
+   * Melden sich fünf Werkzeuge nacheinander an, soll die Leiste einmal neu
+   * entstehen und nicht fünfmal. Vor dem ersten Aufbau geschieht gar nichts:
+   * `createModernToolbar()` liest die Anmeldungen ohnehin frisch.
+   */
+  _leisteNeuBauen() {
+    if (!this._leisteBereit || this._neuaufbauGeplant) return;
+    this._neuaufbauGeplant = true;
+    Promise.resolve().then(() => {
+      this._neuaufbauGeplant = false;
+      if (!this._leisteBereit) return;
+      const aktiv = document.querySelector('.activity-btn.active')?.dataset.section;
+      this.createModernToolbar();
+      this.initEventHandlers();
+      if (aktiv) this.activateSection(aktiv);
+    });
+  },
+
+  /** `titel`/`inhalt`/`label` dürfen Funktion oder fertiger Wert sein. */
+  _wert(x) {
+    try {
+      return typeof x === 'function' ? x.call(this) : (x ?? '');
+    } catch (e) {
+      console.error('[BimViewerUI] Panelinhalt nicht erzeugbar', e);
+      return '<div class="plan-hint">Dieser Abschnitt ließ sich nicht aufbauen.</div>';
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // AKTIVITÄTSLEISTE UND PANELS — DER AUFBAU
   // ─────────────────────────────────────────────────────────────────
 
   createModernToolbar() {
@@ -85,7 +223,7 @@ const BimViewerUI = {
 
     toolbar.innerHTML = `
       <div id="activityBar" class="activity-bar">
-        <div class="activity-logo" title="iLEEN"><img src="bim-labor-logo.png" alt="iLEEN"></div>
+        <div class="activity-logo" title="iLEEN"><img src="ileen-marke.svg" alt="iLEEN"></div>
       </div>
       <div id="sidebarPanel" class="sidebar-panel">
         <div class="sidebar-resize-handle" title="Breite ziehen"></div>
@@ -94,94 +232,70 @@ const BimViewerUI = {
     const leiste = document.getElementById('activityBar');
     const seite = document.getElementById('sidebarPanel');
 
-    const addSection = (id, icon, title, content) => {
-      const btn = document.createElement('div');
-      btn.className = 'activity-btn';
-      btn.dataset.section = id;
-      btn.title = title;
-      btn.innerHTML = `<span class="modern-section-icon">${icon}</span>`;
-      btn.addEventListener('click', () => this.activateSection(id));
-      leiste.appendChild(btn);
+    // Ein Bereich wird zu Knopf + Panel. Untergruppen werden zu `<details>`:
+    // der Zustand lebt im DOM, das Aufklappen funktioniert ohne JavaScript,
+    // und der Inhalt bleibt für die Suchfunktion des Browsers erreichbar.
+    //
+    // Vierzehn Symbole in der Leiste hießen vierzehnmal raten, wo etwas liegt —
+    // „Layer Manager", „Point Cloud Settings" und „Assets" gehören für den
+    // Benutzer zu einer Frage: welche Modelle sind geladen. Die Gruppen fassen
+    // das zusammen; die Untergruppen bleiben sichtbar, damit niemand suchen
+    // muss, wohin ein Panel gewandert ist.
+    const bereiche = this._bereiche.slice().sort((a, b) => a.ordnung - b.ordnung);
+
+    for (const bereich of bereiche) {
+      const titel = this._wert(bereich.titel);
+
+      const knopf = document.createElement('div');
+      knopf.className = 'activity-btn';
+      knopf.dataset.section = bereich.id;
+      knopf.title = this._wert(bereich.hinweis) || titel;
+      knopf.innerHTML = `<span class="modern-section-icon">${bereich.symbol}</span>`;
+      // `beimOeffnen` ruft `activateSection()` — auch bei programmatischem
+      // Öffnen, nicht nur beim Klick.
+      knopf.addEventListener('click', () => this.activateSection(bereich.id));
+      leiste.appendChild(knopf);
+
+      // `angeheftet` steht über den Gruppen und klappt nie zu — für das, was
+      // beim Öffnen des Panels immer sichtbar sein soll.
+      let rumpf = this._wert(bereich.angeheftet);
+
+      const gruppen = (bereich.gruppen || []).slice().sort((a, b) => a.ordnung - b.ordnung);
+      if (gruppen.length) {
+        rumpf += gruppen
+          .map((g) => ({ g, inhalt: this._wert(g.inhalt) }))
+          .filter((x) => x.inhalt)
+          .map(({ g, inhalt }) => `
+          <details class="panel-group" id="group-${g.key}"${g.offen ? ' open' : ''}>
+            <summary class="panel-group__header">
+              <span>${this._wert(g.label)}</span>
+            </summary>
+            <div class="panel-group__body">${inhalt}</div>
+          </details>`)
+          .join('');
+      } else {
+        rumpf += this._wert(bereich.inhalt);
+      }
 
       const panel = document.createElement('div');
       panel.className = 'sidebar-section';
-      panel.id = `section-${id}`;
+      panel.id = `section-${bereich.id}`;
       panel.style.display = 'none';
       panel.innerHTML = `
         <div class="modern-header">
-          <div class="modern-logo-title">${title}</div>
+          <div class="modern-logo-title">${titel}</div>
         </div>
         <div class="section-scroll-content">
-          ${content}
+          ${rumpf}
         </div>
       `;
       seite.appendChild(panel);
-    };
-
-    /**
-     * Wie `addSection`, aber mit aufklappbaren Untergruppen.
-     *
-     * Vierzehn Symbole in der Leiste hießen vierzehnmal raten, wo etwas liegt —
-     * „Layer Manager", „Point Cloud Settings" und „Assets" gehören für den
-     * Benutzer zu einer Frage: welche Modelle sind geladen. Die Gruppen fassen
-     * das zusammen; die Untergruppen bleiben als `<details>` sichtbar, damit
-     * niemand suchen muss, wohin ein Panel gewandert ist.
-     *
-     * `<details>` statt eigener Aufklapp-Logik: der Zustand lebt im DOM, das
-     * Aufklappen funktioniert ohne JavaScript, und der Inhalt bleibt für die
-     * Suchfunktion des Browsers erreichbar.
-     */
-    const addGroup = (id, icon, title, subsections, pinned = '') => {
-      const body = subsections
-        .filter((sub) => sub.content)
-        .map((sub) => `
-          <details class="panel-group" id="group-${sub.key}"${sub.open ? ' open' : ''}>
-            <summary class="panel-group__header">
-              <span>${sub.label}</span>
-            </summary>
-            <div class="panel-group__body">${sub.content}</div>
-          </details>`)
-        .join('');
-      // `pinned` steht über den Gruppen und klappt nie zu — für das, was beim
-      // Öffnen des Panels immer sichtbar sein soll.
-      addSection(id, icon, title, pinned + body);
-    };
-
-    // Welche Modelle gerade in der Szene liegen, ist die Frage, die beim
-    // Öffnen des Panels immer zuerst kommt — die Liste steht deshalb fest
-    // oben und nicht eingeklappt im Cesium-Ion-Abschnitt.
-    addGroup('models', '📦', t('panel.models'), [
-      { key: 'ionAssets',  label: t('group.ionAssets'),  content: this.getAssetsContent(), open: true },
-      { key: 'backend',    label: t('group.backend'),    content: this.getBackendContent() },
-      { key: 'layers',     label: t('group.layers'),     content: this.getLayerManagerContent() },
-    ], this.getLoadedAssetsContent());
-
-    // Punktwolken stehen bei der Ansicht, nicht bei den Modellen. Punktgröße,
-    // Eye-Dome-Lighting und Farbmodus ändern nichts daran, *was* in der Szene
-    // liegt — nur daran, *wie* es aussieht.
-    addGroup('view', '📷', t('panel.view'), [
-      { key: 'camera',     label: t('group.camera'),     content: this.getViewTabContent(), open: true },
-      { key: 'pointcloud', label: t('group.pointcloud'), content: this.getPointCloudContent() },
-    ]);
-
-    // Im Viewer bleibt vom Bauteile-Panel der Filter. „Räume & Nutzung"
-    // (room-concept.js) und die Kollisionsprüfung (ifclash.js) sind
-    // Auswertungen und stehen in der Vollfassung.
-    addGroup('ifc', '🏗️', t('panel.ifc'), [
-      { key: 'filter', label: t('group.filter'), content: this.getIFCContent(), open: true },
-    ]);
-
-    // Werkzeuge: Reiter, keine Unterebene. Weitere Reiter (Schnittbox, Plan)
-    // hängen die zugehörigen Module selbst an.
-    addSection('tools', '📐', t('panel.tools'), this.getToolsContent());
-
-    addSection('tags', '🏷️', t('panel.tags'), this.getTagsContent());
-
-    addSection('settings', '⚙️', t('panel.settings'), this.getSettingsContent());
-    addSection('about', 'ℹ️', t('panel.help'), this.getAboutContent());
+    }
 
     // Unten in der Leiste: die Seitenleiste einklappen. `margin-top: auto`
-    // hält den Knopf am Boden — Module, die sich einhängen, setzen sich davor.
+    // hält den Knopf am Boden. Er entsteht nach allen Bereichen, damit sich
+    // kein angemeldetes Werkzeug mehr dahinter einreihen kann — genau dafür
+    // hatte jedes handgebaute Panel vorher seinen eigenen Kunstgriff.
     const unten = document.createElement('div');
     unten.className = 'activity-btn activity-btn--collapse';
     unten.style.marginTop = 'auto';
@@ -190,7 +304,8 @@ const BimViewerUI = {
     unten.addEventListener('click', () => this.toggleSidebar());
     leiste.appendChild(unten);
 
-    this.activateSection('models');
+    this._leisteBereit = true;
+    this.activateSection(bereiche.length ? bereiche[0].id : 'models');
 
     // Die Untergruppen eines Panels verhalten sich wie ein Akkordeon: wer eine
     // öffnet, schließt damit die übrigen desselben Panels. Sonst stehen nach
@@ -227,7 +342,9 @@ const BimViewerUI = {
 
     // Beschriftungen der Gruppen folgen der Sprachwahl. Die Panels werden dazu
     // komplett neu aufgebaut — ihr Inhalt sind HTML-Strings, die sich nicht
-    // nachträglich übersetzen lassen.
+    // nachträglich übersetzen lassen. Angemeldete Bereiche kommen dabei von
+    // selbst wieder mit; vorher musste jedes eingehängte Modul das für sich
+    // allein bemerken, und wer auf das falsche Ereignis lauschte, war weg.
     if (!this._languageHookAttached) {
       this._languageHookAttached = true;
       document.addEventListener('ileen:language-changed', () => {
@@ -255,6 +372,82 @@ const BimViewerUI = {
     }
   },
 
+  // ─────────────────────────────────────────────────────────────────
+  // DIE VIEWER-BEREICHE
+  // ─────────────────────────────────────────────────────────────────
+  //
+  // Was hier steht, ist der Viewer und gehört in beide Fassungen. Auswertungen
+  // melden sich aus ihrer eigenen Datei an: `room-concept-panel.js` und
+  // `ifclash-panel.js` hängen ihre Untergruppen in den Bereich „ifc", und
+  // keine Zeile in dieser Datei weiß davon.
+
+  _viewerBereicheAnmelden() {
+    // Welche Modelle gerade in der Szene liegen, ist die Frage, die beim
+    // Öffnen des Panels immer zuerst kommt — die Liste steht deshalb fest
+    // oben und nicht eingeklappt im Cesium-Ion-Abschnitt.
+    this.bereichAnmelden({
+      id: 'models', symbol: '📦', ordnung: 10,
+      titel: () => t('panel.models'),
+      angeheftet: () => this.getLoadedAssetsContent(),
+      gruppen: [
+        { key: 'ionAssets', ordnung: 10, label: () => t('group.ionAssets'), inhalt: () => this.getAssetsContent(), offen: true },
+        { key: 'backend',   ordnung: 20, label: () => t('group.backend'),   inhalt: () => this.getBackendContent() },
+        { key: 'layers',    ordnung: 30, label: () => t('group.layers'),    inhalt: () => this.getLayerManagerContent() },
+      ],
+    });
+
+    // Punktwolken stehen bei der Ansicht, nicht bei den Modellen. Punktgröße,
+    // Eye-Dome-Lighting und Farbmodus ändern nichts daran, *was* in der Szene
+    // liegt — nur daran, *wie* es aussieht.
+    this.bereichAnmelden({
+      id: 'view', symbol: '📷', ordnung: 20,
+      titel: () => t('panel.view'),
+      gruppen: [
+        { key: 'camera',     ordnung: 10, label: () => t('group.camera'),     inhalt: () => this.getViewTabContent(), offen: true },
+        { key: 'pointcloud', ordnung: 20, label: () => t('group.pointcloud'), inhalt: () => this.getPointCloudContent() },
+      ],
+    });
+
+    // Vom Bauteile-Panel gehört dem Viewer der Filter. „Räume & Nutzung"
+    // (room-concept-panel.js) und die Kollisionsprüfung (ifclash-panel.js)
+    // sind Auswertungen und hängen sich selbst hier hinein.
+    this.bereichAnmelden({
+      id: 'ifc', symbol: '🏗️', ordnung: 30,
+      titel: () => t('panel.ifc'),
+      beimOeffnen: () => {
+        if (typeof IFCFilterPro !== 'undefined') IFCFilterPro.renderFilterList();
+      },
+      gruppen: [
+        { key: 'filter', ordnung: 10, label: () => t('group.filter'), inhalt: () => this.getIFCContent(), offen: true },
+      ],
+    });
+
+    // Werkzeuge: Reiter, keine Unterebene. Weitere Reiter (Schnittbox, Plan)
+    // hängen die zugehörigen Module selbst an.
+    this.bereichAnmelden({
+      id: 'tools', symbol: '📐', ordnung: 40,
+      titel: () => t('panel.tools'), inhalt: () => this.getToolsContent(),
+    });
+
+    this.bereichAnmelden({
+      id: 'tags', symbol: '🏷️', ordnung: 50,
+      titel: () => t('panel.tags'), inhalt: () => this.getTagsContent(),
+      // Notizen können seit dem letzten Öffnen dazugekommen sein — die Liste
+      // wird nicht laufend gepflegt, sondern beim Aufschlagen des Panels.
+      beimOeffnen: () => this.refreshTagsPanel(),
+    });
+
+    this.bereichAnmelden({
+      id: 'settings', symbol: '⚙️', ordnung: 80,
+      titel: () => t('panel.settings'), inhalt: () => this.getSettingsContent(),
+    });
+
+    this.bereichAnmelden({
+      id: 'about', symbol: 'ℹ️', ordnung: 90,
+      titel: () => t('panel.help'), inhalt: () => this.getAboutContent(),
+    });
+  },
+
   /**
    * Frühere Panel-Kennungen → {Gruppe, Untergruppe}.
    *
@@ -269,11 +462,9 @@ const BimViewerUI = {
     layers:     { section: 'models', group: 'layers' },
     pointcloud: { section: 'view',   group: 'pointcloud' },
     lighting:   { section: 'settings' },
-    // `rooms` und `clash` gibt es im Viewer nicht — sie zeigen auf das
-    // Bauteile-Panel, damit ein Aufruf aus einem Skript oder über MCP dort
-    // landet statt ins Leere zu greifen.
-    rooms:      { section: 'ifc' },
-    clash:      { section: 'ifc' },
+    rooms:      { section: 'ifc',    group: 'rooms' },
+    panotour:   { section: 'models', group: 'panotour' },
+    clash:      { section: 'ifc',    group: 'clash' },
     nmc:        { section: 'tools',  tab: 'measure' },
     measure:    { section: 'tools',  tab: 'measure' },
     drawing:    { section: 'tools',  tab: 'clipping' },
@@ -311,17 +502,25 @@ const BimViewerUI = {
     if (alias?.group) this.openGroup(alias.group);
     if (alias?.tab) this.showToolsTab(alias.tab);
 
-    // IFC-Tab: Liste beim ersten Öffnen rendern
-    if (sectionId === 'ifc') {
-      if (typeof IFCFilterPro !== 'undefined') IFCFilterPro.renderFilterList();
-      // Die Kollisionsprüfung hängt ihre Ereignisbehandlung an Elemente, die
-      // erst mit dem Panel entstehen — und nach einem Sprachwechsel neu
-      // entstehen. `init()` setzt die Handler jedes Mal frisch.
-
+    // Was beim Öffnen zu geschehen hat, meldet der Bereich selbst an — und
+    // jede Untergruppe für sich. Vorher stand hier eine Kette von
+    // `if (sectionId === …)`, und jede Auswertung, die so einen Haken
+    // brauchte, musste dafür in diese Datei geschrieben werden: die
+    // Kollisionsprüfung etwa setzt ihre Ereignisbehandlung bei jedem Öffnen
+    // neu, weil ihre Elemente mit dem Panel neu entstehen.
+    const bereich = this._bereiche.find((b) => b.id === sectionId);
+    if (bereich) {
+      this._hakenRufen(bereich.beimOeffnen, sectionId);
+      (bereich.gruppen || []).forEach((g) =>
+        this._hakenRufen(g.beimOeffnen, sectionId + '/' + g.key));
     }
-    // Notizen können seit dem letzten Öffnen dazugekommen sein — die Liste
-    // wird nicht laufend gepflegt, sondern beim Aufschlagen des Panels.
-    if (sectionId === 'tags') this.refreshTagsPanel();
+  },
+
+  /** Einen `beimOeffnen`-Haken rufen, ohne dass sein Fehler das Öffnen abbricht. */
+  _hakenRufen(fn, wo) {
+    if (typeof fn !== 'function') return;
+    try { fn.call(this); }
+    catch (e) { console.error('[BimViewerUI] beimOeffnen "' + wo + '"', e); }
   },
 
   /** Die ganze linke Leiste ein- oder ausfahren (Taste M). */
@@ -1049,6 +1248,11 @@ const BimViewerUI = {
     `;
   },
 
+  /**
+   * Kollisionsprüfung und RDF-Ausgabe — im Bauteile-Panel.
+   *
+   * Die Element-IDs sind die, die `ifclash.js` sucht.
+   */
 
   // ─────────────────────────────────────────────────────────────────
   // ANSICHT
@@ -1129,7 +1333,6 @@ const BimViewerUI = {
     `;
   },
 
-  // Raumkonzept — delegiert an RoomConcept (room-concept.js) wenn geladen
 
   // IFC Filter content — delegiert an IFCFilterPro (ifc-filter-pro.js) wenn geladen
   getIFCContent() {
@@ -2042,6 +2245,14 @@ const BimViewerUI = {
     if (statusEl) statusEl.textContent = t('models.ionReady', { n: this._ionAssetNames.size });
   }
 };
+
+// Die Viewer-Bereiche melden sich beim Laden dieser Datei an — nicht erst in
+// `init()`. Sonst gäbe es den Bereich „ifc" noch nicht, wenn ein Werkzeug
+// gleich darauf `gruppeAnmelden('ifc', …)` ruft, und die Gruppe fiele wortlos
+// heraus. Gebaut wird trotzdem erst in `init()`: `_leisteNeuBauen()` tut vor
+// dem ersten Aufbau nichts.
+BimViewerUI._viewerBereicheAnmelden();
+
 
 window.BimViewerUI = BimViewerUI;
 

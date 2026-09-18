@@ -29,6 +29,7 @@
 //   · jedes Panel lässt sich öffnen und baut sein Markup
 //   · kein unaufgelöster Übersetzungsschlüssel im Bild
 //   · nichts verweist auf ein Modul, das es hier nicht gibt
+//   · die Trennung hält: links nur Viewer, rechts kein einziger Reiter
 
 import puppeteer from 'puppeteer-core';
 
@@ -60,6 +61,10 @@ const ERWARTET_BV = ['Aufmass', 'SectionBox', 'Explosion', 'Bildebenen', 'Unterg
 const VERBOTEN = [
   'SolarAnalysis', 'IFClash', 'FlugTracker', 'Bauplaner', 'KonzeptPanel',
   'Konzept4D', 'Sim4DHud', 'IFC4D', 'Stage4D', 'AufmassRDF', 'AufmassMengen',
+  // Die Anmelde-Dateien der Auswertungen. Sie sind der eigentliche Zuschnitt
+  // seit der Trennung: das Panelgerüst links wie rechts ist in beiden
+  // Fassungen dieselbe Datei, verschieden ist nur, wer sich anmeldet.
+  'SolarPanel', 'BimLpPanel', 'IFClashPanel', 'RoomConceptPanel',
 ];
 
 const browser = await puppeteer.launch({
@@ -168,6 +173,72 @@ try {
       !erg.fehler && erg.da && erg.laenge > 200,
       erg.fehler || `da=${erg.da} laenge=${erg.laenge}`);
   }
+
+  // ── 4b · Die Trennung hält ─────────────────────────────────────────────
+  //
+  // Der Kern dieser Fassung. Links stehen die Viewer-Werkzeuge, rechts stünden
+  // die Auswertungen — und rechts ist hier nichts angemeldet. Das Gerüst
+  // (`right-panel.js`) wird trotzdem ausgeliefert: es ist die Fassung, in die
+  // sich ein Analysewerkzeug einhängen kann, wenn eines dazukommen soll.
+  //
+  // Diese Prüfung ist der Grund, warum eine vergessene `<script>`-Zeile nicht
+  // stillschweigend im öffentlichen Repo landet: ein eingebundenes
+  // Auswertungswerkzeug meldet hier sofort einen Reiter an.
+
+  const trennung = await seite.evaluate(() => ({
+    // `RightPanel` ist ein `const` im Skript-Bereich und steht NICHT auf
+    // `window` — `window.RightPanel` wäre immer undefined und die Prüfung
+    // immer grün. Deshalb der blosse Name.
+    rpDa: typeof RightPanel !== 'undefined',
+    reiter: typeof RightPanel !== 'undefined' ? RightPanel.reiterListe : ['<RightPanel fehlt>'],
+    reiterKnoepfe: [...document.querySelectorAll('#roleBar [data-reiter-btn]')]
+      .map((b) => b.dataset.reiterBtn),
+    anmeldenDa: typeof RightPanel !== 'undefined'
+      && typeof RightPanel.reiterAnmelden === 'function'
+      && typeof RightPanel.brueckeAnmelden === 'function',
+    bereichAnmeldenDa: typeof window.BimViewerUI.bereichAnmelden === 'function'
+      && typeof window.BimViewerUI.gruppeAnmelden === 'function',
+    bereiche: [...document.querySelectorAll('#activityBar .activity-btn[data-section]')]
+      .map((b) => b.dataset.section),
+    gruppen: [...document.querySelectorAll('#sidebarPanel details.panel-group')]
+      .map((d) => d.id).filter(Boolean),
+    // Brückennamen, die nur eine Auswertung anhängt. Sind sie da, ist eine
+    // Auswertung mitgeliefert worden.
+    bruecken: typeof RightPanel !== 'undefined'
+      ? ['solarShowLoading', 'solarShowError', '_selectLp', '_selectPhase', '_resetLpFilter']
+          .filter((n) => typeof RightPanel[n] === 'function')
+      : [],
+  }));
+
+  pruefe('das Panelgerüst der rechten Seite ist da', trennung.rpDa);
+  pruefe('die Anmeldung rechts ist benutzbar', trennung.anmeldenDa,
+    'reiterAnmelden/brueckeAnmelden fehlen — das Gerüst ist kein Gerüst mehr');
+  pruefe('die Anmeldung links ist benutzbar', trennung.bereichAnmeldenDa,
+    'bereichAnmelden/gruppeAnmelden fehlen in BimViewerUI');
+  pruefe('rechts ist kein Reiter angemeldet', trennung.reiter.length === 0,
+    'angemeldet: ' + trennung.reiter.join(', '));
+  pruefe('rechts steht kein Werkzeugknopf', trennung.reiterKnoepfe.length === 0,
+    'gefunden: ' + trennung.reiterKnoepfe.join(', '));
+  pruefe('keine Auswertung hat sich an die Brücke gehängt', trennung.bruecken.length === 0,
+    'gefunden: ' + trennung.bruecken.join(', '));
+
+  // Links die Gegenprobe: die Gruppen der Auswertungen dürfen nicht auftauchen.
+  const VERBOTENE_GRUPPEN = ['group-rooms', 'group-clash'];
+  const fremdeGruppen = VERBOTENE_GRUPPEN.filter((g) => trennung.gruppen.includes(g));
+  pruefe('links steht keine Auswertungs-Gruppe', fremdeGruppen.length === 0,
+    'gefunden: ' + fremdeGruppen.join(', '));
+
+  // Und die Viewer-Seite ist vollständig.
+  const ERWARTETE_BEREICHE = ['models', 'view', 'ifc', 'tools', 'tags', 'settings', 'about'];
+  const fehlendeBereiche = ERWARTETE_BEREICHE.filter((b) => !trennung.bereiche.includes(b));
+  pruefe('jeder Viewer-Bereich steht in der Leiste', fehlendeBereiche.length === 0,
+    'fehlt: ' + fehlendeBereiche.join(', '));
+
+  // Der 360°-Rundgang gehört in den Asset-Browser und nicht als eigenes Symbol
+  // in die Leiste — eine Tour ist ein geladener Bestand wie ein Modell.
+  pruefe('der 360°-Rundgang hängt im Asset-Browser',
+    trennung.gruppen.includes('group-panotour') && !trennung.bereiche.includes('panotour'),
+    'Gruppen: ' + trennung.gruppen.join(', ') + ' — Bereiche: ' + trennung.bereiche.join(', '));
 
   // ── 5 · Keine unaufgelösten Übersetzungsschlüssel ───────────────────────
   //

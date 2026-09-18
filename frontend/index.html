@@ -23,20 +23,8 @@
 
   <link rel="stylesheet" href="style.css">
 
-  <!-- Baustufen — die Markierung des Knopfes an der Modellzeile. Die Leiste
-       dazu ist die gemeinsame Bauzeitleiste (sim4d-hud.js). -->
-
-  <!-- Raumkonzept — Nutzungslegende und Anforderungsprofil -->
-
-  <!-- 4D am Fachmodell — Zuordnungsbericht und Meldungen. Das Aussehen der
-       Bauzeitleiste selbst steht in konzept.css. -->
-
   <!-- Annotationen — verankerte Beschriftungen zu den Notizen aus tags.js -->
   <link rel="stylesheet" href="annotations.css">
-
-  <!-- Plan 2D — Zeichenmodus (Blatt, Schraffuren, Legende) -->
-
-  <!-- Statik im Zeichenmodus — Ergebnisfenster, Ampel, Ergebniskarten -->
 
   <!-- Schnittbox — Ausschnitt um ein angeklicktes Bauteil -->
   <link rel="stylesheet" href="section-box.css">
@@ -44,18 +32,10 @@
   <!-- Bildebenen — Galerie und Liste der im Modell gesetzten Bilder und PDF-Pläne -->
   <link rel="stylesheet" href="bildebenen.css">
 
-  <!-- Werkzeuge der rechten Seite: Panelgerüst, GEG-Energietool, StaLite-Brücke,
-       Skizzenarchiv und die Medienablage auf dem Planblatt. -->
+  <!-- Panelgerüst der rechten Seite (right-panel.js). Hier ist keine
+       Auswertung angemeldet — die Datei liefert die leere Fassung, in die
+       sich ein Analysewerkzeug einhängen kann. -->
   <link rel="stylesheet" href="werkzeuge.css">
-
-  <!-- Tragwerk: Legende und Punktabfrage der Ergebniswolke -->
-  <link rel="stylesheet" href="tragwerk-ergebnisse.css">
-
-  <!-- FE-Browser und Planbrowser — zwei Vollbildansichten über der Szene -->
-
-  <!-- Bauplaner — Geschossleiste, Katalogkacheln, Richtungskreuz, Mengentabelle -->
-
-  <!-- Konzept-Assistent und die 4D-Zeitleiste über der Szene -->
 
   <!-- Fadenkreuz und Ablesefeld des Messmodus -->
   <link rel="stylesheet" href="aufmass.css">
@@ -84,14 +64,6 @@
       <span id="infoBoxPanelTitle" class="infobox-title">PROPERTIES</span>
       <div class="floating-panel-controls">
         <button class="floating-panel-btn isolate-btn" onclick="BimViewer.toggleIsolate()" title="Isolate / Show All">🎯 Isolate</button>
-        <!-- Aus dem angeklickten Bauteil wird ein Plansatz: Grundriss und zwei
-             Schnitte im Archiv, das erste Blatt gleich im Zeichenfenster
-             (plan-bauteil.js). Der Knopf steht im Kopf und nicht im Rumpf,
-             weil displayIFCProperties() den Rumpf bei jedem Klick neu
-             schreibt und ihn dabei mitnähme. -->
-        <button class="floating-panel-btn"
-                onclick="BimViewer.PlanBauteil && BimViewer.PlanBauteil.vomAuswahl()"
-                title="Dieses Bauteil als Plansatz ablegen — Grundriss, Längs- und Querschnitt zum Detaillieren">📐 Plan</button>
         <button class="floating-panel-btn" onclick="BimViewer.closeInfoBox()" title="Schließen">✕</button>
       </div>
     </div>
@@ -165,12 +137,6 @@
   <script src="ifc-filter-pro.js"></script>
   <!-- Rollenbasierte Bauteileigenschaften — vor ui.js -->
   <script src="ifc-role-properties.js"></script>
-  <!-- Raumkonzept — vor ui.js (getRoomConceptContent nutzt RoomConcept.getPanelHTML) -->
-
-  <!-- Konzept-Assistent — ESM-Brücke zum vendorten Baustellen-Navi-Rechenkern
-       (vendor/dijkstra/). type="module" läuft immer deferred, also nach allen
-       klassischen Scripts hier. -->
-
   <script src="ui.js"></script>
 
   <!-- Vereinheitlichung der Bedienelemente — nach ui.js, damit der
@@ -201,13 +167,9 @@
   <!-- Rechtes Panel — Reiterverwaltung. Vor den Werkzeugen, die sich dort anmelden. -->
   <script src="right-panel.js"></script>
 
-  <!-- Skizzenarchiv — das Zwischenformat zwischen „gerechnet" und „im Bericht" -->
+  <!-- Skizzenarchiv (IndexedDB) — bildebenen.js legt die Bilder der Bildebenen
+       hier ab und holt sie von hier zurück. -->
   <script src="skizzen-store.js"></script>
-
-  <!-- Solaranalyse — Google Solar API -->
-  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
-
-  <!-- Flugverkehr über dem Modell (OpenSky über /flug im Backend). Nach geoid.js. -->
 
   <!-- Google-Freistellung · Isolieren · Gebäudemarken -->
   <script src="google-tiles-mask.js"></script>
@@ -227,14 +189,8 @@
   <!-- Schnittbox — nach den Plan-Modulen und nach ui.js -->
   <script src="section-box.js"></script>
 
-  <!-- Bauplaner — Katalog → Kern → Erzeuger → Panel -->
-
-  <!-- Konzept-Assistent und Bauzeitsimulation -->
-
-  <!-- 4D am Fachmodell -->
-
-  <!-- Explosionsansicht — ganz zum Schluss, weil das Modul Kern, Oberfläche,
-       Bauplaner und Konzept-4D kennen muss -->
+  <!-- Explosionsansicht — ganz zum Schluss, weil das Modul Kern und
+       Oberfläche kennen muss -->
   <script src="explosion.js"></script>
   <script src="geschossplaene.js"></script>
   <script src="bildebenen.js"></script>

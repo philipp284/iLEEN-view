@@ -1,7 +1,16 @@
 'use strict';
 
 /**
- * right-panel.js — Rechte Analyse-Sidebar für iLEEN
+ * right-panel.js — Panelgerüst der rechten Seite
+ *
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ *
+ * Diese Datei ist ein Gerüst und sonst nichts. Sie kennt kein einziges
+ * Werkzeug — sie weiß nur, wie ein Reiter aussieht, wann er gebaut wird und
+ * was beim Umschalten geschieht. Deshalb ist sie in der Vollfassung (GitLab)
+ * und in iLEEN-view Zeile für Zeile dieselbe Datei; verschieden ist allein,
+ * welche Werkzeuge sich anmelden.
  *
  * Struktur:
  *  - Rechte Activity-Bar (roleBar): oben die Rollen (Explore · Visualize ·
@@ -30,85 +39,35 @@
  * ist je Reiter verschieden, weil eine Bauteiltabelle mehr Platz braucht als
  * eine Filterliste — das Panel wächst beim Umschalten mit.
  *
- * Solar und BIM-LP sind hier weiterhin eingebaut, aber über denselben Weg
- * angemeldet wie alles andere. Die Brücke, über die `solar.js` das Panel
- * befüllt (`solarShowLoading`, `solarShowError`, `#rpSolarBody`), ist
- * unverändert — sie ist der einzige Grund, warum der Solar-Reiter seinen
- * Container mit genau diesen Kennungen bauen muss.
+ * ## Warum Solar und BIM-LP hier nicht mehr stehen
+ *
+ * Sie waren die letzten beiden eingebauten Reiter: 60 Zeilen Phasendaten und
+ * fünf `solar*`-Methoden im Namensraum des Gerüsts. Das kostete zweierlei.
+ * Erstens kannte das Gerüst damit den Informationsbedarf der
+ * BIM-Leistungsphasen — zwei Dinge ohne jeden Zusammenhang. Zweitens blieb in
+ * der Viewer-Fassung, wo es `SolarAnalysis` nicht gibt, ein Reiter übrig, der
+ * auf Klick nichts tat. Beide wohnen jetzt in `solar-panel.js` und
+ * `bimlp-panel.js` und melden sich an wie alle anderen.
+ *
+ * ## Die Brücke
+ *
+ * Manche Werkzeuge werden von außen über `RightPanel.<name>()` angesprochen —
+ * `solar.js` ruft `RightPanel.solarShowLoading()`, das BIM-LP-Markup ruft
+ * `RightPanel._selectLp()` als `onclick`-Attribut, also aus dem globalen
+ * Sichtbarkeitsbereich heraus. Damit solche Namen erreichbar bleiben, ohne
+ * dass das Gerüst sie kennt, hängt ein Werkzeug sie selbst an:
+ *
+ *     RightPanel.brueckeAnmelden({ solarShowLoading, solarShowError });
+ *
+ * Fehlt das Werkzeug, fehlt der Name — ein Aufruf läuft dann in einen klaren
+ * `TypeError` statt in ein stilles Nichts.
  */
 
 const RightPanel = (() => {
 
-  // ── BIM Leistungsphasen-Daten (aus phases.ts, als embedded JS) ─────────────
-  const BIM_GROUPS = [
-    {
-      id: 'lp1',
-      label: 'BIM-LP1',
-      name: 'Initialisierung und Grundlagen',
-      color: '#3B82F6',
-      phases: [
-        { id: '000', name: 'Grundsätzliches', loGN: 'LoGN 1', trades: ['Architektur', 'Gebäudebetrieb 4.0'], deliverable: 'Projektstrukturmodell', fileType: 'IFC 4.3 / XML' },
-        { id: '010', name: 'Bestandserfassung', loGN: 'LoGN 2', trades: ['Vermessung', 'Architektur'], deliverable: 'Bestandsmodell / Lageplanmodell', fileType: 'IFC 4.3 / E57 / DWG' },
-        { id: '020', name: 'Bedarfsplanung', loGN: 'LoGN 1', trades: ['Architektur', 'Gebäudebetrieb 4.0'], deliverable: 'Bedarfsprogramm', fileType: 'PDF / XML' },
-      ],
-    },
-    {
-      id: 'lp2',
-      label: 'BIM-LP2',
-      name: 'Planung und Entwurf',
-      color: '#10B981',
-      phases: [
-        { id: '030', name: 'Planungsvarianten', loGN: 'LoGN 2', trades: ['Architektur', 'Tragwerksplanung', 'TGA Planung'], deliverable: 'Vorentwurfsmodell', fileType: 'IFC 4.3 / RVT / PDF' },
-        { id: '040', name: 'Visualisierung', loGN: 'LoGN 3', trades: ['Architektur'], deliverable: 'Visualisierungsmodell', fileType: 'FBX / GLB / MP4' },
-        { id: '050', name: 'Koordination Fachgewerke', loGN: 'LoGN 4', trades: ['Architektur', 'Tragwerksplanung', 'TGA Planung', 'Elektro', 'Heizung/Sanitär', 'Lüftung', 'Netzwerk IT'], deliverable: 'Koordinationsmodell', fileType: 'IFC 4.3 / BCF / NWD' },
-        { id: '060', name: 'Qualitätsprüfung', loGN: 'LoGN 4', trades: ['Architektur', 'Tragwerksplanung'], deliverable: 'Qualitätsbericht', fileType: 'BCF / PDF' },
-        { id: '070', name: 'Bemessung & Nachweise', loGN: 'LoGN 4', trades: ['Tragwerksplanung', 'TGA Planung'], deliverable: 'Berechnungsmodell', fileType: 'IFC 4.3 / SAF / gbXML' },
-        { id: '080', name: 'Planunterlagen', loGN: 'LoGN 6', trades: ['Architektur', 'Tragwerksplanung'], deliverable: 'Ausführungsmodell', fileType: 'IFC 4.3 / DWG / PDF' },
-        { id: '090', name: 'Genehmigung', loGN: 'LoGN 3', trades: ['Architektur'], deliverable: 'Genehmigungsmodell', fileType: 'IFC 4.3 / XPlanGML' },
-      ],
-    },
-    {
-      id: 'lp3',
-      label: 'BIM-LP3',
-      name: 'Vergabe und Vorbereitung',
-      color: '#F59E0B',
-      phases: [
-        { id: '100', name: 'Mengen- & Kosten', loGN: 'LoGN 4', trades: ['Architektur', 'Tragwerksplanung'], deliverable: 'Kostenmodell', fileType: 'IFC 4.3 / GAEB / CSV' },
-        { id: '110', name: 'Ausschreibung & Vergabe', loGN: 'LoGN 5', trades: ['Architektur', 'Rohbau', 'Ausbau'], deliverable: 'Ausschreibungsmodell', fileType: 'IFC 4.3 / GAEB DA XML' },
-        { id: '120', name: 'Terminplanung (4D)', loGN: 'LoGN 4', trades: ['Rohbau', 'Ausbau'], deliverable: '4D-Simulationsmodell', fileType: 'IFC 4.3 / NWD' },
-        { id: '130', name: 'Logistikplanung', loGN: 'LoGN 3', trades: ['Rohbau', 'Gerüstbau'], deliverable: 'Baustelleneinrichtungsmodell', fileType: 'IFC 4.3 / DWG' },
-      ],
-    },
-    {
-      id: 'lp4',
-      label: 'BIM-LP4',
-      name: 'Bauausführung',
-      color: '#EF4444',
-      phases: [
-        { id: '140', name: 'Baufortschrittskontrolle', loGN: 'LoGN 7', trades: ['Architektur', 'Rohbau', 'Vermessung'], deliverable: 'Ist-Modell (As-Built)', fileType: 'IFC 4.3 / E57 / BCF' },
-        { id: '150', name: 'Änderungs- & Nachtrag', loGN: 'LoGN 6', trades: ['Architektur', 'Tragwerksplanung'], deliverable: 'Änderungsmodell', fileType: 'IFC 4.3 / BCF' },
-        { id: '160', name: 'Abrechnung', loGN: 'LoGN 6', trades: ['Architektur', 'Rohbau'], deliverable: 'Abrechnungsmodell', fileType: 'IFC 4.3 / GAEB / CSV' },
-        { id: '170', name: 'Abnahme & Mängel', loGN: 'LoGN 8', trades: ['Architektur', 'Rohbau', 'TGA Planung'], deliverable: 'Mängelmodell', fileType: 'IFC 4.3 / BCF' },
-      ],
-    },
-    {
-      id: 'lp5',
-      label: 'BIM-LP5',
-      name: 'Abschluss und Betrieb',
-      color: '#8B5CF6',
-      phases: [
-        { id: '180', name: 'Inbetriebnahme', loGN: 'LoGN 8', trades: ['TGA Planung', 'Gebäudebetrieb 4.0', 'Netzwerk IT'], deliverable: 'Techn. Gebäudemodell', fileType: 'IFC 4.3 / COBie' },
-        { id: '190', name: 'Bauwerksdokumentation', loGN: 'LoGN 9', trades: ['Architektur', 'Vermessung', 'Gebäudebetrieb 4.0'], deliverable: 'As-Built Gesamtmodell', fileType: 'IFC 4.3 / DWG / E57' },
-        { id: '200', name: 'Betrieb & Erhaltung', loGN: 'LoGN 9', trades: ['Gebäudebetrieb 4.0', 'Netzwerk IT'], deliverable: 'Lebender Digitaler Zwilling', fileType: 'IFC 4.3 / COBie / REST / MQTT' },
-      ],
-    },
-  ];
-
   // ── State ──────────────────────────────────────────────────────────────────
   let panelOpen = false;
   let activeTab = null;
-  let activeLp = null;           // null = Alle, 'lp1'…'lp5'
-  let activePhase = null;        // phase id or null
   let panel = null;
   let bereit = false;            // Panel im DOM? Vor init() nur vormerken.
 
@@ -330,269 +289,41 @@ const RightPanel = (() => {
       try { jetzt.schliessen(); } catch (e) { console.warn('[RightPanel]', e); }
     }
   }
-
-  // ── Eingebauter Reiter: Solar ──────────────────────────────────────────────
+  // ── Brücke: Namen, die ein Werkzeug am Gerüst aufhängt ─────────────────────
   //
-  // Der Container muss `rpSolarBody` heißen: `solar.js` greift ihn direkt über
-  // `getElementById` ab, ebenso `rpSolarHeatmapStatus` und `rpSolarCostChart`,
-  // die es selbst hineinschreibt. Das ist die gewachsene Brücke zwischen beiden
-  // Modulen und wird hier nur bedient, nicht verändert.
-  reiterAnmelden({
-    id: 'solar', kuerzel: 'Solar', symbol: '☀', titel: 'Solaranalyse', breite: 320,
-    aufbauen: function (behaelter) {
-      behaelter.innerHTML =
-        '<div id="rpSolarBody" style="padding:16px; color:#555; font-size:11px;">' +
-        'Klicke auf ein Gebäude, um die Solar-Analyse zu starten.</div>';
-    },
-    oeffnen: function () {
-      if (typeof SolarAnalysis !== 'undefined' && !SolarAnalysis._active) {
-        SolarAnalysis.activate();
+  // Siehe Kopf der Datei. Bewusst ohne Namensprüfung: wer zwei Werkzeuge mit
+  // gleichem Methodennamen anmeldet, hat ein Namensproblem im Werkzeug, und
+  // das soll hier nicht stillschweigend geglättet werden. Gewarnt wird
+  // trotzdem, damit es beim Suchen nicht Stunden kostet.
+  function brueckeAnmelden(namen) {
+    if (!namen || typeof namen !== 'object') return;
+    Object.keys(namen).forEach((name) => {
+      if (name in api) {
+        console.warn('[RightPanel] Brückenname "' + name + '" war schon vergeben — wird überschrieben');
       }
-    },
-    schliessen: function () {
-      if (typeof SolarAnalysis !== 'undefined') {
-        SolarAnalysis._solarPanelClose();
-        SolarAnalysis.deactivate();
-      }
-    }
-  });
-
-  // ── Eingebauter Reiter: BIM-Leistungsphasen ────────────────────────────────
-  reiterAnmelden({
-    id: 'bimlp', kuerzel: 'BIM-LP', symbol: '📋', titel: 'BIM-Leistungsphasen',
-    breite: 340,
-    aufbauen: function (behaelter) {
-      behaelter.innerHTML = '<div id="rpBimlpBody" style="padding:0;"></div>';
-      _renderBimLpPanel();
-    }
-  });
-
-  // ── BIM-LP Filteransicht ───────────────────────────────────────────────────
-  function _renderBimLpPanel() {
-    const body = document.getElementById('rpBimlpBody');
-    if (!body) return;
-
-    // Gruppen-Header-Buttons
-    const headerHtml = BIM_GROUPS.map(g => `
-      <button
-        onclick="RightPanel._selectLp('${g.id}')"
-        id="rpLpBtn_${g.id}"
-        style="
-          width: 100%; text-align: left; background: transparent;
-          border: none; border-bottom: 1px solid #1a1a1a;
-          padding: 10px 16px; cursor: pointer;
-          display: flex; align-items: center; gap: 10px;
-          transition: background .15s;
-        "
-        onmouseenter="this.style.background='rgba(255,255,255,0.04)'"
-        onmouseleave="this.style.background='transparent'"
-      >
-        <span style="
-          width: 8px; height: 8px; border-radius: 50%;
-          background: ${g.color}; flex-shrink: 0; display:inline-block;
-        "></span>
-        <span style="font-size:10px; font-weight:700; color:${g.color}; letter-spacing:.5px; text-transform:uppercase; flex-shrink:0; width:52px;">${g.label}</span>
-        <span style="font-size:10px; color:#888; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">${g.name}</span>
-        <span style="font-size:10px; color:#444; flex-shrink:0;" id="rpLpArrow_${g.id}">▸</span>
-      </button>
-      <div id="rpLpPhases_${g.id}" style="display:none; border-bottom: 1px solid #1a1a1a;">
-        ${_renderPhases(g)}
-      </div>
-    `).join('');
-
-    body.innerHTML = `
-      <!-- Filter-Header -->
-      <div style="
-        padding: 10px 16px; border-bottom: 1px solid #1e1e1e;
-        font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: .6px;
-        display: flex; justify-content: space-between; align-items: center;
-      ">
-        <span>BIM-Leistungsphasen · Informationsbedarf</span>
-        <button onclick="RightPanel._resetLpFilter()" style="
-          background: transparent; border: 1px solid #2e2e2e; border-radius: 3px;
-          color: #555; font-size: 9px; padding: 2px 6px; cursor: pointer; font-family: inherit;
-        ">Reset</button>
-      </div>
-      <!-- Aktiver Filter-Badge -->
-      <div id="rpLpActiveBadge" style="display:none; padding:8px 16px; border-bottom:1px solid #1a1a1a;">
-        <span id="rpLpActiveBadgeText" style="
-          font-size:10px; font-weight:700; padding:3px 8px; border-radius:3px;
-          background: rgba(255,255,255,0.07); color: #e8e8e8;
-        "></span>
-      </div>
-      <!-- Gruppen-Liste -->
-      <div id="rpLpGroupList">
-        ${headerHtml}
-      </div>
-    `;
-  }
-
-  function _renderPhases(group) {
-    return group.phases.map(p => `
-      <div
-        onclick="RightPanel._selectPhase('${group.id}','${p.id}')"
-        id="rpPhase_${p.id}"
-        style="
-          padding: 8px 16px 8px 36px; cursor: pointer; border-bottom: 1px solid #111;
-          transition: background .12s;
-        "
-        onmouseenter="this.style.background='rgba(255,255,255,0.03)'"
-        onmouseleave="this.style.background='transparent'"
-      >
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
-          <span style="font-size:10px; font-weight:600; color:#d0d0d0;">${p.id} · ${p.name}</span>
-          <span style="font-size:9px; color:${group.color}; background:rgba(255,255,255,0.05); padding:1px 5px; border-radius:2px; flex-shrink:0; margin-left:6px;">${p.loGN}</span>
-        </div>
-        <div style="font-size:9px; color:#555; margin-bottom:2px;">${p.deliverable}</div>
-        <div style="font-size:9px; color:#3a3a3a;">${p.fileType}</div>
-        <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:3px;">
-          ${p.trades.slice(0,4).map(t => `<span style="font-size:8px; color:#444; background:#111; border:1px solid #222; border-radius:2px; padding:1px 5px;">${t}</span>`).join('')}
-          ${p.trades.length > 4 ? `<span style="font-size:8px; color:#333;">+${p.trades.length-4}</span>` : ''}
-        </div>
-      </div>
-    `).join('');
-  }
-
-  function _selectLp(lpId) {
-    const isOpen = document.getElementById(`rpLpPhases_${lpId}`).style.display !== 'none';
-
-    // Alle einklappen
-    BIM_GROUPS.forEach(g => {
-      document.getElementById(`rpLpPhases_${g.id}`).style.display = 'none';
-      document.getElementById(`rpLpArrow_${g.id}`).textContent = '▸';
-      document.getElementById(`rpLpBtn_${g.id}`).style.borderLeft = 'none';
+      api[name] = namen[name];
     });
-
-    if (isOpen) {
-      activeLp = null;
-      _updateBadge();
-      return;
-    }
-
-    activeLp = lpId;
-    const group = BIM_GROUPS.find(g => g.id === lpId);
-    document.getElementById(`rpLpPhases_${lpId}`).style.display = 'block';
-    document.getElementById(`rpLpArrow_${lpId}`).textContent = '▾';
-    document.getElementById(`rpLpBtn_${lpId}`).style.borderLeft = `2px solid ${group.color}`;
-    _updateBadge();
-  }
-
-  function _selectPhase(lpId, phaseId) {
-    activePhase = activePhase === phaseId ? null : phaseId;
-
-    // Alle Phase-Highlights zurücksetzen
-    document.querySelectorAll('[id^="rpPhase_"]').forEach(el => {
-      el.style.background = 'transparent';
-      el.style.borderLeft = 'none';
-    });
-
-    if (activePhase) {
-      const el = document.getElementById(`rpPhase_${phaseId}`);
-      const group = BIM_GROUPS.find(g => g.id === lpId);
-      if (el) {
-        el.style.background = 'rgba(255,255,255,0.05)';
-        el.style.borderLeft = `2px solid ${group.color}`;
-      }
-    }
-    _updateBadge();
-  }
-
-  function _updateBadge() {
-    const badge = document.getElementById('rpLpActiveBadge');
-    const text = document.getElementById('rpLpActiveBadgeText');
-    if (!badge || !text) return;
-
-    if (!activeLp && !activePhase) {
-      badge.style.display = 'none';
-      return;
-    }
-
-    const group = BIM_GROUPS.find(g => g.id === activeLp);
-    let label = '';
-    if (activePhase && group) {
-      const phase = group.phases.find(p => p.id === activePhase);
-      label = `${group.label} · ${phase ? phase.id + ' ' + phase.name : activePhase}`;
-      text.style.color = group.color;
-    } else if (group) {
-      label = `${group.label} · ${group.name}`;
-      text.style.color = group.color;
-    }
-    text.textContent = label;
-    badge.style.display = 'block';
-  }
-
-  function _resetLpFilter() {
-    activeLp = null;
-    activePhase = null;
-    BIM_GROUPS.forEach(g => {
-      const ph = document.getElementById(`rpLpPhases_${g.id}`);
-      const ar = document.getElementById(`rpLpArrow_${g.id}`);
-      const bt = document.getElementById(`rpLpBtn_${g.id}`);
-      if (ph) ph.style.display = 'none';
-      if (ar) ar.textContent = '▸';
-      if (bt) bt.style.borderLeft = 'none';
-    });
-    document.querySelectorAll('[id^="rpPhase_"]').forEach(el => {
-      el.style.background = 'transparent';
-      el.style.borderLeft = 'none';
-    });
-    _updateBadge();
-  }
-
-  // ── Solar-API: Panel-Inhalte befüllen ─────────────────────────────────────
-  // Wird von solar.js aufgerufen statt der floating panels.
-
-  function solarShowLoading(lat, lng) {
-    openPanel('solar');
-    const body = document.getElementById('rpSolarBody');
-    if (!body) return;
-    body.innerHTML = `
-      <div style="color:#555; font-size:10px; margin-bottom:8px;">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
-      <div style="color:#888; text-align:center; padding:40px 0;">Lade Solar-Daten…</div>
-    `;
-  }
-
-  function solarShowError(lat, lng, msg) {
-    const body = document.getElementById('rpSolarBody');
-    if (!body) return;
-    body.innerHTML = `
-      <div style="color:#555; font-size:10px; margin-bottom:8px;">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
-      <div style="color:#888; background:#111; border:1px solid #1e1e1e; border-radius:3px; padding:12px; font-size:11px;">${msg}</div>
-    `;
-  }
-
-  function solarGetBody() {
-    return document.getElementById('rpSolarBody');
-  }
-
-  function solarGetHeatmapStatusEl() {
-    return document.getElementById('rpSolarHeatmapStatus');
-  }
-
-  function solarGetMonthLabelEl() {
-    return document.getElementById('rpSolarHeatmapMonth');
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
-  return {
+  //
+  // `api` ist eine benannte Konstante und kein Objektliteral im `return`,
+  // weil `brueckeAnmelden()` weitere Namen hineinhängt.
+  const api = {
     init,
     reiterAnmelden,
+    brueckeAnmelden,
     togglePanel,
     openPanel,
     closePanel,
     _switchTab,
-    _selectLp,
-    _selectPhase,
-    _resetLpFilter,
-    // Solar-Bridge
-    solarShowLoading,
-    solarShowError,
-    solarGetBody,
-    solarGetHeatmapStatusEl,
-    solarGetMonthLabelEl,
     get isOpen() { return panelOpen; },
     get aktiverReiter() { return activeTab; },
+    /** Nur für Prüfsteine: die Kennungen der angemeldeten Reiter. */
+    get reiterListe() { return reiter.map(r => r.id); },
   };
+
+  return api;
 
 })();
 

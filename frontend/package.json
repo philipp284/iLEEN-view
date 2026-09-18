@@ -8,7 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:trennung": "node tests/trennung/test-trennung.mjs",
+    "test:start": "node tests/start/test-start.mjs",
+    "test": "npm run test:trennung && for f in tests/*/test-*.js; do node \"$f\" || exit 1; done"
   },
   "devDependencies": {
     "vite": "^8.0.1"
