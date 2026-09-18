@@ -1,0 +1,6 @@
+{
+  "name": "ui-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Dieses Prüfskript lädt i18n.js und ui.js über require/vm und braucht deshalb CommonJS — der Modultyp gilt für das nächstgelegene package.json, also hier für diesen Ordner.",
+  "type": "commonjs"
+}

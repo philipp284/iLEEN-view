@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Demo-Rundgang",
+  "spots": [
+    {
+      "id": "s1",
+      "name": "Eingang",
+      "lon": 8.2599,
+      "lat": 49.9929,
+      "hoehe": 145.0,
+      "heading": 0.0,
+      "panorama": "pano/s1.jpg"
+    },
+    {
+      "id": "s2",
+      "name": "Flur",
+      "lon": 8.259969865887674,
+      "lat": 49.99290898311175,
+      "hoehe": 145.0,
+      "heading": 1.5707963267948966,
+      "panorama": "pano/s2.jpg"
+    },
+    {
+      "id": "s3",
+      "name": "Raum 1",
+      "lon": 8.259969865887674,
+      "lat": 49.9929538986705,
+      "hoehe": 145.0,
+      "heading": 3.141592653589793,
+      "panorama": "pano/s3.jpg"
+    }
+  ]
+}

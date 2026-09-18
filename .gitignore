@@ -1,0 +1,28 @@
+# ============================================================
+# iLEEN-view — was nicht ins Repo gehört
+# ============================================================
+
+node_modules/
+frontend/node_modules/
+
+# Vite-Bauergebnis
+frontend/dist/
+frontend/.vite/
+
+# Die Sitzungs-API schreibt Messprotokolle hierher (server/session-api.js).
+frontend/issues/
+!frontend/issues/.gitkeep
+
+# Zugangsdaten. `config.js` trägt den ion-Token und die Backend-Adresse;
+# ausgeliefert wird `config.example.js`, und wer den Viewer aufsetzt, kopiert
+# sie einmal. Ein Token im öffentlichen Verlauf ist auch nach dem Widerrufen
+# noch dort.
+frontend/config.js
+
+# Prüfbilder der Browser-Prüfsteine
+frontend/tests/**/*.png
+!frontend/tests/**/soll-*.png
+
+# macOS
+.DS_Store
+**/.DS_Store

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<!--
+  iLEEN — Viewer, Statik und Bauantrag am digitalen Gebäudemodell
+  © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+  SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+-->
+<html lang="de">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iLEEN</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+  <!-- Werte je Installation (ion-Token, Backend-Adresse) -->
+  <script src="config.js"></script>
+
+  <!-- CesiumJS (Apache-2.0). 1.145: Vektorkacheln (MVTDataProvider) auf
+       Gelände drapiert. Der Release-Ordner heißt "1.145", nicht "1.145.0" —
+       letzteres ist 404. Muss zur npm-Version in package.json passen. -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.145/Build/Cesium/Cesium.js"></script>
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.145/Build/Cesium/Widgets/widgets.css">
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Baustufen — die Markierung des Knopfes an der Modellzeile. Die Leiste
+       dazu ist die gemeinsame Bauzeitleiste (sim4d-hud.js). -->
+
+  <!-- Raumkonzept — Nutzungslegende und Anforderungsprofil -->
+
+  <!-- 4D am Fachmodell — Zuordnungsbericht und Meldungen. Das Aussehen der
+       Bauzeitleiste selbst steht in konzept.css. -->
+
+  <!-- Annotationen — verankerte Beschriftungen zu den Notizen aus tags.js -->
+  <link rel="stylesheet" href="annotations.css">
+
+  <!-- Plan 2D — Zeichenmodus (Blatt, Schraffuren, Legende) -->
+
+  <!-- Statik im Zeichenmodus — Ergebnisfenster, Ampel, Ergebniskarten -->
+
+  <!-- Schnittbox — Ausschnitt um ein angeklicktes Bauteil -->
+  <link rel="stylesheet" href="section-box.css">
+
+  <!-- Bildebenen — Galerie und Liste der im Modell gesetzten Bilder und PDF-Pläne -->
+  <link rel="stylesheet" href="bildebenen.css">
+
+  <!-- Werkzeuge der rechten Seite: Panelgerüst, GEG-Energietool, StaLite-Brücke,
+       Skizzenarchiv und die Medienablage auf dem Planblatt. -->
+  <link rel="stylesheet" href="werkzeuge.css">
+
+  <!-- Tragwerk: Legende und Punktabfrage der Ergebniswolke -->
+  <link rel="stylesheet" href="tragwerk-ergebnisse.css">
+
+  <!-- FE-Browser und Planbrowser — zwei Vollbildansichten über der Szene -->
+
+  <!-- Bauplaner — Geschossleiste, Katalogkacheln, Richtungskreuz, Mengentabelle -->
+
+  <!-- Konzept-Assistent und die 4D-Zeitleiste über der Szene -->
+
+  <!-- Fadenkreuz und Ablesefeld des Messmodus -->
+  <link rel="stylesheet" href="aufmass.css">
+
+  <!-- 360°-Rundgang (Matterport-artig) -->
+  <link rel="stylesheet" href="pano-tour.css">
+
+  <!-- Design-System — MUSS als letztes Stylesheet stehen: es vereinheitlicht
+       Schaltflächen, Schalter und Regler aus allen Panels darüber -->
+  <link rel="stylesheet" href="design-system.css">
+</head>
+
+<body>
+
+  <div id="cesiumContainer"></div>
+
+  <!-- Holt die eingeklappte Seitenleiste zurück (Taste M) -->
+  <button id="sidebarToggle" class="sidebar-toggle" title="Seitenleiste zeigen (M)">☰</button>
+
+  <!-- Linke Leiste: Aktivitätsleiste und Panels (ui.js) -->
+  <div id="toolbar"></div>
+
+  <!-- Eigenschaften des angeklickten Bauteils -->
+  <div id="infoBoxPanel">
+    <div id="infoBoxHeader">
+      <span id="infoBoxPanelTitle" class="infobox-title">PROPERTIES</span>
+      <div class="floating-panel-controls">
+        <button class="floating-panel-btn isolate-btn" onclick="BimViewer.toggleIsolate()" title="Isolate / Show All">🎯 Isolate</button>
+        <!-- Aus dem angeklickten Bauteil wird ein Plansatz: Grundriss und zwei
+             Schnitte im Archiv, das erste Blatt gleich im Zeichenfenster
+             (plan-bauteil.js). Der Knopf steht im Kopf und nicht im Rumpf,
+             weil displayIFCProperties() den Rumpf bei jedem Klick neu
+             schreibt und ihn dabei mitnähme. -->
+        <button class="floating-panel-btn"
+                onclick="BimViewer.PlanBauteil && BimViewer.PlanBauteil.vomAuswahl()"
+                title="Dieses Bauteil als Plansatz ablegen — Grundriss, Längs- und Querschnitt zum Detaillieren">📐 Plan</button>
+        <button class="floating-panel-btn" onclick="BimViewer.closeInfoBox()" title="Schließen">✕</button>
+      </div>
+    </div>
+    <div id="infoBoxBody">
+      <div id="infoBoxCustom"></div>
+    </div>
+  </div>
+
+  <!-- Rechte Leiste — befüllt von right-panel.js -->
+  <div id="roleBar" class="role-bar"></div>
+
+  <div id="hideModeIndicator" class="mode-indicator">
+    🙈 Ausblenden — Bauteile anklicken (Esc oder H beendet)
+  </div>
+
+  <div id="statusIndicator" class="status-indicator"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- ============================================
+       MODULE — DIE REIHENFOLGE ZÄHLT
+       ============================================ -->
+
+  <!-- 0. Sprachumschaltung — muss vor allen Modulen laufen, die t() benutzen -->
+  <script src="i18n.js"></script>
+
+  <!-- 1. Kern -->
+  <script src="glb-glas.js"></script>
+  <script src="core.js"></script>
+  <!-- Untergrund-Modus mit Nullebene — hängt sich an BimViewer.Untergrund -->
+  <script src="untergrund.js"></script>
+  <!-- Der Shader-Verbund: mehrere Werkzeuge an EINEM `customShader`.
+       Unmittelbar NACH core.js — core.js legt `window.BimViewer` erst an,
+       und der Verbund hängt sich dort ein. -->
+  <script src="shader-verbund.js"></script>
+  <script src="walkMode.js"></script>
+  <!-- Fliegen am Trackpad: Fadenkreuz, 1 Finger umsehen, 2 Finger schieben,
+       Aufziehen = Öffnungswinkel, WASD dauerhaft. Nach walkMode.js. -->
+  <script src="flug-trackpad.js"></script>
+  <!-- Begrenzt, wie weit man die Welt beim Ziehen anfassen kann -->
+  <script src="greifweite.js"></script>
+  <script src="features.js"></script>
+  <script src="pointcloud.js"></script>
+  <script src="geoid.js"></script>
+  <!-- Treffsicheres Anklicken von Gaussian Splats. Muss vor den
+       Messwerkzeugen und vor tags.js stehen — beide picken darüber. -->
+  <script src="splat-pick.js"></script>
+  <!-- Aufmaß — ein Modus für Punkt, Strecke, Fläche und Volumen. Reihenfolge
+       zählt: der Fang braucht nichts, das RDF nichts, der Kern beide, das
+       Panel den Kern. -->
+  <script src="aufmass-fang.js"></script>
+  <script src="aufmass.js"></script>
+  <script src="aufmass-panel.js"></script>
+
+  <!-- Topografisches Aufmaß — Volumen aus den Punkten selbst -->
+  <script src="volume-topo.js"></script>
+
+  <!-- 2. Lage der Modelle: Höhe, Drehung, Verschiebung, Gelände -->
+  <script src="z-offset.js"></script>
+  <script src="rotation.js"></script>
+  <script src="translation.js"></script>
+  <script src="terrain-align.js"></script>
+
+  <!-- 3. Karte, Gelände, amtliche Gebäudekulisse -->
+  <script src="layerManager.js"></script>
+  <!-- Vektorkarte: basemap.de als Vektorkacheln auf dem Gelände -->
+  <script src="vektorkacheln.js"></script>
+
+  <!-- 4. Oberfläche und was vor ihr stehen muss -->
+  <!-- IFC Filter Pro — vor ui.js (getIFCContent nutzt IFCFilterPro) -->
+  <script src="ifc-filter-pro.js"></script>
+  <!-- Rollenbasierte Bauteileigenschaften — vor ui.js -->
+  <script src="ifc-role-properties.js"></script>
+  <!-- Raumkonzept — vor ui.js (getRoomConceptContent nutzt RoomConcept.getPanelHTML) -->
+
+  <!-- Konzept-Assistent — ESM-Brücke zum vendorten Baustellen-Navi-Rechenkern
+       (vendor/dijkstra/). type="module" läuft immer deferred, also nach allen
+       klassischen Scripts hier. -->
+
+  <script src="ui.js"></script>
+
+  <!-- Vereinheitlichung der Bedienelemente — nach ui.js, damit der
+       Beobachter die Panel-Container schon vorfindet -->
+  <script src="ui-normalize.js"></script>
+  <script src="ui-views-extension.js"></script>
+  <!-- Baustufen über das IFC-Merkmal `stage`. Meldet `window.Stage4D` an der
+       gemeinsamen Zeitleiste an. -->
+
+  <!-- BCF-Ausgabe (braucht JSZip) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+    integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="bcf-export.js"></script>
+
+  <!-- Messprotokoll je Sitzung -->
+  <script src="session-container.js"></script>
+
+  <!-- Gespeicherte Ansichten — Kamera + Tiefenschärfe je Ansicht -->
+  <script src="dof-shader.js"></script>
+  <script src="views.js"></script>
+
+  <!-- Notizen auf IFC / B3DM / Splats / freien Punkten -->
+  <script src="tags.js"></script>
+  <!-- Annotationen — zeichnen die Notizen in die Szene. Nach tags.js und ui.js. -->
+  <script src="annotations.js"></script>
+
+  <!-- Rechtes Panel — Reiterverwaltung. Vor den Werkzeugen, die sich dort anmelden. -->
+  <script src="right-panel.js"></script>
+
+  <!-- Skizzenarchiv — das Zwischenformat zwischen „gerechnet" und „im Bericht" -->
+  <script src="skizzen-store.js"></script>
+
+  <!-- Solaranalyse — Google Solar API -->
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+
+  <!-- Flugverkehr über dem Modell (OpenSky über /flug im Backend). Nach geoid.js. -->
+
+  <!-- Google-Freistellung · Isolieren · Gebäudemarken -->
+  <script src="google-tiles-mask.js"></script>
+  <script src="isolate-mode.js"></script>
+  <script src="building-stamp.js"></script>
+  <script src="ui-new-features-extension.js"></script>
+
+  <!-- Navigations-HUD — Walk/Fly/VR, Kompass, Höhe -->
+  <script src="nav-hud.js"></script>
+
+  <!-- Plan 2D — Bauzeichnung aus dem Backend-Schnitt oder einer PDF-Vorlage.
+       Alle prüfen ihre Nachbarn zur Laufzeit; die Reihenfolge ist die des
+       Aufrufwegs. -->
+
+  <!-- Werkzeuge der rechten Seite. Nach den Plan-Modulen, weil sie darauf zugreifen. -->
+
+  <!-- Schnittbox — nach den Plan-Modulen und nach ui.js -->
+  <script src="section-box.js"></script>
+
+  <!-- Bauplaner — Katalog → Kern → Erzeuger → Panel -->
+
+  <!-- Konzept-Assistent und Bauzeitsimulation -->
+
+  <!-- 4D am Fachmodell -->
+
+  <!-- Explosionsansicht — ganz zum Schluss, weil das Modul Kern, Oberfläche,
+       Bauplaner und Konzept-4D kennen muss -->
+  <script src="explosion.js"></script>
+  <script src="geschossplaene.js"></script>
+  <script src="bildebenen.js"></script>
+  <script src="bildprojektion.js"></script>
+
+  <!-- iLEEN-Logo als Körper im Orbit — steht beim Öffnen in der Startansicht -->
+  <script src="ileen-logo.js"></script>
+
+  <!-- 360°-Rundgang (Matterport-artig): von Standpunkt zu Standpunkt fliegen,
+       je Spot ein equirectangulares Panorama von innen auf eine Kugel gelegt.
+       Quell-agnostischer Kern (liest eine tour.json) + eigenes Panel (📷).
+       pano-tour.js muss vor dem Panel stehen. -->
+  <script src="pano-tour.js"></script>
+  <script src="pano-tour-panel.js"></script>
+
+  <!-- Bildrate der Szene (Strg/Cmd+Alt+F) -->
+  <script src="fps.js"></script>
+
+  <!-- ============================================
+       START
+       ============================================ -->
+  <script>
+    window.addEventListener('load', async function () {
+      if (typeof BimViewer === 'undefined') {
+        console.error('core.js nicht geladen');
+        return;
+      }
+
+      try {
+        await BimViewer.init();
+      } catch (fehler) {
+        console.error('BimViewer.init() fehlgeschlagen:', fehler);
+        BimViewer.updateStatus('Viewer konnte nicht starten — siehe Konsole', 'error');
+        return;
+      }
+
+      // Startvoreinstellung: BALANCED statt PERFORMANCE. PERFORMANCE schaltet
+      // Schatten und HDR ab — ohne Schatten wirkt jedes Gebäude flach, und ohne
+      // HDR bleiben die PBR-Texturen aus dem Backend weit unter dem, was sie
+      // hergeben. Wer eine schwache GPU hat, wählt dort PERFORMANCE — die
+      // Auswahl bleibt erhalten.
+      let stufe = 'BALANCED';
+      try { stufe = localStorage.getItem('ileen_performance_preset') || 'BALANCED'; } catch (e) { /* privat */ }
+      const preset = CONFIG.performance.presets[stufe] || CONFIG.performance.presets.BALANCED;
+      BimViewer.applyPerformanceSettings(preset);
+      const auswahl = document.getElementById('performancePreset');
+      if (auswahl) auswahl.value = CONFIG.performance.presets[stufe] ? stufe : 'BALANCED';
+
+      // EGM96-Gitter für Höhen über dem Meer (Kompass-HUD, Flugverkehr)
+      if (window.ILEEN_GEOID) ILEEN_GEOID.load();
+
+      BimViewer.initFeatures();
+      if (typeof BimViewer.initPointCloudSettings === 'function') BimViewer.initPointCloudSettings();
+
+      if (window.BimViewerUI && typeof BimViewerUI.autoLoadIonAssets === 'function') {
+        BimViewerUI.autoLoadIonAssets();
+      }
+
+      // Notizen aus IndexedDB/localStorage
+      if (typeof Tags !== 'undefined' && typeof Tags.init === 'function') {
+        Tags.init().then(() => {
+          if (window.BimViewerUI && BimViewerUI.tagsRefresh) BimViewerUI.tagsRefresh();
+        }).catch(e => console.warn('Tags init failed:', e));
+      }
+    });
+  </script>
+</body>
+
+</html>

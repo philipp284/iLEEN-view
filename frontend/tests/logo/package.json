@@ -1,0 +1,6 @@
+{
+  "name": "logo-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Dieses Prüfskript lädt ileen-logo.js über vm in einen gestellten Browser-Kontext und braucht deshalb CommonJS — der Modultyp gilt für das nächstgelegene package.json, also hier für diesen Ordner.",
+  "type": "commonjs"
+}

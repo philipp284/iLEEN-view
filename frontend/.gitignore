@@ -1,0 +1,21 @@
+node_modules
+
+# ============================================================
+# Issues / Session Database — Backend only, not in Git
+# ============================================================
+cesium-viewer/issues/sessions/
+cesium-viewer/issues/exports/
+cesium-viewer/issues/database.ndjson
+cesium-viewer/issues/*.ndjson
+cesium-viewer/issues/*.md
+cesium-viewer/issues/*.bcf
+!cesium-viewer/issues/.gitkeep
+!cesium-viewer/issues/sessions/.gitkeep
+!cesium-viewer/issues/exports/.gitkeep
+
+# ============================================================
+# Materialbibliothek (2K-Quellsets) — lokal, nicht in Git
+# Wird von CesiumBackend/scripts/fetch_textures.py neu erzeugt.
+# Ausgeliefert werden die 512px-Sets in CesiumBackend/tiling/textures/library/
+# ============================================================
+3D Models/TEX/

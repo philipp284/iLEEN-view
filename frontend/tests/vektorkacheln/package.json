@@ -1,0 +1,6 @@
+{
+  "name": "vektorkacheln-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". test-vektorkacheln.js lädt vektorkacheln.js über vm und echtes Cesium über require und braucht deshalb CommonJS.",
+  "type": "commonjs"
+}

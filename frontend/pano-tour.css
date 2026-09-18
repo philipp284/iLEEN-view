@@ -1,0 +1,40 @@
+/* pano-tour.css — Oberfläche des 360°-Rundgangs (pano-tour-panel.js).
+   Nutzt die Bausteine aus design-system.css; hier nur das Eigene. */
+
+.pano-kopf { margin-bottom: 10px; }
+.pano-kopf__zeile {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.pano-kopf__marke { font-weight: 600; font-size: 14px; }
+.pano-kopf__zahl { font-size: 12px; opacity: 0.7; }
+
+.pano-spots { display: flex; flex-direction: column; gap: 4px; }
+
+.pano-spot {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit; cursor: pointer;
+  font: inherit;
+}
+.pano-spot:hover { background: rgba(48, 180, 231, 0.12); }
+.pano-spot--aktiv {
+  border-color: #30B4E7;
+  background: rgba(48, 180, 231, 0.18);
+}
+.pano-spot__punkt {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #30B4E7; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+  flex: 0 0 auto;
+}
+.pano-spot__name { flex: 1 1 auto; }
+.pano-spot__n { font-size: 11px; opacity: 0.6; }
+
+.pano-steuer {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 12px;
+}
+.pano-steuer .btn:first-child,
+.pano-steuer .btn:last-child { min-width: 34px; font-size: 18px; line-height: 1; }

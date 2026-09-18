@@ -1,0 +1,143 @@
+/**
+ * iLEEN
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ * Licensed under BSL 1.1 (siehe clipping-planes.js).
+ *
+ * Bildebenen — Galerie und Liste im Ansicht-Panel.
+ *
+ * Nur das, was es sonst nirgends gibt: Kacheln und Zeilen. Knöpfe, Felder,
+ * Regler und Hinweise kommen aus design-system.css und werden hier nicht
+ * angefasst — eine zweite Fassung derselben Schaltfläche ist genau das, was
+ * ui-normalize.js wieder einsammeln müsste.
+ */
+
+/* Kacheln in vier Spalten: mehr als ein Vorschaubild braucht man nicht, um
+   ein Bild wiederzuerkennen, und die Seitenleiste ist schmal. */
+.bildebenen-galerie {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.bildebenen-galerie img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 3px;
+  /* Ein heller Grund, weil ein Plan meist schwarz auf durchsichtig ist und
+     auf dem dunklen Panelgrund sonst unsichtbar wäre. */
+  background: #f4f4f4;
+  border: 1px solid var(--ds-border, #333);
+  cursor: pointer;
+}
+
+.bildebenen-galerie img:hover {
+  border-color: var(--ds-accent, #97BF0D);
+}
+
+.bildebenen-galerie img.is-gewaehlt {
+  outline: 2px solid var(--ds-accent, #97BF0D);
+  outline-offset: -2px;
+}
+
+.bildebenen-eintrag {
+  border: 1px solid var(--ds-border, #333);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.bildebenen-eintrag.is-offen {
+  border-color: var(--ds-accent, #97BF0D);
+}
+
+.bildebenen-kopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+}
+
+/* Der Titel trägt die ganze übrige Breite und schneidet ab: ein langer
+   Dateiname darf die beiden Knöpfe rechts nicht aus der Zeile drücken. */
+.bildebenen-titel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.bildebenen-mass {
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+.bildebenen-regler {
+  padding: 2px 8px 8px;
+  border-top: 1px solid var(--ds-border, #333);
+}
+
+/* Die Zahl neben dem Regler hat eine feste Breite, sonst wandert der Regler
+   bei jedem Zug um die Breite einer Ziffer. */
+.bildebenen-regler .unit {
+  flex: 0 0 auto;
+  min-width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eine Ebene, die zum Schieben scharf ist. Der Rahmen sagt, warum der Zeiger
+   über dem Bild plötzlich ein Kreuz ist — ohne ihn wirkt der Modus wie eine
+   Laune der Anwendung. */
+.bildebenen-eintrag.is-schiebt {
+  border-color: var(--ds-accent, #97BF0D);
+  box-shadow: inset 2px 0 0 var(--ds-accent, #97BF0D);
+}
+
+/* ── Projektion (bildprojektion.js) ─────────────────────────────────────────
+   Ein eigener Abschnitt unter den Reglern der Ebene und nicht ein weiterer
+   Regler dazwischen: „auf die Flächen projizieren" ist keine Feineinstellung
+   des Rechtecks, sondern die Entscheidung, KEIN Rechteck zu zeichnen. Der
+   Trennstrich sagt das, bevor man den Text liest. */
+.bildebenen-projektion {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--ds-border, #333);
+}
+
+/* Läuft sie, bekommt der Abschnitt den Akzent — dieselbe Marke, mit der eine
+   zum Schieben scharfe Ebene sich zu erkennen gibt. */
+.bildebenen-projektion.is-an {
+  border-top-color: var(--ds-accent, #97BF0D);
+  box-shadow: inset 0 2px 0 -1px var(--ds-accent, #97BF0D);
+}
+
+.bildebenen-schalter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0 4px;
+}
+
+.bildebenen-schalter input {
+  flex: 0 0 auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.bildebenen-projektion .unit {
+  flex: 0 0 auto;
+  min-width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

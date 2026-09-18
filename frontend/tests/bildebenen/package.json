@@ -1,0 +1,6 @@
+{
+  "name": "bildebenen-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Dieses Prüfskript lädt bildebenen.js über vm/require und braucht deshalb CommonJS — der Modultyp gilt für das nächstgelegene package.json, also hier für diesen Ordner.",
+  "type": "commonjs"
+}

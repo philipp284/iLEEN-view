@@ -1,0 +1,123 @@
+/* aufmass.css — Fadenkreuz und Ablesefeld des Messmodus.
+ *
+ * Beides liegt über der Leinwand und nicht im Panel: was beim Messen
+ * gebraucht wird, muss dort stehen, wo der Blick ohnehin ist. Wer für die
+ * laufende Länge in die Seitenleiste sehen muss, verliert die Stelle, die er
+ * gerade anzielt.
+ */
+
+/* ── Fadenkreuz ─────────────────────────────────────────────────────────────
+ *
+ * Es steht auf dem *gefangenen* Punkt, nicht auf der Maus — der Systemzeiger
+ * ist im Messmodus ausgeblendet (`cursor:none`). Genau das ist das „Springen"
+ * des Zeigers: ein echter Sprung ist im Browser nicht möglich, ein sichtbar
+ * versetztes Kreuz erfüllt denselben Zweck und zeigt zusätzlich, worauf
+ * gefangen wurde.
+ */
+.aufmass-kreuz {
+  position: absolute;
+  left: 0; top: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 900;
+  --ton: #97BF0D;
+  transition: opacity .12s ease;
+}
+.aufmass-kreuz__h,
+.aufmass-kreuz__v {
+  position: absolute;
+  background: var(--ton);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55);
+}
+.aufmass-kreuz__h { left: -13px; top: -1px; width: 26px; height: 1.5px; }
+.aufmass-kreuz__v { left: -1px; top: -13px; width: 1.5px; height: 26px; }
+.aufmass-kreuz__ring {
+  position: absolute;
+  left: -7px; top: -7px; width: 14px; height: 14px;
+  border: 1.5px solid var(--ton);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .18);
+}
+
+/* Die Form sagt, was gefangen wurde — ohne dass man das Ablesefeld ansehen
+ * muss. Ecke: gefülltes Quadrat. Kante: Raute. Messpunkt: Doppelring.
+ * Fläche und Raster: der offene Ring. */
+.aufmass-kreuz[data-art="ecke"]        { --ton: #FF9F1C; }
+.aufmass-kreuz[data-art="ecke"] .aufmass-kreuz__ring {
+  border-radius: 2px; background: var(--ton);
+}
+.aufmass-kreuz[data-art="kante"]       { --ton: #4DA6FF; }
+.aufmass-kreuz[data-art="kante"] .aufmass-kreuz__ring {
+  border-radius: 2px; transform: rotate(45deg); background: rgba(77, 166, 255, .35);
+}
+.aufmass-kreuz[data-art="silhouette"]  { --ton: #4DA6FF; }
+.aufmass-kreuz[data-art="silhouette"] .aufmass-kreuz__ring {
+  border-radius: 2px; transform: rotate(45deg); border-style: dashed;
+}
+.aufmass-kreuz[data-art="messpunkt"]   { --ton: #FFFFFF; }
+.aufmass-kreuz[data-art="messpunkt"] .aufmass-kreuz__ring {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .28);
+}
+.aufmass-kreuz[data-art="raster"]      { --ton: #C77DFF; }
+.aufmass-kreuz[data-art="splat"]       { --ton: #FFC83D; }
+.aufmass-kreuz[data-art="nichts"]      { --ton: #7a7a7a; }
+
+/* ── Ablesefeld ─────────────────────────────────────────────────────────── */
+.aufmass-hud {
+  position: absolute;
+  left: 16px; bottom: 16px;
+  z-index: 901;
+  pointer-events: none;
+  padding: 10px 13px;
+  min-width: 190px;
+  border-radius: 10px;
+  border: 1px solid rgba(151, 191, 13, .30);
+  background: rgba(12, 15, 16, .84);
+  backdrop-filter: blur(8px);
+  color: #e9edec;
+  font: 12px/1.55 "Inter", system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;   /* damit die Zahl beim Zählen nicht wandert */
+  letter-spacing: .1px;
+}
+.aufmass-hud b { color: #ffffff; font-weight: 600; }
+.aufmass-hud__dim { color: rgba(233, 237, 236, .52); }
+
+/* ── Panelteile, die es nur hier gibt ───────────────────────────────────── */
+.aufmass-werte {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  font-variant-numeric: tabular-nums;
+}
+.aufmass-werte > span:nth-child(odd) { color: rgba(255, 255, 255, .5); font-size: 11px; }
+.aufmass-werte > span:nth-child(even) { text-align: right; font-size: 12px; font-weight: 600; }
+
+.aufmass-fang-reihe { display: flex; gap: 6px; flex-wrap: wrap; }
+.aufmass-chip {
+  flex: 1 1 auto;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .04);
+  color: #d3d7d6;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.aufmass-chip:hover { background: rgba(255, 255, 255, .08); }
+.aufmass-chip.is-an {
+  background: rgba(151, 191, 13, .14);
+  border-color: #97BF0D;
+  color: #97BF0D;
+}
+
+.aufmass-liste { max-height: 190px; overflow-y: auto; }
+.aufmass-liste__zeile {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+  font-size: 11.5px;
+}
+.aufmass-liste__zeile b { color: #97BF0D; font-weight: 600; }
+.aufmass-liste__zeile span { color: rgba(255, 255, 255, .45); }

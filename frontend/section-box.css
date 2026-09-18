@@ -1,0 +1,78 @@
+/**
+ * iLEEN — Schnittbox (section-box.js)
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ * Licensed under BSL 1.1 (siehe clipping-planes.js).
+ *
+ * Nur die zwei Bausteine, die das Werkzeuge-Panel noch nicht kennt. Alles
+ * Übrige — .section, .btn, .pc-slider-row, .plan-hint, .plan-status — kommt aus
+ * design-system.css und plan-2d.css; ein eigener Satz Schaltflächen wäre die
+ * einundzwanzigste Button-Klasse des Bestands.
+ */
+
+/* Beschriftete Kennzahl: links das Wort, rechts der Wert. */
+.sbox-zeile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--text-muted, #666);
+}
+
+.sbox-zeile b {
+  font-weight: 600;
+  color: var(--text-primary, #e8e8e8);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Die beiden Schnittarten stehen nebeneinander und gleich breit: es ist eine
+ * Entweder-oder-Wahl, kein Knopf mit einem Nebenknopf. Der gewählte trägt
+ * .btn--primary, gesetzt aus dem Modul.
+ */
+.sbox-modus {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.sbox-modus .btn {
+  white-space: nowrap;
+}
+
+/*
+ * Die drei Schnittebenen ebenso: gleichrangige Wahl, gleiche Breite. Sie
+ * beschreiben dieselbe Box aus drei Richtungen — eine davon hervorzuheben
+ * hieße, eine Blickrichtung zur richtigen zu erklären.
+ */
+.sbox-ebenen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.sbox-ebenen .btn {
+  white-space: nowrap;
+}
+
+/*
+ * Der Auswahlknopf, solange auf den Klick ins Modell gewartet wird.
+ * Ein laufender Modus muss sich vom bereitstehenden unterscheiden — sonst ist
+ * nicht zu sehen, dass der nächste Klick ins Bild etwas anderes bedeutet als
+ * sonst. Deshalb Umrandung und Pulsieren statt nur einer anderen Farbe.
+ */
+#sboxPick.is-active {
+  border-color: var(--mib-green, #97BF0D);
+  color: var(--mib-green, #97BF0D);
+  animation: sbox-warten 1.6s ease-in-out infinite;
+}
+
+@keyframes sbox-warten {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}

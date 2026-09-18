@@ -1,0 +1,121 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Topografisches Aufmaß — an echten Kacheln</title>
+<style>
+  body { margin:0; background:#0b0d11; color:#cfd6e0; font:12px ui-monospace,monospace; padding:14px; }
+  pre { white-space:pre-wrap; line-height:1.45; }
+</style>
+<pre id="out">lädt…</pre>
+
+<script type="module">
+  import * as Cesium from 'cesium';
+  window.Cesium = Cesium;
+  window.CESIUM_BEREIT = true;
+</script>
+<script src="../../volume-topo.js"></script>
+<script type="module">
+  /**
+   * Misst den Weg „Kacheln aussuchen → laden → lesen → einsortieren" an einer
+   * echten py3dtiles-Punktwolke. Ohne Szene: `Cesium3DTileset.fromUrl` baut
+   * den Kachelbaum allein aus der `tileset.json`, und mehr braucht die
+   * Auswahl nicht.
+   *
+   * Die Frage, die hier beantwortet wird: **wie viel der Fläche ist wirklich
+   * belegt** — und wenn nicht alles, woran es liegt.
+   */
+  const out = document.getElementById('out');
+  const log = (t) => { out.textContent += t + '\n'; };
+  out.textContent = '';
+
+  const url = new URLSearchParams(location.search).get('tileset')
+    || 'http://localhost:8100/tiles/95a481dd-513d-4a77-b931-c5d55e264ea5/tileset.json';
+  const seite = parseFloat(new URLSearchParams(location.search).get('seite') || '70');
+
+  while (!window.CESIUM_BEREIT) await new Promise((r) => setTimeout(r, 20));
+  const I = TopoVolume._internals;
+
+  const tileset = await Cesium.Cesium3DTileset.fromUrl(url);
+
+  window.BimViewer = {
+    loadedAssets: new Map([['pc', { tileset, isPointCloud: true }]]),
+    isPointCloudTileset: () => true,
+    updateStatus() {},
+  };
+
+  // Ein quadratisches Polygon um die Mitte der Wolke, auf Höhe des
+  // Wolkenmittelpunktes. Die Höhe der Ecken spielt für die Auswahl keine
+  // Rolle — geprüft wird waagerecht.
+  const mitte = tileset.root.boundingSphere.center;
+  const carto = Cesium.Cartographic.fromCartesian(mitte);
+  const rahmen = Cesium.Transforms.eastNorthUpToFixedFrame(mitte);
+  const h = seite / 2;
+  const ecken = [[-h, -h], [h, -h], [h, h], [-h, h]].map(([x, y]) =>
+    Cesium.Matrix4.multiplyByPoint(rahmen, new Cesium.Cartesian3(x, y, 0), new Cesium.Cartesian3()));
+
+  const wurzel = tileset.root.boundingSphere;
+  log(`Tileset      ${url.split('/').slice(-2)[0]}`);
+  log(`Wurzelkugel  Radius ${wurzel.radius.toFixed(1)} m`);
+  log(`Polygon      ${seite} × ${seite} m = ${(seite * seite).toLocaleString('de-DE')} m²\n`);
+
+  const ctx = I.buildContext(ecken);
+
+  // 1 — Welche Kacheln nimmt die Auswahl, und wie tief kommt sie?
+  const notes = [];
+  const jobs = await I.selectTiles(tileset, ctx, notes);
+  log(`AUSWAHL      ${jobs.length} Kacheln`);
+  log(`refine       ${tileset.root.refine === Cesium.Cesium3DTileRefine.ADD ? 'ADD' : 'REPLACE'}`);
+  notes.forEach((n) => log(`Hinweis      ${n}`));
+
+  // Zum Vergleich: der volle JSON-Baum, Stufe für Stufe, ohne Budgetgrenze —
+  // so viel wäre überhaupt zu holen.
+  const roh = await tileset.resource.fetchJson();
+  const wurzelKnoten = I.makeNode(roh.root, Cesium.Matrix4.clone(tileset.modelMatrix), tileset.resource, ctx);
+  const proStufe = [];
+  let extern = 0;
+  (function zaehl(node, d) {
+    proStufe[d] = (proStufe[d] || 0) + 1;
+    if (node.external) { extern++; return; }
+    for (const k of I.childrenOf(node, ctx)) zaehl(k, d + 1);
+  })(wurzelKnoten, 0);
+  log(`überlappend  ${proStufe.map((n, d) => `S${d}:${n}`).join('  ')}`);
+  log(`             ${proStufe.reduce((a, b) => a + (b || 0), 0)} Kacheln, davon `
+    + `${extern} eingebettete Kachelbäume (noch nicht aufgelöst)\n`);
+
+  // 2 — Die Punkte wirklich holen
+  const t0 = performance.now();
+  const wolke = await I.collectPoints(ctx);
+  const dt = ((performance.now() - t0) / 1000).toFixed(1);
+
+  log(`GELESEN      ${wolke.tiles} Kacheln in ${dt} s`);
+  log(`Punkte       ${wolke.n.toLocaleString('de-DE')} im Polygon `
+    + `(${wolke.scanned.toLocaleString('de-DE')} angesehen, Schrittweite ${wolke.stride})`);
+  wolke.notes.forEach((n) => log(`Hinweis      ${n}`));
+
+  // 3 — Wie ist die Belegung verteilt? Ein grobes Feld genügt, um ein Loch
+  // von gleichmäßiger Dünne zu unterscheiden.
+  const N = 24;
+  const zellen = new Int32Array(N * N);
+  const b = ctx.bounds;
+  for (let i = 0; i < wolke.n; i++) {
+    const gx = Math.min(N - 1, Math.floor((wolke.xs[i] - b.minX) / (b.maxX - b.minX) * N));
+    const gy = Math.min(N - 1, Math.floor((wolke.ys[i] - b.minY) / (b.maxY - b.minY) * N));
+    zellen[gy * N + gx]++;
+  }
+  const belegt = zellen.reduce((a, v) => a + (v > 0 ? 1 : 0), 0);
+  log(`\nBELEGUNG     ${belegt} von ${N * N} Feldern (${Math.round(belegt / (N * N) * 100)} %)`);
+  log('             Norden oben, · = leer, Ziffer = Größenordnung der Punktzahl\n');
+  for (let gy = N - 1; gy >= 0; gy--) {
+    let zeile = '             ';
+    for (let gx = 0; gx < N; gx++) {
+      const v = zellen[gy * N + gx];
+      zeile += v === 0 ? '·' : String(Math.min(9, Math.floor(Math.log10(v)) + 1));
+    }
+    log(zeile);
+  }
+
+  window.ERGEBNIS = {
+    fertig: true, kacheln: wolke.tiles, punkte: wolke.n,
+    ueberlappend: proStufe, belegtProzent: Math.round(belegt / (N * N) * 100),
+    notes: wolke.notes,
+  };
+</script>

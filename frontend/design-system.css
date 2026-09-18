@@ -1,0 +1,1117 @@
+/* ==========================================================================
+   iLEEN — Design-System
+   ==========================================================================
+
+   Eine Schaltfläche, ein Schalter, ein Regler, eine Zeile. Vorher gab es
+   über zwanzig Button-Klassen (`modern-btn`, `ifcp-btn`, `ms-tool-btn`,
+   `pc-reset-btn`, `floating-panel-btn` …) plus mehrere hundert Inline-Styles,
+   die dieselbe Schaltfläche in jedem Panel anders aussehen ließen.
+
+   Aufbau dieser Datei:
+
+     1. Marken (Tokens)      — Abstände, Radien, Zeiten, Zustandsfarben
+     2. Bausteine            — .btn, .switch, .slider, .field, .row, .section
+     3. Eigenschaftsanzeige  — .props-* (ifc-role-properties.js)
+     4. Altlasten-Brücke     — bildet die alten Klassennamen auf .btn ab
+
+   Abschnitt 4 ist der Grund, warum die Vereinheitlichung sofort überall
+   greift, ohne vierzig Module gleichzeitig umschreiben zu müssen: bestehendes
+   Markup behält seine Klassennamen und bekommt trotzdem das neue Aussehen.
+   Neuer Code verwendet ausschließlich die Bausteine aus Abschnitt 2.
+
+   Wird nach style.css geladen und setzt bewusst darauf auf — die Farbmarken
+   (--bg-*, --text-*, --border-*, --mib-green) kommen von dort.
+   ========================================================================== */
+
+:root {
+  /* Abstände — Vielfache von 4 px, damit sich Panels von selbst ausrichten */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 24px;
+
+  --ds-radius-sm: 4px;
+  --ds-radius: 6px;
+  --ds-radius-lg: 10px;
+
+  --ds-control-height: 30px;
+  --ds-control-height-sm: 24px;
+
+  /* Schriftgrößen: drei Stufen reichen für ein Werkzeugpanel */
+  --ds-text-sm: 10.5px;
+  --ds-text: 12px;
+  --ds-text-lg: 13.5px;
+
+  --ds-transition: 140ms cubic-bezier(.25, .46, .45, .94);
+
+  /* Zustandsfarben — einzige Stelle, an der Semantik Farbe bekommt */
+  --ds-accent: var(--mib-green, #97BF0D);
+  --ds-accent-rgb: var(--mib-green-rgb, 151, 191, 13);
+  --ds-danger: #e05c5c;
+  --ds-warning: #e0a33e;
+  --ds-info: #4ea3ff;
+
+  --ds-surface: rgba(255, 255, 255, 0.045);
+  --ds-surface-hover: rgba(255, 255, 255, 0.085);
+  --ds-border: rgba(255, 255, 255, 0.11);
+  --ds-border-strong: rgba(255, 255, 255, 0.2);
+}
+
+/* ==========================================================================
+   2. Bausteine
+   ========================================================================== */
+
+/* ── Schaltfläche ────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-control-height);
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  color: var(--text-primary, #e8e8e8);
+  font-family: inherit;
+  font-size: var(--ds-text);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--ds-transition), border-color var(--ds-transition),
+              color var(--ds-transition);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--ds-surface-hover);
+  border-color: var(--ds-border-strong);
+}
+
+.btn:active:not(:disabled) { transform: translateY(1px); }
+
+.btn:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 1px;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* Varianten — genau vier, mehr braucht kein Werkzeugpanel */
+
+.btn--primary {
+  border-color: var(--ds-accent);
+  background: var(--ds-accent);
+  color: #10140a;
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--mib-green-dark, #7aa00b);
+  border-color: var(--mib-green-dark, #7aa00b);
+}
+
+.btn--ghost {
+  border-color: transparent;
+  background: none;
+  color: var(--text-secondary, #888);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--ds-surface);
+  color: var(--text-primary, #e8e8e8);
+}
+
+.btn--danger {
+  border-color: rgba(224, 92, 92, 0.4);
+  color: var(--ds-danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: rgba(224, 92, 92, 0.12);
+  border-color: var(--ds-danger);
+}
+
+/* Größen und Formen */
+
+.btn--sm {
+  min-height: var(--ds-control-height-sm);
+  padding: 0 var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+}
+
+.btn--block { width: 100%; }
+
+.btn--icon {
+  width: var(--ds-control-height);
+  min-height: var(--ds-control-height);
+  padding: 0;
+}
+
+.btn--icon.btn--sm {
+  width: var(--ds-control-height-sm);
+  min-height: var(--ds-control-height-sm);
+}
+
+/* Aktiver Zustand für Umschalter (Werkzeug an/aus).
+   `.active` steht mit in der Liste, weil viele Module den Zustand zur
+   Laufzeit über genau diese Klasse umschalten — ohne sie bliebe ein
+   eingeschaltetes Werkzeug unmarkiert. */
+.btn.is-active,
+.btn.active,
+.btn[aria-pressed="true"] {
+  border-color: var(--ds-accent);
+  background: rgba(var(--ds-accent-rgb), 0.16);
+  color: var(--ds-accent);
+}
+
+/* Gruppen: gleich breite Schaltflächen nebeneinander */
+.btn-group {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--ds-space-2);
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+
+/* ── Schalter ────────────────────────────────────────────────────────────── */
+
+.switch {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 19px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 19px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background var(--ds-transition);
+}
+
+.switch__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #9a9a9a;
+  transition: transform var(--ds-transition), background var(--ds-transition);
+}
+
+.switch input:checked + .switch__track { background: var(--ds-accent); }
+.switch input:checked + .switch__track::after {
+  background: #fff;
+  transform: translateX(15px);
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+}
+
+/* ── Regler ──────────────────────────────────────────────────────────────── */
+
+.slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 3px;
+  appearance: none;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--ds-accent);
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--ds-accent);
+  cursor: pointer;
+}
+
+.slider:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; }
+
+/* ── Eingabefelder ───────────────────────────────────────────────────────── */
+
+.input,
+.select {
+  width: 100%;
+  min-height: var(--ds-control-height);
+  padding: 0 var(--ds-space-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text-primary, #e8e8e8);
+  font-family: inherit;
+  font-size: var(--ds-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.input:focus,
+.select:focus {
+  border-color: var(--ds-accent);
+  outline: none;
+}
+
+/* ── Aufbau: Abschnitt, Zeile, Feld ──────────────────────────────────────── */
+
+.section {
+  margin-bottom: var(--ds-space-4);
+}
+
+.section__label {
+  margin-bottom: var(--ds-space-2);
+  color: var(--text-muted, #666);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  min-height: var(--ds-control-height);
+  padding: var(--ds-space-1) 0;
+}
+
+.row__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.row__value {
+  flex: 0 0 auto;
+  min-width: 38px;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.row.is-disabled {
+  opacity: .35;
+  pointer-events: none;
+}
+
+.field {
+  margin-bottom: var(--ds-space-3);
+}
+
+/* Eingabefeld mit angehängtem Knopf: „eintippen und hinzufügen" kommt in den
+   Panels mehrfach vor (Ion-Asset, Backend-Adresse, Job-ID, GLB). Vorher stand
+   an jeder dieser Stellen dasselbe `style="display:flex;gap:6px"` im Markup —
+   mit jeweils leicht anderem Abstand. */
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.input-row > .input,
+.input-row > .select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.input-row > .btn { flex: 0 0 auto; }
+
+.field__label {
+  display: block;
+  margin-bottom: var(--ds-space-1);
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+}
+
+.hint {
+  margin: var(--ds-space-2) 0 0;
+  color: var(--text-muted, #666);
+  font-size: var(--ds-text-sm);
+  line-height: 1.5;
+}
+
+/* ── Panel-Untergruppen ──────────────────────────────────────────────────── */
+
+.panel-group {
+  margin: 0 calc(-1 * var(--ds-space-4)) var(--ds-space-1);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.panel-group:last-child { border-bottom: none; }
+
+.panel-group__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: color var(--ds-transition), background var(--ds-transition);
+}
+
+.panel-group__header::-webkit-details-marker { display: none; }
+
+.panel-group__header::before {
+  content: '›';
+  flex: 0 0 auto;
+  width: 10px;
+  color: var(--text-muted, #666);
+  font-size: 14px;
+  transition: transform var(--ds-transition);
+}
+
+.panel-group[open] > .panel-group__header {
+  color: var(--text-primary, #e8e8e8);
+}
+
+.panel-group[open] > .panel-group__header::before {
+  transform: rotate(90deg);
+  color: var(--ds-accent);
+}
+
+.panel-group__header:hover {
+  background: var(--ds-surface);
+  color: var(--text-primary, #e8e8e8);
+}
+
+.panel-group__body {
+  padding: 0 var(--ds-space-4) var(--ds-space-4);
+}
+
+/* ── Reiter ──────────────────────────────────────────────────────────────
+   Für Panels mit zwei bis drei gleichrangigen Werkzeugen. Aufklappbare
+   Gruppen wären hier falsch: sie stapeln den Inhalt untereinander, und man
+   scrollt an dem vorbei, was man gerade nicht braucht. */
+
+.tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--ds-space-1);
+  margin-bottom: var(--ds-space-4);
+  padding: 3px;
+  border-radius: var(--ds-radius);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.tab {
+  min-height: var(--ds-control-height-sm);
+  padding: 0 var(--ds-space-2);
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: none;
+  color: var(--text-secondary, #888);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: background var(--ds-transition), color var(--ds-transition);
+}
+
+.tab:hover { color: var(--text-primary, #e8e8e8); }
+
+.tab.is-active {
+  background: rgba(var(--ds-accent-rgb), 0.16);
+  color: var(--ds-accent);
+}
+
+.tab-pane { display: none; }
+.tab-pane.is-active { display: block; }
+
+/* ── Untergruppe im Panelinhalt ──────────────────────────────────────────
+   Wie `.panel-group`, aber ohne den vollflächigen Rand — für Nebensachen
+   innerhalb eines Reiters (etwa die Sitzungsablage im Messwerkzeug). */
+
+.subgroup {
+  margin-top: var(--ds-space-3);
+  border-top: 1px solid var(--ds-border);
+}
+
+.subgroup__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) 0;
+  color: var(--text-muted, #666);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.subgroup__header::-webkit-details-marker { display: none; }
+
+.subgroup__header::before {
+  content: '›';
+  font-size: 13px;
+  transition: transform var(--ds-transition);
+}
+
+.subgroup[open] > .subgroup__header { color: var(--text-secondary, #888); }
+.subgroup[open] > .subgroup__header::before { transform: rotate(90deg); }
+
+/* ── Abschnitt: Varianten ────────────────────────────────────────────────── */
+
+/* Steht über den aufklappbaren Gruppen und bleibt immer sichtbar. */
+.section--pinned {
+  margin-bottom: var(--ds-space-3);
+  padding-bottom: var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.section__label--split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+}
+
+.count-badge {
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--ds-surface);
+  color: var(--text-secondary, #888);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.count-badge--danger {
+  background: rgba(224, 92, 92, 0.16);
+  color: var(--ds-danger);
+}
+
+/* ── Regler-Zeile ────────────────────────────────────────────────────────── */
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: var(--ds-control-height);
+}
+
+.slider-row.disabled,
+.slider-row.is-disabled {
+  opacity: .35;
+  pointer-events: none;
+}
+
+.slider-row__label {
+  flex: 0 0 auto;
+  min-width: 58px;
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+}
+
+.slider-row__value {
+  flex: 0 0 auto;
+  min-width: 40px;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Achsen-Zeile: Beschriftung · Regler · Zahl · Einheit · Zurücksetzen.
+   Eine Zeile je Achse — X, Y, Z und Drehung stehen damit untereinander
+   und passen zusammen in ein Flyout, ohne dass gescrollt werden muss. */
+.axis-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 52px 12px var(--ds-control-height-sm);
+  align-items: center;
+  gap: var(--ds-space-1);
+  min-height: var(--ds-control-height);
+}
+
+.axis-row__label {
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.axis-row__unit {
+  color: var(--text-muted, #666);
+  font-size: 10px;
+}
+
+.input--num {
+  min-height: var(--ds-control-height-sm);
+  padding: 0 var(--ds-space-1);
+  font-size: 11px;
+  text-align: right;
+}
+
+.unit {
+  color: var(--text-muted, #666);
+  font-size: 10px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-3);
+}
+
+/* ── Flyout ──────────────────────────────────────────────────────────────
+   Ein Zusatzfenster, das seitlich neben der Seitenleiste aufgeht statt
+   innerhalb einer Liste aufzuklappen. Damit bleibt die Liste kurz und der
+   Inhalt darf so hoch werden, wie er braucht. */
+
+.flyout {
+  position: fixed;
+  z-index: 1200;
+  display: none;
+  width: 300px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-lg);
+  background: var(--bg-overlay, rgba(15, 15, 15, 0.97));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.flyout.is-open { display: block; }
+
+.flyout__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-2) var(--ds-space-2) var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.flyout__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flyout__body { padding: var(--ds-space-3); }
+
+/* ── Listen, Kennzahlen, Pillen ──────────────────────────────────────────── */
+
+.asset-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* Eine Zeile in einer Modell-Liste: Symbol, Name, rechts das Datum. Der Name
+   ist das einzige, was sich dehnt — die beiden anderen sind kurz und fest. */
+.asset-row {
+  justify-content: flex-start !important;
+  text-align: left;
+}
+
+.asset-row__icon { flex: 0 0 auto; }
+
+.asset-row__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-row__meta {
+  flex: 0 0 auto;
+  color: var(--text-muted, #666);
+  font-size: 10px;
+}
+
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ds-space-1);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-space-2);
+}
+
+.stat {
+  padding: var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface);
+  text-align: center;
+}
+
+.stat__label {
+  color: var(--text-muted, #666);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.stat__value {
+  color: var(--ds-accent);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll-box {
+  max-height: 180px;
+  overflow-y: auto;
+  border-radius: var(--ds-radius-sm);
+  background: rgba(0, 0, 0, 0.22);
+  padding: var(--ds-space-1);
+}
+
+.scroll-box--tall { max-height: 42vh; }
+
+.code-box {
+  max-height: 160px;
+  margin: var(--ds-space-2) 0 0;
+  overflow-y: auto;
+  padding: var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: #000;
+  color: var(--ds-accent);
+  font-size: 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pill-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+}
+
+.pill-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-1);
+}
+
+.pill-group__label {
+  width: 46px;
+  color: var(--text-muted, #666);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.pill {
+  padding: 2px 8px;
+  border: 1px solid var(--ds-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text-secondary, #888);
+  font-size: 10px;
+  cursor: pointer;
+  transition: border-color var(--ds-transition), color var(--ds-transition);
+}
+
+.pill:hover { color: var(--text-primary, #e8e8e8); }
+
+/* Anzahl hinter einer Filterpille — mitlesbar, aber nicht mitzählend. */
+.pill__zahl {
+  margin-left: 4px;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Kategorie- und Namensfilter über einer Modell-Liste. */
+.models-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  margin-bottom: var(--ds-space-2);
+}
+
+.pill.is-active {
+  border-color: var(--ds-accent);
+  color: var(--ds-accent);
+}
+
+.link-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  margin-top: var(--ds-space-2);
+}
+
+.link {
+  color: var(--ds-accent);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.link:hover { text-decoration: underline; }
+
+/* ── Notizkarte ──────────────────────────────────────────────────────────── */
+
+.tag-card {
+  margin-bottom: var(--ds-space-1);
+  padding: var(--ds-space-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.tag-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+}
+
+.tag-card__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-card__body {
+  color: var(--text-secondary, #888);
+  font-size: 10px;
+}
+
+.tag-card__guid {
+  color: var(--text-muted, #666);
+  font-family: monospace;
+  font-size: 9px;
+}
+
+.tag-card__atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-1);
+  margin-top: 3px;
+}
+
+.tag-card__meta {
+  margin-top: 3px;
+  color: var(--text-muted, #666);
+  font-size: 9px;
+}
+
+/* ==========================================================================
+   3. Eigenschaftsanzeige (ifc-role-properties.js)
+   ========================================================================== */
+
+.props-container {
+  padding: var(--ds-space-3);
+}
+
+.props-role-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-3);
+  padding-bottom: var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.props-role-name {
+  color: var(--ds-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.props-role-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted, #666);
+  font-size: var(--ds-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.props-count {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface);
+  color: var(--text-muted, #666);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.props-group {
+  margin-bottom: var(--ds-space-1);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.props-group:last-child { border-bottom: none; }
+
+.props-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) 0;
+  color: var(--text-secondary, #888);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+/* Eigener Pfeil statt des Browser-Dreiecks — links, dreht beim Aufklappen. */
+.props-group-header::-webkit-details-marker { display: none; }
+
+.props-group-header::before {
+  content: '›';
+  flex: 0 0 auto;
+  color: var(--text-muted, #666);
+  font-size: 13px;
+  transition: transform var(--ds-transition);
+}
+
+.props-group[open] > .props-group-header::before { transform: rotate(90deg); }
+
+.props-group-header:hover { color: var(--text-primary, #e8e8e8); }
+
+.props-group-count {
+  margin-left: auto;
+  color: var(--text-muted, #666);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.props-group-body { padding-bottom: var(--ds-space-2); }
+
+.props-row {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 5fr);
+  gap: var(--ds-space-3);
+  padding: 3px 0;
+  font-size: 11.5px;
+}
+
+.props-row:hover { background: var(--ds-surface); }
+
+.props-key {
+  overflow: hidden;
+  color: var(--text-muted, #666);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.props-value {
+  overflow: hidden;
+  color: var(--text-primary, #e8e8e8);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.props-empty {
+  padding: var(--ds-space-5) var(--ds-space-3);
+  color: var(--text-muted, #666);
+  font-size: var(--ds-text);
+  text-align: center;
+}
+
+/* ==========================================================================
+   4. Altlasten-Brücke
+   --------------------------------------------------------------------------
+   Bildet die historisch gewachsenen Klassennamen auf das neue Aussehen ab.
+   `!important` ist hier die Ausnahme mit Grund: die betroffenen Schaltflächen
+   tragen ihr altes Aussehen als Inline-`style`-Attribut aus JavaScript, und
+   dagegen kommt keine Spezifität an. `ui-normalize.js` räumt diese Attribute
+   zur Laufzeit weg; die Regeln hier greifen zusätzlich, falls ein Panel vor
+   dem Aufräumen gezeichnet wird.
+
+   Nicht erweitern. Neue Schaltflächen bekommen `.btn`.
+   ========================================================================== */
+
+.modern-btn,
+.ifcp-btn,
+.ms-tool-btn,
+.ms4-type-btn,
+.pc-reset-btn,
+.floating-panel-btn,
+.modern-icon-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--ds-space-2) !important;
+  min-height: var(--ds-control-height) !important;
+  padding: 0 var(--ds-space-3) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  background: var(--ds-surface) !important;
+  color: var(--text-primary, #e8e8e8) !important;
+  font-family: inherit !important;
+  font-size: var(--ds-text) !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  cursor: pointer;
+  transition: background var(--ds-transition), border-color var(--ds-transition);
+}
+
+.modern-btn:hover:not(:disabled),
+.ifcp-btn:hover:not(:disabled),
+.ms-tool-btn:hover:not(:disabled),
+.ms4-type-btn:hover:not(:disabled),
+.pc-reset-btn:hover:not(:disabled),
+.floating-panel-btn:hover:not(:disabled),
+.modern-icon-btn:hover:not(:disabled) {
+  background: var(--ds-surface-hover) !important;
+  border-color: var(--ds-border-strong) !important;
+}
+
+/* `.modern-btn-icon` ist im Altbestand *kein* Knopf, sondern das Symbol-Span
+   innerhalb eines Knopfes. Solange es in der Liste oben stand, bekam jedes
+   Symbol einen eigenen Rahmen — ein Kasten im Kasten. */
+.modern-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  font-size: var(--ds-text);
+  line-height: 1;
+}
+
+.modern-btn-primary,
+.modern-btn-success,
+.modern-btn-accent {
+  border-color: var(--ds-accent) !important;
+  background: var(--ds-accent) !important;
+  color: #10140a !important;
+  font-weight: 600 !important;
+}
+
+.modern-btn-danger {
+  border-color: rgba(224, 92, 92, 0.4) !important;
+  background: rgba(224, 92, 92, 0.1) !important;
+  color: var(--ds-danger) !important;
+}
+
+.modern-btn-secondary {
+  border-color: transparent !important;
+  background: none !important;
+  color: var(--text-secondary, #888) !important;
+}
+
+.modern-btn-small,
+.floating-panel-btn {
+  min-height: var(--ds-control-height-sm) !important;
+  padding: 0 var(--ds-space-2) !important;
+  font-size: var(--ds-text-sm) !important;
+}
+
+/* Die Symbolknöpfe in einer Modellzeile: bis zu sechs davon (Hinfliegen,
+   Notiz, Schnittebene, Schnittbox, Bauablauf, Ausrichten, Entfernen) teilen
+   sich die Zeile mit dem Namen. Bei Normalgröße bliebe vom Namen nichts. */
+.modern-asset-controls .modern-icon-btn {
+  width: var(--ds-control-height-sm);
+  height: var(--ds-control-height-sm);
+  min-height: var(--ds-control-height-sm) !important;
+  padding: 0 !important;
+  font-size: 11px !important;
+}
+
+/* Der Typenraster im Messwerkzeug bleibt zweizeilig (Symbol über Text) — die
+   einzige Stelle, an der eine Schaltfläche bewusst anders aufgebaut ist. */
+.ms4-type-btn {
+  flex-direction: column !important;
+  gap: var(--ds-space-1) !important;
+  min-height: 52px !important;
+  padding: var(--ds-space-2) var(--ds-space-1) !important;
+  font-size: var(--ds-text-sm) !important;
+}
+
+.modern-btn-group-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ds-space-2);
+}
+
+/* Alte Umschalter auf das neue Aussehen ziehen. */
+.modern-toggle-btn.active,
+.ms-tool-btn.active,
+.ms4-type-btn.active,
+.ifcp-btn.active {
+  border-color: var(--ds-accent) !important;
+  background: rgba(var(--ds-accent-rgb), 0.16) !important;
+  color: var(--ds-accent) !important;
+}
+
+/* ==========================================================================
+   Bewegungsempfindlichkeit
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .switch__track, .switch__track::after, .props-group-header::before {
+    transition-duration: 1ms;
+  }
+  .btn:active:not(:disabled) { transform: none; }
+}

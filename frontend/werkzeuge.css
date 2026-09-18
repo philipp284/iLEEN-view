@@ -1,0 +1,532 @@
+/* iLEEN
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ * Licensed under BSL 1.1 (siehe clipping-planes.js).
+ *
+ * ==========================================================================
+ * WERKZEUGE — rechtes Panel, GEG-Energietool, StaLite-Brücke, Skizzenarchiv
+ * ==========================================================================
+ *
+ * Baut auf den Tokens aus design-system.css auf (--ds-*). Alles, was hier
+ * steht, gehört zu den Werkzeugen der rechten Seite; das Blatt des
+ * Zeichenmodus bleibt in plan-2d.css, der fertige Bericht in bericht.css.
+ */
+
+/* ── Panelgerüst ─────────────────────────────────────────────────────────── */
+
+.rp-panel {
+  position: fixed;
+  top: 0;
+  right: 44px;
+  width: 320px;
+  height: 100vh;
+  background: #0d0d0d;
+  border-left: 1px solid #1e1e1e;
+  z-index: 990;
+  display: none;
+  flex-direction: column;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: var(--ds-text, 12px);
+  color: #e8e8e8;
+  overflow: hidden;
+  /* Die Breite wechselt mit dem Reiter — eine Bauteiltabelle braucht mehr
+     Platz als eine Filterliste. Ohne Übergang springt das Panel hart. */
+  transition: width var(--ds-transition, 140ms);
+}
+
+.rp-tabbar {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #1e1e1e;
+  /* Bei fünf Reitern in 320 px wird es eng: lieber schieben als umbrechen,
+     denn ein zweizeiliges Reiterband verschiebt den ganzen Inhalt nach unten. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rp-tabbar::-webkit-scrollbar { display: none; }
+
+.rp-tab {
+  flex: 1 0 auto;
+  min-width: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #555;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: color var(--ds-transition, 140ms);
+}
+.rp-tab:hover { color: #9a9a9a; }
+.rp-tab.is-aktiv { color: #e8e8e8; border-bottom-color: #fff; }
+.rp-tab__symbol { font-size: 13px; line-height: 1; }
+.rp-tab__text { line-height: 1; }
+
+.rp-body { flex: 1; overflow: hidden; position: relative; }
+
+.rp-pane {
+  display: none;
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+.rp-pane.is-aktiv { display: block; }
+
+/* ── Bausteine innerhalb der Reiter ──────────────────────────────────────── */
+
+.wz-kopf {
+  padding: 10px 14px;
+  border-bottom: 1px solid #1e1e1e;
+  font-size: 9px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.wz-abschnitt { padding: 12px 14px; border-bottom: 1px solid #161616; }
+.wz-abschnitt__titel {
+  font-size: 9px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wz-hinweis, .rp-hinweis {
+  font-size: 10px;
+  color: #6a6a6a;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.wz-hinweis--warnung {
+  color: #d8a24a;
+  background: rgba(216, 162, 74, .08);
+  border-left: 2px solid #d8a24a;
+  padding: 6px 8px;
+  border-radius: 0 3px 3px 0;
+}
+
+.wz-zeile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.wz-zeile__label { flex: 1; font-size: 11px; color: #b8b8b8; }
+.wz-zeile__wert { font-size: 11px; color: #e8e8e8; font-variant-numeric: tabular-nums; }
+
+.wz-feld {
+  background: #131313;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--ds-radius-sm, 4px);
+  color: #e8e8e8;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 6px;
+  width: 82px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.wz-feld:focus { outline: none; border-color: var(--ds-accent, #97BF0D); }
+.wz-feld--breit { width: 100%; text-align: left; }
+select.wz-feld { text-align: left; width: 100%; }
+
+/* ── Kennwerte: die Zahlen, die man zuerst sucht ─────────────────────────── */
+
+.wz-kennwerte {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.wz-kennwert {
+  background: #131313;
+  border: 1px solid #222;
+  border-radius: var(--ds-radius-sm, 4px);
+  padding: 8px 10px;
+}
+.wz-kennwert__name {
+  font-size: 9px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: 3px;
+}
+.wz-kennwert__wert {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e8e8e8;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.wz-kennwert__einheit { font-size: 9px; color: #777; font-weight: 400; }
+.wz-kennwert--gut .wz-kennwert__wert { color: #6cc04a; }
+.wz-kennwert--schlecht .wz-kennwert__wert { color: #e05c5c; }
+
+/* ── Ampel ───────────────────────────────────────────────────────────────── */
+
+.wz-ampel { display: flex; flex-direction: column; gap: 6px; }
+.wz-ampel__zeile { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.wz-ampel__name { flex: 1; color: #c8c8c8; }
+.wz-ampel__balken {
+  width: 78px;
+  height: 6px;
+  background: #1e1e1e;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+.wz-ampel__fuellung { height: 100%; border-radius: 3px; }
+.wz-ampel__wert {
+  width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+.wz-ampel--gruen .wz-ampel__fuellung { background: #4c9a2a; }
+.wz-ampel--gelb  .wz-ampel__fuellung { background: #e8a33d; }
+.wz-ampel--rot   .wz-ampel__fuellung { background: #d13438; }
+.wz-ampel--gruen .wz-ampel__wert { color: #6cc04a; }
+.wz-ampel--gelb  .wz-ampel__wert { color: #e8a33d; }
+.wz-ampel--rot   .wz-ampel__wert { color: #e05c5c; }
+
+/* ── Bauteiltabelle des GEG-Werkzeugs ────────────────────────────────────── */
+
+.geg-tabelle { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.geg-tabelle th {
+  font-size: 8.5px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  text-align: left;
+  font-weight: 600;
+  padding: 0 4px 5px;
+  border-bottom: 1px solid #222;
+  white-space: nowrap;
+}
+.geg-tabelle td { padding: 2px 4px; border-bottom: 1px solid #161616; }
+.geg-tabelle tr:hover td { background: rgba(255,255,255,.025); }
+.geg-tabelle input,
+.geg-tabelle select {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #e8e8e8;
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 3px 4px;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.geg-tabelle input:hover,
+.geg-tabelle select:hover { border-color: #2a2a2a; }
+.geg-tabelle input:focus,
+.geg-tabelle select:focus {
+  outline: none;
+  background: #131313;
+  border-color: var(--ds-accent, #97BF0D);
+}
+.geg-tabelle input[type="number"] { text-align: right; }
+.geg-tabelle .geg-weg {
+  background: transparent;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.geg-tabelle .geg-weg:hover { color: #e05c5c; }
+/* Ein Bauteil, dessen U-Wert nicht aus dem Modell kam, ist eine Annahme —
+   das muss man beim Überfliegen der Tabelle sehen, nicht erst im Bericht. */
+.geg-tabelle tr.ist-annahme td:first-child { border-left: 2px solid #d8a24a; }
+
+.geg-summe {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #888;
+  padding: 6px 4px 0;
+  border-top: 1px solid #222;
+  margin-top: 4px;
+}
+
+/* Das Auge zeigt das Bauteil im Modell. Es steht neben dem Löschen und ist
+   deshalb bewusst blass, bis die Zeile berührt wird: die beiden Knöpfe tun
+   sehr Verschiedenes, und der eine davon ist nicht rückgängig zu machen. */
+.geg-tabelle .geg-zeigen {
+  background: transparent;
+  border: none;
+  color: #3a3a3a;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+}
+.geg-tabelle tr:hover .geg-zeigen { color: #7a7a7a; }
+.geg-tabelle .geg-zeigen:hover { color: var(--ds-accent, #97BF0D); }
+.geg-tabelle tr.ist-gezeigt td { background: rgba(151, 191, 13, .07); }
+
+/* Reine Leselisten (Räume, Geschosse) — dieselbe Tabelle ohne Eingabefelder. */
+.geg-tabelle--lese td { font-variant-numeric: tabular-nums; padding: 2px 4px; }
+.geg-tabelle--lese { margin-top: 4px; }
+
+/* ── Legende der Hüllflächen-Hervorhebung ────────────────────────────────── */
+
+.geg-legende { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.geg-legende__zeile {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #bbb;
+  padding: 2px 0;
+}
+.geg-legende__farbe {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .5) inset;
+}
+.geg-legende__name { flex: 1 1 auto; }
+.geg-legende__wert { color: #888; font-variant-numeric: tabular-nums; }
+
+/* ── Aufklappbare Listen in den Werkzeugen ───────────────────────────────── */
+
+.wz-details { margin-top: 8px; }
+.wz-details > summary {
+  cursor: pointer;
+  font-size: 10px;
+  color: #888;
+  padding: 3px 0;
+  list-style: none;
+  user-select: none;
+}
+.wz-details > summary::-webkit-details-marker { display: none; }
+.wz-details > summary::before { content: '▸ '; color: #555; }
+.wz-details[open] > summary::before { content: '▾ '; }
+.wz-details > summary:hover { color: #ccc; }
+
+/* ── Bildergalerie ───────────────────────────────────────────────────────── */
+
+.wz-galerie { display: flex; flex-direction: column; gap: 10px; }
+.wz-galerie__gruppe {
+  font-size: 9px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-top: 4px;
+}
+.wz-galerie img {
+  width: 100%;
+  border-radius: var(--ds-radius-sm, 4px);
+  background: #fff;
+  cursor: zoom-in;
+  display: block;
+}
+.wz-galerie__titel { font-size: 10px; color: #8a8a8a; margin-top: 3px; }
+
+/* Vollbild für ein Ergebnisbild — ohne das ist eine Monatsbilanz
+   in 300 px Panelbreite nicht lesbar. */
+.wz-lupe {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.86);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  cursor: zoom-out;
+}
+.wz-lupe img {
+  max-width: 100%;
+  max-height: 100%;
+  background: #fff;
+  border-radius: var(--ds-radius, 6px);
+}
+
+/* ── Skizzen- und Archivlisten ───────────────────────────────────────────── */
+
+.wz-liste { display: flex; flex-direction: column; gap: 1px; }
+
+.wz-eintrag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: var(--ds-radius-sm, 4px);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.wz-eintrag:hover { background: rgba(255,255,255,.04); }
+.wz-eintrag.is-gewaehlt { background: rgba(var(--ds-accent-rgb, 151,191,13), .1); }
+
+.wz-eintrag__bild {
+  width: 40px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: #1a1a1a;
+  flex-shrink: 0;
+}
+.wz-eintrag__symbol {
+  width: 40px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background: #161616;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.wz-eintrag__text { flex: 1; min-width: 0; }
+.wz-eintrag__name {
+  font-size: 11px;
+  color: #d8d8d8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wz-eintrag__meta {
+  font-size: 9px;
+  color: #5a5a5a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wz-eintrag__weg {
+  background: transparent;
+  border: none;
+  color: #3a3a3a;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+.wz-eintrag__weg:hover { color: #e05c5c; }
+
+.wz-eintrag__haken {
+  width: 15px;
+  height: 15px;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: transparent;
+}
+.wz-eintrag.is-gewaehlt .wz-eintrag__haken {
+  background: var(--ds-accent, #97BF0D);
+  border-color: var(--ds-accent, #97BF0D);
+  color: #111;
+}
+
+/* ── Statuszeile ─────────────────────────────────────────────────────────── */
+
+.wz-status {
+  font-size: 10px;
+  color: #7a7a7a;
+  margin-top: 8px;
+  min-height: 14px;
+  line-height: 1.45;
+}
+.wz-status--busy { color: var(--ds-info, #4ea3ff); }
+.wz-status--error { color: var(--ds-danger, #e05c5c); }
+.wz-status--ok { color: #6cc04a; }
+
+.wz-leer {
+  font-size: 10px;
+  color: #555;
+  line-height: 1.55;
+  padding: 10px 2px;
+}
+
+/* ── Medien auf dem Planblatt (plan-media.js) ────────────────────────────── */
+
+/* Der Ablegebereich leuchtet nur, während wirklich etwas über dem Blatt
+   hängt — ein dauerhaft sichtbarer Rahmen wäre im Zeichenmodus nur Lärm. */
+.plan2d-ablage {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed var(--ds-accent, #97BF0D);
+  background: rgba(var(--ds-accent-rgb, 151,191,13), .07);
+  border-radius: var(--ds-radius, 6px);
+  pointer-events: none;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #e8e8e8;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+
+.plan-medien-galerie {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.plan-medien-galerie img {
+  width: 100%;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 3px;
+  background: #1a1a1a;
+  cursor: grab;
+  border: 1px solid #262626;
+}
+.plan-medien-galerie img:active { cursor: grabbing; }
+.plan-medien-galerie img:hover { border-color: var(--ds-accent, #97BF0D); }
+
+/* ── Topografisches Aufmaß ──────────────────────────────────────────────────
+   Die Karte im Panel ist die reine Leinwand, ohne die Blattdekoration des
+   PNG-Exports: Legende, Maßstab und Nordpfeil sind dort in die Leinwand
+   gezeichnet und wären auf Panelbreite geschrumpft nicht mehr zu lesen. Als
+   Text im Dokument bleiben sie scharf, egal wie schmal die Spalte wird. */
+.tv-karte {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--ds-border, #2a2f39);
+  background: repeating-conic-gradient(#1a1d23 0% 25%, #14171c 0% 50%) 0 0 / 12px 12px;
+  cursor: crosshair;
+}
+.tv-legende__balken {
+  height: 10px;
+  margin-top: 8px;
+  border-radius: 2px;
+  border: 1px solid var(--ds-border, #2a2f39);
+}
+.tv-legende__marken {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-muted, #8b95a6);
+}
+.tv-legende__marken span:first-child { text-align: left; }
+.tv-legende__marken span:last-child { text-align: right; }

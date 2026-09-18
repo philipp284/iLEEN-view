@@ -1,0 +1,6 @@
+{
+  "name": "navigation-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Dieses Prüfskript lädt walkMode.js über vm in einen gestellten Browser-Kontext und braucht deshalb CommonJS.",
+  "type": "commonjs"
+}

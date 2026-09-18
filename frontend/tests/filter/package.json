@@ -1,0 +1,6 @@
+{
+  "name": "filter-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Dieses Prüfskript lädt features.js über require/vm und braucht deshalb CommonJS.",
+  "type": "commonjs"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "volume-topo-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Dieses Prüfskript lädt volume-topo.js über eine VM-Umgebung und braucht CommonJS — der Modultyp gilt für das nächstgelegene package.json, also hier für diesen Ordner.",
+  "type": "commonjs"
+}

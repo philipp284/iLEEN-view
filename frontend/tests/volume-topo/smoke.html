@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Topografisches Aufmaß — Kartenprüfstein</title>
+<style>
+  body { margin: 0; background: #0b0d11; color: #cfd6e0;
+         font: 13px system-ui, sans-serif; padding: 16px; }
+  h1 { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+  .sheets { display: flex; gap: 16px; flex-wrap: wrap; }
+  figure { margin: 0; }
+  figcaption { margin-top: 6px; color: #8b95a6; }
+  canvas { display: block; max-width: 460px; height: auto; border-radius: 6px; }
+</style>
+<h1>Topografisches Aufmaß — Kartenprüfstein</h1>
+<div class="sheets" id="sheets"></div>
+
+<script src="../../volume-topo.js"></script>
+<script>
+/**
+ * Ein Gelände, das man wiedererkennt: ein Kegel mit abgesetzter Kuppe, eine
+ * Mulde daneben und ein rechteckiges Loch mittendrin. Der Kegel zeigt, ob die
+ * Höhenlinien konzentrisch und gleich breit herauskommen, die Mulde, ob die
+ * Schummerung die Richtung nicht verdreht (Licht aus Nordwesten — die
+ * Nordwestflanke muss hell sein), und das Loch, ob wirklich nichts gezeichnet
+ * wird, wo nichts gemessen wurde.
+ */
+const NX = 160, NY = 120, CELL = 1;
+
+function bauGelaende() {
+  const h = new Float64Array(NX * NY);
+  for (let gy = 0; gy < NY; gy++) {
+    for (let gx = 0; gx < NX; gx++) {
+      const x = gx + 0.5, y = gy + 0.5;
+      const kegel = Math.max(0, 14 - Math.hypot(x - 55, y - 60) * 0.42);
+      const mulde = -7 * Math.exp(-((x - 115) ** 2 + (y - 55) ** 2) / 500);
+      // Eine leichte Grundneigung, damit die Bezugsebene etwas zu tun hat.
+      h[gy * NX + gx] = 100 + x * 0.02 + y * 0.01 + kegel + mulde;
+    }
+  }
+  // Loch: 12 × 10 Maschen, weit genug, dass die Lückenfüllung es nicht deckt.
+  for (let gy = 20; gy < 30; gy++) for (let gx = 20; gx < 32; gx++) h[gy * NX + gx] = NaN;
+  return h;
+}
+
+const grid = {
+  nx: NX, ny: NY, cell: CELL, x0: 0, y0: 0,
+  h: bauGelaende(), cnt: new Int32Array(NX * NY),
+  interpolated: new Uint8Array(NX * NY),
+};
+
+// Ein Achteck statt eines Rechtecks: nur so sieht man, ob die Maske dem
+// Polygon folgt und nicht dem Rechteck darum herum.
+const ring = [
+  { x: 20, y: 8 }, { x: 140, y: 8 }, { x: 155, y: 30 }, { x: 155, y: 92 },
+  { x: 130, y: 112 }, { x: 34, y: 112 }, { x: 6, y: 88 }, { x: 6, y: 34 },
+];
+
+const I = TopoVolume._internals;
+grid.coverage = I.coverageGrid(grid, ring, 5);
+
+const ctx = { ring, bounds: { minX: 0, maxX: NX, minY: 0, maxY: NY } };
+const plane = { a: 101.5, b: 0, c: 0 };
+const sums = I.integrate(grid, plane);
+const ergebnis = {
+  minHeight: sums.hmin, maxHeight: sums.hmax,
+  net: sums.cut - sums.fill, cut: sums.cut, fill: sums.fill,
+};
+
+const faelle = [
+  ['Höhe · Schummerung · Höhenlinien',
+   { ramp: 'hoehe', contours: true, hillshade: true, steps: false, interval: 0 }],
+  ['Höhe · Stufenkarte',
+   { ramp: 'hoehe', contours: true, hillshade: true, steps: true, interval: 1 }],
+  ['Auftrag / Abtrag gegen 101,50 m',
+   { ramp: 'auftrag', contours: true, hillshade: true, steps: false, interval: 0 }],
+  ['ohne Schummerung, ohne Linien',
+   { ramp: 'hoehe', contours: false, hillshade: false, steps: false, interval: 0 }],
+];
+
+const sheets = document.getElementById('sheets');
+window.KARTEN = [];
+
+for (const [titel, optionen] of faelle) {
+  const karte = I.renderMap(grid, plane, ctx, optionen, ergebnis);
+  const figure = document.createElement('figure');
+  figure.appendChild(karte.figure);
+  const caption = document.createElement('figcaption');
+  caption.textContent = titel;
+  figure.appendChild(caption);
+  sheets.appendChild(figure);
+  window.KARTEN.push({ titel, from: karte.from, to: karte.to, interval: karte.interval });
+}
+
+window.PRUEFUNG = {
+  maschen: sums.cells,
+  loch_m2: sums.holeArea,
+  netto: sums.cut - sums.fill,
+  hmin: sums.hmin, hmax: sums.hmax,
+  karten: window.KARTEN,
+  fertig: true,
+};
+</script>
