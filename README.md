@@ -11,8 +11,10 @@ ohne Anmeldung, ohne Konto — ein Ordner statischer Dateien und ein Browser.
 > **Was hier nicht drin ist.** iLEEN-view ist der Viewer. Die Auswerte- und
 > Nachweiswerkzeuge der Vollfassung — Tragwerksberechnung, Lastabtrag,
 > GEG-Energiebilanz, Bauablaufsimulation, Bewehrungsplanung, Verschattung —
-> sind nicht Teil dieses Repos. Sie kommen als Module dazu, wenn sie so weit
-> sind.
+> sind nicht Teil dieses Repos. Sie sind Module und stecken sich an: die
+> Oberfläche hält dafür zwei Steckplätze bereit, links für Viewer-Werkzeuge
+> und rechts für Auswertungen. Wie das geht, steht unter
+> [Erweitern](#erweitern).
 
 ---
 
@@ -115,15 +117,70 @@ Zwei Regeln, an denen im Zweifel alles hängt:
 
 ---
 
+## Erweitern
+
+Die Oberfläche hat zwei Seiten, und beide sind Steckplätze. **Links** in der
+Aktivitätsleiste stehen die Viewer-Werkzeuge, **rechts** die Auswertungen.
+Kein Panelgerüst kennt ein Werkzeug; jedes Werkzeug meldet sich selbst an. Eine
+Datei und eine `<script>`-Zeile genügen — die Ladereihenfolge ist gleichgültig,
+wer sich spät anmeldet, löst einen Neuaufbau aus und erscheint trotzdem.
+
+Ein eigener Bereich in der linken Leiste:
+
+```js
+BimViewerUI.bereichAnmelden({
+  id: 'mein-werkzeug', symbol: '📐', ordnung: 120,
+  titel: () => t('panel.meinWerkzeug'),   // Funktion: folgt dem Sprachwechsel
+  inhalt: () => MeinWerkzeug.markup(),    // String oder Funktion
+  beimOeffnen: () => MeinWerkzeug.laden(),
+});
+```
+
+Eine Untergruppe in einem bestehenden Bereich — so hängt zum Beispiel der
+360°-Rundgang im Asset-Browser:
+
+```js
+BimViewerUI.gruppeAnmelden('models', {
+  key: 'panotour', ordnung: 40, label: '360°-Rundgang', inhalt: panelHtml,
+});
+```
+
+Ein Reiter am Analysepanel der rechten Seite:
+
+```js
+RightPanel.reiterAnmelden({
+  id: 'geg', kuerzel: 'GEG', symbol: '🌡', titel: 'Gebäudeenergie', breite: 420,
+  aufbauen: (behaelter) => { … },   // einmal, baut das Markup
+  oeffnen:  () => { … },            // bei jedem Anzeigen
+  schliessen: () => { … },          // beim Wegschalten
+});
+```
+
+`schliessen` ist keine Zierde: ein Werkzeug, das einen Klickfänger in die Szene
+hängt, muss ihn beim Wegschalten abräumen — sonst bedient man längst einen
+anderen Reiter, und die Klicks gehen weiter ans alte Werkzeug.
+
+`ordnung` bestimmt die Reihenfolge in der Leiste, **nicht** der Zeitpunkt der
+Anmeldung. Sonst hinge die Anordnung der Symbole an der Reihenfolge der
+`<script>`-Zeilen in `index.html`. Die mitgelieferten Bereiche liegen auf
+10…90.
+
+In dieser Fassung ist rechts nichts angemeldet. Das Gerüst wird trotzdem
+ausgeliefert — es ist die leere Fassung, in die ein Analysewerkzeug sich
+einhängt.
+
+---
+
 ## Prüfsteine
 
 ```bash
 cd frontend
-for f in tests/*/test-*.js; do node "$f"; done   # ohne Browser
 
-npx vite --port 5190 &                            # für die Browser-Prüfsteine
+npm run test                       # Zuschnitt + alle Rechenkerne, ohne Browser
+
+npx vite --port 5190 &             # für den Browser-Prüfstein
 npm i --no-save puppeteer-core
-node tests/start/test-start.mjs                   # startet die App wirklich?
+npm run test:start                 # startet die App wirklich?
 ```
 
 `tests/start/test-start.mjs` ist der wichtigste davon. Alle anderen laden ein
@@ -131,6 +188,11 @@ Modul in eine `vm` und prüfen seine Rechnung — das sagt viel, aber nicht, ob
 die fünfzig Skripte zusammen hochkommen. Genau dort entstehen die Fehler, die
 keine Fehlermeldung erzeugen, sondern ein Werkzeug, das stillschweigend nichts
 tut.
+
+`tests/trennung/test-trennung.mjs` (in `npm run test` enthalten) braucht weder
+Browser noch Dev-Server: er liest Dateinamen und `index.html` und sieht nach,
+ob der Zuschnitt noch stimmt — ob eine Datei liegengeblieben ist, die niemand
+einbindet, und ob die beiden Anmeldewege benutzbar geblieben sind.
 
 ---
 
