@@ -86,6 +86,15 @@ Reiter Solar und BIM-LP nach `solar-panel.js` und `bimlp-panel.js`. Alle vier
 liegen ausschließlich in der Vollfassung. Wer sie hierher kopiert, hebt die
 Trennung auf; `tests/trennung/test-trennung.mjs` schlägt dann an.
 
+**Notizen liegen seit September 2026 im Backend, nicht nur im Browser.**
+`issues-store.js` ist mitgekommen (es hängt an `tags.js`, und das ist links,
+also Viewer): geschrieben wird zuerst lokal, danach an `/issues`; was nicht
+durchgeht, wird vorgemerkt und nachgeholt. Läuft kein Backend oder kennt es die
+Route nicht, bleibt alles beim Alten — der `localStorage` trägt dann allein.
+**Der Issue-Manager** (Reiter ISS, Verlauf, BCF, Bericht) ist eine Auswertung
+und steht ausschließlich in der Vollfassung; er hierher zu kopieren hebt die
+Trennung auf.
+
 **Der Port ist keine Kleinigkeit.** Beide Fassungen führen `strictPort: true`.
 Läuft die Vollfassung auf 5181 und hier stünde ebenfalls 5181, startet dieser
 Server gar nicht — und der Browser-Prüfstein bekommt HTTP 200 von der
