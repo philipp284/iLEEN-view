@@ -461,8 +461,12 @@
         const colorConditions = hlBedingungen.slice();
         IFC_ENTITIES.forEach(e => {
           if (this.ifcFilter.enabledEntities.has(e.entity)) {
+            // `ifcFarbe()` statt `e.color`: dieselbe Farbe, die auch die
+            // Filterliste zeigt, und im neutralen Schema die Bauwerksfarbe
+            // statt der Typfarbe (core.js).
+            const farbe = (typeof ifcFarbe === 'function') ? ifcFarbe(e) : e.color;
             colorConditions.push([`\${${ifcPropertyName}} === '${e.entity}'`,
-                                  `color('${e.color}', ${opacity})`]);
+                                  `color('${farbe}', ${opacity})`]);
           }
         });
         colorConditions.push(['true', `color('white', ${opacity})`]);

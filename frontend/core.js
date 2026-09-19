@@ -207,6 +207,119 @@ const IFC_ENTITIES = [
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
+// FARBSCHEMA
+//
+// Die Farben oben codieren den IFC-TYP: jede Klasse eine eigene Farbe, damit
+// man im Filter erkennt, was man gerade an- und abwählt. Für das Bild eines
+// Bauwerks ist das die falsche Aussage. Eine Vorhangfassade ist nicht
+// hellblau, weil sie `IfcCurtainWall` heißt — sie ist anthrazit, weil das
+// Bauwerk so aussieht.
+//
+// Deshalb zwei Schemata über derselben Liste:
+//
+//   'ifc'      Typfarben wie oben — Filtern, Prüfen, Aussortieren
+//   'neutral'  Bauwerksfarben — graue Hülle, anthrazitfarbene Öffnungen
+//
+// Die Umschaltung hängt in farben.js; hier steht nur die Tabelle und die
+// Abfrage. Getragen wird die Farbe in beiden Fällen von `Cesium3DTileStyle`
+// (features.js), und die multipliziert sich über das beleuchtete Material —
+// die Eigenfarbe des Bauteils bleibt also mit drin, weshalb farben.js sie
+// zusätzlich entsättigt.
+//
+// Eingetragen ist nur die Gebäudehülle. Alles andere wird aus seiner Typfarbe
+// entsättigt: so bleibt die Technik unterscheidbar, ohne bunt zu sein, und
+// ein Typ, den erst der Typ-Scan nachträgt (`ifcTypEinordnen`), bekommt ohne
+// weiteres Zutun eine passende Farbe.
+// ───────────────────────────────────────────────────────────────────────────
+
+const IFC_FARBEN_NEUTRAL = {
+  // Hülle und Tragwerk — Grau, nach Bauteilschwere abgestuft
+  IfcWall: '#B4B4B2',
+  IfcWallStandardCase: '#B4B4B2',
+  IfcWallElementedCase: '#B4B4B2',
+  IfcCovering: '#ACACA8',          // Fassadenbekleidung, Putz, Estrich
+  IfcSlab: '#C2C2C0',
+  IfcSlabStandardCase: '#C2C2C0',
+  IfcSlabElementedCase: '#C2C2C0',
+  IfcRoof: '#8E8E8C',
+  IfcColumn: '#9A9A98',
+  IfcColumnStandardCase: '#9A9A98',
+  IfcBeam: '#8C8C8A',
+  IfcBeamStandardCase: '#8C8C8A',
+  IfcFooting: '#6F6F6E',
+  IfcPile: '#5E5E5D',
+  IfcBuildingElementPart: '#A8A8A4',
+  IfcElementAssembly: '#9E9E9A',
+  IfcElementComponent: '#9E9E9A',
+  IfcChimney: '#8E8E8C',
+
+  // Öffnungen und Fassade — Anthrazit
+  IfcWindow: '#3C4043',
+  IfcWindowStandardCase: '#3C4043',
+  IfcCurtainWall: '#3C4043',
+  IfcPlate: '#454B4F',             // Glasfeld der Vorhangfassade
+  IfcPlateStandardCase: '#454B4F',
+  IfcMember: '#33383B',            // Pfosten und Riegel
+  IfcMemberStandardCase: '#33383B',
+  IfcDoor: '#4A4F52',
+  IfcDoorStandardCase: '#4A4F52',
+  IfcShadingDevice: '#5A5F62',
+  IfcRailing: '#6E7174',
+
+  // Ausbau
+  IfcStair: '#9A9A98',
+  IfcStairFlight: '#9A9A98',
+  IfcRamp: '#9A9A98',
+  IfcRampFlight: '#9A9A98',
+  IfcFurnishingElement: '#9C9A96',
+  IfcFurniture: '#9C9A96',
+
+  // Gebäudestruktur
+  IfcSpace: '#D2D6CE',
+  IfcSite: '#A8AFA2',
+  IfcBuilding: '#CFCFCF',
+  IfcBuildingStorey: '#DADADA',
+  IfcBuildingElementProxy: '#B0B0AE'
+};
+
+/** Wie weit nicht eingetragene Typen im neutralen Schema entsättigt werden. */
+const IFC_NEUTRAL_ENTSAETTIGUNG = 0.72;
+
+/** Eine Hexfarbe in Richtung ihrer eigenen Helligkeit ziehen. */
+function farbeEntsaettigen(hex, anteil) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return hex;
+  const z = parseInt(m[1], 16);
+  const r = (z >> 16) & 255, g = (z >> 8) & 255, b = z & 255;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const misch = (k) => Math.round(Math.max(0, Math.min(255, k + (y - k) * anteil)));
+  return '#' + [misch(r), misch(g), misch(b)]
+    .map((k) => k.toString(16).padStart(2, '0')).join('');
+}
+
+/** Das gerade gewählte Schema — farben.js trägt es, hier nur abgefragt. */
+function ifcFarbschema() {
+  const f = window.BimViewer && window.BimViewer.Farben;
+  return (f && typeof f.schema === 'function' && f.schema()) || 'neutral';
+}
+
+/**
+ * Die Farbe, mit der ein IFC-Typ dargestellt wird.
+ *
+ * Eine Stelle für beide Verbraucher — den Tileset-Stil in features.js und den
+ * Punkt in der Filterliste (ifc-filter-pro.js). Liefen sie auseinander, zeigte
+ * die Legende eine Farbe, die im Bild nicht vorkommt.
+ */
+function ifcFarbe(eintrag) {
+  if (!eintrag) return '#ffffff';
+  const typ = eintrag.entity || eintrag;
+  const eigen = eintrag.color || '#ffffff';
+  if (ifcFarbschema() !== 'neutral') return eigen;
+  return IFC_FARBEN_NEUTRAL[typ] || farbeEntsaettigen(eigen, IFC_NEUTRAL_ENTSAETTIGUNG);
+}
+
+
+// ───────────────────────────────────────────────────────────────────────────
 // TYPEN, DIE NICHT IN DER LISTE STEHEN
 //
 // Die Liste oben ist lang, aber niemals vollstaendig: IFC kennt ueber 700
@@ -1572,5 +1685,8 @@ const BimViewer = {
 // nicht auf `window`; Module prüfen aber `window.BimViewer`.
 window.CONFIG = CONFIG;
 window.IFC_ENTITIES = IFC_ENTITIES;
+window.IFC_FARBEN_NEUTRAL = IFC_FARBEN_NEUTRAL;
+window.ifcFarbe = ifcFarbe;
+window.farbeEntsaettigen = farbeEntsaettigen;
 window.ifcTypEinordnen = ifcTypEinordnen;
 window.BimViewer = BimViewer;

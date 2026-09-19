@@ -1528,6 +1528,173 @@ const BimViewerUI = {
     `;
   },
 
+  /**
+   * Farben (farben.js) — Weißabgleich, Umgebungslicht, Glas.
+   *
+   * Der Stich ins Warme hat seine Hauptquelle nicht im Modell, sondern in
+   * Cesiums Umgebungsbeleuchtung: deren gedachter Erdboden ist olivfarben
+   * voreingestellt. Deshalb stehen hier zwei Griffe nebeneinander — der an
+   * der Ursache (Umgebungslicht) und der am fertigen Bild (Weißabgleich).
+   */
+  getFarbenContent() {
+    const f = (window.BimViewer && BimViewer.Farben && BimViewer.Farben.stand()) || {
+      an: true, kelvin: 6050, tint: 0, belichtung: 1.0, kontrast: 1.0, saettigung: 1.0,
+      umgebung: true, umgebungSaettigung: 0.4, neutralAn: true, neutral: 0.85,
+      glas: true, glasFarbe: '#3b4044', glasAnteil: 0.75, schema: 'neutral',
+      grundton: 0.62, zeichnung: 0.55, umgebungHelligkeit: 2.2
+    };
+    return `
+      <div class="field">
+        <label class="field__label" for="farbenSchema">Farbgebung</label>
+        <select id="farbenSchema" class="select">
+          <option value="neutral"${f.schema !== 'ifc' ? ' selected' : ''}>Bauwerk — Hülle grau, Öffnungen anthrazit</option>
+          <option value="ifc"${f.schema === 'ifc' ? ' selected' : ''}>IFC-Typen — je Klasse eine Farbe</option>
+        </select>
+      </div>
+      <p class="hint">Die Typfarben sind zum Filtern gedacht: eine Vorhangfassade
+        ist dort hellblau, weil sie <em>IfcCurtainWall</em> heißt. Für das Bild
+        des Bauwerks zählt, wie es aussieht.</p>
+
+      <div class="row">
+        <span class="row__label">🎞️ Weißabgleich</span>
+        <label class="switch">
+          <input type="checkbox" id="toggleWeissabgleich"${f.an ? ' checked' : ''}>
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Lichtfarbe</span>
+        <input type="range" id="farbenKelvin" class="slider" min="2500" max="10000" step="50" value="${f.kelvin}">
+        <span id="farbenKelvinValue" class="slider-row__value">${Math.round(f.kelvin)} K</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Grün ↔ Magenta</span>
+        <input type="range" id="farbenTint" class="slider" min="-1" max="1" step="0.02" value="${f.tint}">
+        <span id="farbenTintValue" class="slider-row__value">${f.tint.toFixed(2)}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Belichtung</span>
+        <input type="range" id="farbenBelichtung" class="slider" min="0.5" max="2" step="0.01" value="${f.belichtung}">
+        <span id="farbenBelichtungValue" class="slider-row__value">${f.belichtung.toFixed(2)}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Sättigung</span>
+        <input type="range" id="farbenSaettigung" class="slider" min="0" max="1.5" step="0.01" value="${f.saettigung}">
+        <span id="farbenSaettigungValue" class="slider-row__value">${Math.round(f.saettigung * 100)} %</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Kontrast</span>
+        <input type="range" id="farbenKontrast" class="slider" min="0.7" max="1.5" step="0.01" value="${f.kontrast}">
+        <span id="farbenKontrastValue" class="slider-row__value">${f.kontrast.toFixed(2)}</span>
+      </div>
+      <div class="btn-row">
+        <button id="farbenPipette" class="btn btn--sm" title="Auf eine Fläche klicken, die neutralgrau sein soll">💧 Graupunkt</button>
+        <button id="farbenZurueck" class="btn btn--sm btn--ghost" title="Auf die Auslieferungswerte zurück">Zurücksetzen</button>
+      </div>
+      <p class="hint">Graupunkt: nach dem Klick auf den Knopf eine Fläche im Bild
+        anklicken, die neutralgrau sein soll — etwa die Fassade. Esc bricht ab.</p>
+
+      <div class="row">
+        <span class="row__label">🌍 Umgebungslicht neutral</span>
+        <label class="switch">
+          <input type="checkbox" id="toggleUmgebungslicht"${f.umgebung ? ' checked' : ''}>
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Buntheit</span>
+        <input type="range" id="farbenUmgebung" class="slider" min="0" max="1.2" step="0.01" value="${f.umgebungSaettigung}">
+        <span id="farbenUmgebungValue" class="slider-row__value">${Math.round(f.umgebungSaettigung * 100)} %</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Helligkeit</span>
+        <input type="range" id="farbenUmgebungHell" class="slider" min="0.2" max="5" step="0.05" value="${f.umgebungHelligkeit}">
+        <span id="farbenUmgebungHellValue" class="slider-row__value">${f.umgebungHelligkeit.toFixed(2)}×</span>
+      </div>
+      <p class="hint">Cesium beleuchtet jedes Modell zusätzlich mit einem
+        gedachten Erdboden — voreingestellt olivbraun (#717145). Das ist die
+        Hauptquelle des Stichs, vor allem auf der Schattenseite.</p>
+
+      <div class="row">
+        <span class="row__label">🧱 Bauteilfarben neutral</span>
+        <label class="switch">
+          <input type="checkbox" id="toggleBauteilfarben"${f.neutralAn ? ' checked' : ''}>
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Entsättigung</span>
+        <input type="range" id="farbenNeutral" class="slider" min="0" max="1" step="0.01" value="${f.neutral}">
+        <span id="farbenNeutralValue" class="slider-row__value">${Math.round(f.neutral * 100)} %</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Grundton</span>
+        <input type="range" id="farbenGrundton" class="slider" min="0.1" max="1" step="0.01" value="${f.grundton}">
+        <span id="farbenGrundtonValue" class="slider-row__value">${Math.round(f.grundton * 100)} %</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Zeichnung</span>
+        <input type="range" id="farbenZeichnung" class="slider" min="0" max="1" step="0.01" value="${f.zeichnung}">
+        <span id="farbenZeichnungValue" class="slider-row__value">${Math.round(f.zeichnung * 100)} %</span>
+      </div>
+      <p class="hint">Die Fassade ist im IFC wirklich beige (RGB 139·120·91), nicht
+        grau — das ist die Eigenfarbe des Materials, kein Lichtstich. Sie wird hier
+        im Materialshader entsättigt; Himmel, Gelände und Luftbild bleiben unberührt.</p>
+
+      <div class="row">
+        <span class="row__label">🪟 Glas anthrazit</span>
+        <label class="switch">
+          <input type="checkbox" id="toggleGlasfarbe"${f.glas ? ' checked' : ''}>
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Anteil</span>
+        <input type="range" id="farbenGlasAnteil" class="slider" min="0" max="1" step="0.01" value="${f.glasAnteil}">
+        <span id="farbenGlasAnteilValue" class="slider-row__value">${Math.round(f.glasAnteil * 100)} %</span>
+      </div>
+      <div class="row">
+        <span class="row__label">Farbe</span>
+        <input type="color" id="farbenGlasFarbe" value="${f.glasFarbe}">
+      </div>
+      <p class="hint">Blau am Fenster ist der gespiegelte Himmel. Der Baustein
+        dämpft die Spiegelung und legt den Ton fest; erkannt wird Glas an seiner
+        Durchsichtigkeit, nicht am Materialnamen.</p>
+    `;
+  },
+
+  /** Regler und Schalter auf den Stand von farben.js bringen (nach dem Graupunkt). */
+  farbenAnzeigeAuffrischen() {
+    const f = window.BimViewer?.Farben?.stand?.();
+    if (!f) return;
+    const setzen = (id, wert, text) => {
+      const el = document.getElementById(id);
+      if (el) el.value = wert;
+      const w = document.getElementById(id + 'Value');
+      if (w && text !== undefined) w.textContent = text;
+    };
+    setzen('farbenKelvin', f.kelvin, Math.round(f.kelvin) + ' K');
+    setzen('farbenTint', f.tint, f.tint.toFixed(2));
+    setzen('farbenBelichtung', f.belichtung, f.belichtung.toFixed(2));
+    setzen('farbenSaettigung', f.saettigung, Math.round(f.saettigung * 100) + ' %');
+    setzen('farbenKontrast', f.kontrast, f.kontrast.toFixed(2));
+    setzen('farbenUmgebung', f.umgebungSaettigung, Math.round(f.umgebungSaettigung * 100) + ' %');
+    setzen('farbenNeutral', f.neutral, Math.round(f.neutral * 100) + ' %');
+    setzen('farbenGrundton', f.grundton, Math.round(f.grundton * 100) + ' %');
+    setzen('farbenZeichnung', f.zeichnung, Math.round(f.zeichnung * 100) + ' %');
+    setzen('farbenUmgebungHell', f.umgebungHelligkeit, f.umgebungHelligkeit.toFixed(2) + '×');
+    setzen('farbenGlasAnteil', f.glasAnteil, Math.round(f.glasAnteil * 100) + ' %');
+    const farbe = document.getElementById('farbenGlasFarbe');
+    if (farbe) farbe.value = f.glasFarbe;
+    const schema = document.getElementById('farbenSchema');
+    if (schema) schema.value = f.schema;
+    [['toggleWeissabgleich', f.an], ['toggleUmgebungslicht', f.umgebung],
+     ['toggleBauteilfarben', f.neutralAn], ['toggleGlasfarbe', f.glas]].forEach(([id, an]) => {
+      const box = document.getElementById(id);
+      if (box) box.checked = !!an;
+    });
+  },
+
   /** Schalter und Regler auf den Stand von licht.js bringen (Taste L, Neuaufbau). */
   lichtAnzeigeAuffrischen() {
     const l = window.BimViewer?.Licht?.stand?.();
@@ -1561,6 +1728,16 @@ const BimViewerUI = {
       <div class="section">
         <div class="section__label">${t('group.lighting')}</div>
         ${this.getLightingContent()}
+      </div>
+
+      <!--
+        Farben: der Weißabgleich gehört neben die Beleuchtung, nicht zur
+        Darstellungsstufe — er ist eine Aussage darüber, wie das Licht in der
+        Szene aussieht, keine über die Leistung der Grafikkarte.
+      -->
+      <div class="section">
+        <div class="section__label">${t('group.colors')}</div>
+        ${this.getFarbenContent()}
       </div>
 
       <div class="section">
@@ -1925,6 +2102,63 @@ const BimViewerUI = {
       const v = BimViewer.Licht?.aufhellungSetzen(e.target.value);
       lichtWert('lichtAufhellungValue', Math.round((v ?? 0) * 100) + ' %');
     });
+
+    // ── Farben (farben.js) ────────────────────────────────────────────
+    an('farbenSchema', 'change', (e) => BimViewer.Farben?.schema(e.target.value));
+    an('toggleWeissabgleich', 'change', (e) => BimViewer.Farben?.schalten(e.target.checked));
+    an('farbenKelvin', 'input', (e) => {
+      const v = BimViewer.Farben?.kelvinSetzen(e.target.value);
+      lichtWert('farbenKelvinValue', Math.round(v ?? 6500) + ' K');
+    });
+    an('farbenTint', 'input', (e) => {
+      const v = BimViewer.Farben?.tintSetzen(e.target.value);
+      lichtWert('farbenTintValue', (v ?? 0).toFixed(2));
+    });
+    an('farbenBelichtung', 'input', (e) => {
+      const v = BimViewer.Farben?.belichtungSetzen(e.target.value);
+      lichtWert('farbenBelichtungValue', (v ?? 1).toFixed(2));
+    });
+    an('farbenSaettigung', 'input', (e) => {
+      const v = BimViewer.Farben?.saettigungSetzen(e.target.value);
+      lichtWert('farbenSaettigungValue', Math.round((v ?? 1) * 100) + ' %');
+    });
+    an('farbenKontrast', 'input', (e) => {
+      const v = BimViewer.Farben?.kontrastSetzen(e.target.value);
+      lichtWert('farbenKontrastValue', (v ?? 1).toFixed(2));
+    });
+    an('farbenPipette', 'click', () => BimViewer.Farben?.graupunkt());
+    an('farbenZurueck', 'click', () => {
+      BimViewer.Farben?.zuruecksetzen();
+      this.farbenAnzeigeAuffrischen();
+    });
+    an('toggleUmgebungslicht', 'change', (e) => BimViewer.Farben?.umgebungSetzen(e.target.checked));
+    an('farbenUmgebung', 'input', (e) => {
+      const v = BimViewer.Farben?.umgebungSaettigungSetzen(e.target.value);
+      lichtWert('farbenUmgebungValue', Math.round((v ?? 1) * 100) + ' %');
+    });
+    an('toggleBauteilfarben', 'change', (e) => BimViewer.Farben?.neutralAnSetzen(e.target.checked));
+    an('farbenNeutral', 'input', (e) => {
+      const v = BimViewer.Farben?.neutralSetzen(e.target.value);
+      lichtWert('farbenNeutralValue', Math.round((v ?? 0) * 100) + ' %');
+    });
+    an('farbenGrundton', 'input', (e) => {
+      const v = BimViewer.Farben?.grundtonSetzen(e.target.value);
+      lichtWert('farbenGrundtonValue', Math.round((v ?? 0) * 100) + ' %');
+    });
+    an('farbenZeichnung', 'input', (e) => {
+      const v = BimViewer.Farben?.zeichnungSetzen(e.target.value);
+      lichtWert('farbenZeichnungValue', Math.round((v ?? 0) * 100) + ' %');
+    });
+    an('farbenUmgebungHell', 'input', (e) => {
+      const v = BimViewer.Farben?.umgebungHelligkeitSetzen(e.target.value);
+      lichtWert('farbenUmgebungHellValue', (v ?? 1).toFixed(2) + '×');
+    });
+    an('toggleGlasfarbe', 'change', (e) => BimViewer.Farben?.glasSetzen(e.target.checked));
+    an('farbenGlasAnteil', 'input', (e) => {
+      const v = BimViewer.Farben?.glasAnteilSetzen(e.target.value);
+      lichtWert('farbenGlasAnteilValue', Math.round((v ?? 0) * 100) + ' %');
+    });
+    an('farbenGlasFarbe', 'input', (e) => BimViewer.Farben?.glasFarbeSetzen(e.target.value));
 
     // ── Zugriffsschlüssel ─────────────────────────────────────────────
     an('ionTokenSave', 'click', () => {

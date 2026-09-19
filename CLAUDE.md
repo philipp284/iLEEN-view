@@ -191,6 +191,17 @@ Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
   rechnet in Augenkoordinaten — dort sitzt die Kamera im Ursprung und blickt
   entlang −Z, weshalb er ohne ein einziges je Bild nachgeführtes Uniform
   auskommt. Herleitung in der CLAUDE.md der Vollfassung.
+* **Der Farbstich ist hausgemacht, nicht Cesiums Schuld allein.** `farben.js`
+  fasst die drei Ursachen zusammen: die Typfarben aus `IFC_ENTITIES`
+  (`IfcCovering` beige, `IfcWindow` hellblau) — dagegen das Farbschema
+  `'neutral'` aus `IFC_FARBEN_NEUTRAL`; die dunkelbraune Eigenfarbe der
+  IFC-Materialien — dagegen ein **Grundton** im Materialshader, denn ein
+  entsättigtes Dunkelbraun ist nur ein dunkles Grau; und Cesiums gedachten
+  Erdboden `AVERAGE_EARTH_GROUND_COLOR` = `#717145` in der
+  Umgebungsbeleuchtung. **Falle:** `groundColor`, `saturation` und `brightness`
+  am `DynamicEnvironmentMapManager` sind Felder ohne Setzer — ohne
+  `manager.reset()` bleibt jede Änderung stumm. Herleitung und Messwerte in der
+  CLAUDE.md der Vollfassung.
 * **Bauteileigenschaften nur über `feature.getProperty()`**, nie über einen
   eigenen IFC-Parser, und nie exakt verglichen — Revit, Allplan, ArchiCAD und
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.
