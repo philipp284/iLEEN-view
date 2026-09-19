@@ -1106,6 +1106,47 @@
 }
 
 /* ==========================================================================
+   Höhenfenster der Punktwolken
+   ==========================================================================
+   Der Höhenmodus ist zum Messgerät geworden (siehe Kopf von pointcloud.js):
+   Bänder von wenigen Millimetern, durch die Platte geschoben. Das braucht
+   mehr als eine Zeile — aber nichts, was das System nicht schon hergibt;
+   hier steht nur, was die Zeilen zusammenhält, und die Farbleiste. */
+
+.hoehen-fenster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-2);
+}
+
+/* `display: flex` schlägt `hidden`, wenn man es nicht zurücknimmt. */
+.hoehen-fenster[hidden] { display: none; }
+
+/* Dieselbe Rampe wie im Shader: Blau unten, Rot oben. Wer sie ändert, muss
+   `hoehenBausteinBauen()` in pointcloud.js mitändern — eine Legende, die
+   etwas anderes zeigt als das Bild, ist schlimmer als keine. */
+.hoehen-legende__balken {
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid var(--ds-border, #2a2f39);
+  background: linear-gradient(to right,
+    hsl(240, 90%, 50%), hsl(180, 90%, 50%), hsl(120, 90%, 50%),
+    hsl(60, 90%, 50%), hsl(0, 90%, 50%));
+}
+
+.hoehen-legende__marken {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #666);
+}
+
+.hint--warn { color: var(--ds-warning, #e0a33e); }
+
+/* ==========================================================================
    Bewegungsempfindlichkeit
    ========================================================================== */
 

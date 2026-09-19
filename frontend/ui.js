@@ -905,7 +905,8 @@ const BimViewerUI = {
       maximumScreenSpaceError: 16,
       dynamicError: true,
       autoLeistung: true,
-      heightWindow: null
+      heightWindow: null,
+      heightOutside: 'klemmen'
     };
 
     return `
@@ -932,17 +933,52 @@ const BimViewerUI = {
           <option value="intensity"      ${s.colorMode === 'intensity'      ? 'selected' : ''}>Intensity</option>
           <option value="classification" ${s.colorMode === 'classification' ? 'selected' : ''}>Classification</option>
         </select>
-        <div id="pcHeightWindow" class="input-row" ${s.colorMode === 'height' ? '' : 'hidden'}>
-          <input type="number" id="pcHeightMin" class="input" step="0.1"
-                 title="${t('pc.heightFrom')}"
-                 value="${s.heightWindow ? s.heightWindow.min : ''}"
-                 onchange="BimViewer.setHeightWindow(this.value, document.getElementById('pcHeightMax').value)">
-          <input type="number" id="pcHeightMax" class="input" step="0.1"
-                 title="${t('pc.heightTo')}"
-                 value="${s.heightWindow ? s.heightWindow.max : ''}"
-                 onchange="BimViewer.setHeightWindow(document.getElementById('pcHeightMin').value, this.value)">
-          <button class="btn btn--sm btn--ghost" title="${t('pc.heightAuto')}"
-                  onclick="BimViewer.setHeightWindow()">auto</button>
+        <div id="pcHeightWindow" class="hoehen-fenster" ${s.colorMode === 'height' ? '' : 'hidden'}>
+          <div class="input-row">
+            <input type="number" id="pcHeightMin" class="input" step="0.0001"
+                   title="${t('pc.heightFrom')}"
+                   value="${s.heightWindow ? s.heightWindow.min : ''}"
+                   onchange="BimViewer.setHeightWindow(this.value, document.getElementById('pcHeightMax').value)">
+            <input type="number" id="pcHeightMax" class="input" step="0.0001"
+                   title="${t('pc.heightTo')}"
+                   value="${s.heightWindow ? s.heightWindow.max : ''}"
+                   onchange="BimViewer.setHeightWindow(document.getElementById('pcHeightMin').value, this.value)">
+            <button class="btn btn--sm btn--ghost" title="${t('pc.heightAuto')}"
+                    onclick="BimViewer.setHeightWindow()">auto</button>
+          </div>
+          <div class="slider-row">
+            <span class="slider-row__label" title="${t('pc.heightThicknessHint')}">${t('pc.heightThickness')}</span>
+            <input type="range" id="pcHeightDicke" class="slider" min="0" max="1000" step="1" value="1000"
+                   oninput="BimViewer.setHeightThicknessSlider(this.value)">
+            <span class="slider-row__value" id="pcHeightDickeValue">–</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-row__label" title="${t('pc.heightCenterHint')}">${t('pc.heightCenter')}</span>
+            <input type="range" id="pcHeightMitte" class="slider" min="0" max="1" step="any" value="0"
+                   oninput="BimViewer.setHeightCenter(this.value)">
+            <span class="slider-row__value" id="pcHeightMitteValue">–</span>
+          </div>
+          <div class="input-row">
+            <button class="btn btn--sm btn--ghost" title="${t('pc.heightStepDown')}"
+                    onclick="BimViewer.stepHeightWindow(-1)">◀</button>
+            <select id="pcHeightAussen" class="select" title="${t('pc.heightOutside')}"
+                    onchange="BimViewer.setHeightOutside(this.value)">
+              <option value="klemmen" ${s.heightOutside === 'klemmen' ? 'selected' : ''}>${t('pc.heightClamp')}</option>
+              <option value="aus"     ${s.heightOutside === 'aus'     ? 'selected' : ''}>${t('pc.heightHide')}</option>
+              <option value="grau"    ${s.heightOutside === 'grau'    ? 'selected' : ''}>${t('pc.heightGrey')}</option>
+            </select>
+            <button class="btn btn--sm btn--ghost" title="${t('pc.heightStepUp')}"
+                    onclick="BimViewer.stepHeightWindow(1)">▶</button>
+          </div>
+          <div class="hoehen-legende">
+            <div class="hoehen-legende__balken"></div>
+            <div class="hoehen-legende__marken">
+              <span id="pcHeightVon">–</span>
+              <span id="pcHeightBand">–</span>
+              <span id="pcHeightBis">–</span>
+            </div>
+          </div>
+          <div class="hint hint--warn" id="pcHeightGrob" hidden>${t('pc.heightCoarse')}</div>
         </div>
       </div>
 
@@ -1436,6 +1472,10 @@ const BimViewerUI = {
       ? BimViewer.lighting.stunde
       : jetzt.getHours() + jetzt.getMinutes() / 60;
     const format = (h) => String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.round((h % 1) * 60)).padStart(2, '0');
+    // licht.js kann fehlen (Prüfsteine laden einzelne Module); dann stehen die
+    // Regler auf den Werten, die das Modul selbst als Voreinstellung führt.
+    const licht = (window.BimViewer && BimViewer.Licht && BimViewer.Licht.stand())
+      || { lampe: false, staerke: 1.8, weite: 34, reichweite: 30, aufhellung: 0.15 };
     return `
       <div class="slider-row">
         <span class="slider-row__label">☀️ Uhrzeit</span>
@@ -1450,7 +1490,50 @@ const BimViewerUI = {
         </label>
       </div>
       <p class="hint">Sonnenstand des heutigen Tages am Ort der Kamera.</p>
+
+      <!--
+        Kunstlicht (licht.js). Die Sonne ist Cesiums einzige Lichtquelle; innen
+        kommt von ihr nichts an. Die Grundaufhellung hebt einen Sockel, unter
+        den kein Bauteil fällt, die Taschenlampe hängt einen Lichtkegel an die
+        Kamera. Beides läuft im Materialshader, nicht über scene.light.
+      -->
+      <div class="row">
+        <span class="row__label">🔦 Taschenlampe <span class="hint">Taste L</span></span>
+        <label class="switch">
+          <input type="checkbox" id="toggleTaschenlampe"${licht.lampe ? ' checked' : ''}>
+          <span class="switch__track"></span>
+        </label>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Stärke</span>
+        <input type="range" id="lichtStaerke" class="slider" min="0" max="4" step="0.1" value="${licht.staerke}">
+        <span id="lichtStaerkeValue" class="slider-row__value">${licht.staerke.toFixed(1)}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Kegel</span>
+        <input type="range" id="lichtWeite" class="slider" min="5" max="80" step="1" value="${licht.weite}">
+        <span id="lichtWeiteValue" class="slider-row__value">${Math.round(licht.weite)}°</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">Reichweite</span>
+        <input type="range" id="lichtReichweite" class="slider" min="2" max="120" step="1" value="${licht.reichweite}">
+        <span id="lichtReichweiteValue" class="slider-row__value">${Math.round(licht.reichweite)} m</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-row__label">💡 Grundaufhellung</span>
+        <input type="range" id="lichtAufhellung" class="slider" min="0" max="0.6" step="0.01" value="${licht.aufhellung}">
+        <span id="lichtAufhellungValue" class="slider-row__value">${Math.round(licht.aufhellung * 100)} %</span>
+      </div>
+      <p class="hint">Grundaufhellung gegen dunkle Innenräume; die Taschenlampe leuchtet dorthin, wohin die Kamera blickt.</p>
     `;
+  },
+
+  /** Schalter und Regler auf den Stand von licht.js bringen (Taste L, Neuaufbau). */
+  lichtAnzeigeAuffrischen() {
+    const l = window.BimViewer?.Licht?.stand?.();
+    if (!l) return;
+    const box = document.getElementById('toggleTaschenlampe');
+    if (box) box.checked = l.lampe;
   },
 
   getSettingsContent() {
@@ -1819,6 +1902,29 @@ const BimViewerUI = {
       if (wert) wert.textContent = String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.round((h % 1) * 60)).padStart(2, '0');
     });
     an('toggleShadows', 'change', (e) => BimViewer.setShadows(e.target.checked));
+
+    // ── Kunstlicht (licht.js) ─────────────────────────────────────────
+    const lichtWert = (id, text) => {
+      const w = document.getElementById(id);
+      if (w) w.textContent = text;
+    };
+    an('toggleTaschenlampe', 'change', (e) => BimViewer.Licht?.taschenlampe(e.target.checked));
+    an('lichtStaerke', 'input', (e) => {
+      const v = BimViewer.Licht?.staerkeSetzen(e.target.value);
+      lichtWert('lichtStaerkeValue', (v ?? 0).toFixed(1));
+    });
+    an('lichtWeite', 'input', (e) => {
+      const v = BimViewer.Licht?.weiteSetzen(e.target.value);
+      lichtWert('lichtWeiteValue', Math.round(v ?? 0) + '°');
+    });
+    an('lichtReichweite', 'input', (e) => {
+      const v = BimViewer.Licht?.reichweiteSetzen(e.target.value);
+      lichtWert('lichtReichweiteValue', Math.round(v ?? 0) + ' m');
+    });
+    an('lichtAufhellung', 'input', (e) => {
+      const v = BimViewer.Licht?.aufhellungSetzen(e.target.value);
+      lichtWert('lichtAufhellungValue', Math.round((v ?? 0) * 100) + ' %');
+    });
 
     // ── Zugriffsschlüssel ─────────────────────────────────────────────
     an('ionTokenSave', 'click', () => {

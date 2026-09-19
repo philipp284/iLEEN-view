@@ -434,7 +434,11 @@ const BimViewer = {
     let gelaende;
     try {
       gelaende = token
-        ? await Cesium.createWorldTerrainAsync({ requestVertexNormals: true })
+        // `requestWaterMask`: ohne die Maske weiß der Globus nicht, wo Wasser
+        // liegt, und `showWaterEffect` läuft ins Leere — Seen und Meer bleiben
+        // eine matte Textur. Mit ihr und `globe.enableLighting` (weiter unten)
+        // zeichnet Cesium Wellen und den Sonnenglanz auf dem Wasser.
+        ? await Cesium.createWorldTerrainAsync({ requestVertexNormals: true, requestWaterMask: true })
         : new Cesium.EllipsoidTerrainProvider();
     } catch (fehler) {
       console.warn('Weltgelände nicht verfügbar, weiter ohne Gelände:', fehler.message);
@@ -477,6 +481,10 @@ const BimViewer = {
 
     scene.globe.depthTestAgainstTerrain = true;
     scene.globe.enableLighting = true;
+    // Wellen und Sonnenglanz auf Seen und Meer. Voreinstellung von Cesium,
+    // hier ausdrücklich gesetzt, damit die Zeile neben der Wassermaske steht,
+    // von der sie abhängt (siehe `createWorldTerrainAsync` oben).
+    scene.globe.showWaterEffect = true;
     scene.highDynamicRange = true;
     scene.fog.enabled = true;
     scene.postProcessStages.fxaa.enabled = true;

@@ -172,8 +172,16 @@ Die ausführliche Herleitung jedes Moduls steht in der CLAUDE.md der
 Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
 
 * **`tileset.customShader` wird nie direkt gesetzt**, immer über
-  `BimViewer.ShaderVerbund`. Rückseitenschnitt, Explosion, Schnittbox und
-  Bildprojektion wollen denselben einen Steckplatz.
+  `BimViewer.ShaderVerbund`. Rückseitenschnitt, Explosion, Schnittbox,
+  Bildprojektion und das Kunstlicht wollen denselben einen Steckplatz.
+* **Licht kommt bei Cesium nur von der Sonne** — `scene.light` ist ein
+  einzelner Steckplatz, Schattenkarten gibt es nur für ihn, und innen kommt
+  von ihr nichts an. `licht.js` legt deshalb Grundaufhellung und Taschenlampe
+  (Taste **L**) im Materialshader nach, über `material.emissive`: `diffuse` ist
+  die Albedo und macht eine unbeleuchtete Wand nicht heller. Der Lichtkegel
+  rechnet in Augenkoordinaten — dort sitzt die Kamera im Ursprung und blickt
+  entlang −Z, weshalb er ohne ein einziges je Bild nachgeführtes Uniform
+  auskommt. Herleitung in der CLAUDE.md der Vollfassung.
 * **Bauteileigenschaften nur über `feature.getProperty()`**, nie über einen
   eigenen IFC-Parser, und nie exakt verglichen — Revit, Allplan, ArchiCAD und
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.
@@ -225,6 +233,9 @@ for f in tests/*/test-*.js; do node "$f"; done
 npx vite --port 5190 &
 npm i --no-save puppeteer-core
 node tests/start/test-start.mjs
+
+# 4 · Das Kunstlicht — braucht denselben Dev-Server
+VIEWER_URL=http://localhost:5190/ node tests/licht/test-browser.mjs
 ```
 
 `tests/trennung/test-trennung.mjs` liest nur Dateinamen und `index.html`: liegt

@@ -53,7 +53,7 @@ const ERWARTET = [
 
 // Dieselbe Frage für die Module, die sich unter `BimViewer` anmelden statt
 // unter `window`.
-const ERWARTET_BV = ['Aufmass', 'SectionBox', 'Explosion', 'Bildebenen', 'Untergrund'];
+const ERWARTET_BV = ['Aufmass', 'SectionBox', 'Explosion', 'Bildebenen', 'Untergrund', 'Licht'];
 
 // Und die Gegenprobe: was hier steht, darf es NICHT geben. Ohne sie fiele
 // nicht auf, wenn ein Analysewerkzeug über eine vergessene Einbindung

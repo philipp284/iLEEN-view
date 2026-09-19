@@ -27,6 +27,7 @@ ohne Anmeldung, ohne Konto — ein Ordner statischer Dateien und ein Browser.
 | **Navigation** | Gehen und Fliegen mit WASD, stufenlose Geschwindigkeitsrampe, Fadenkreuz mit gefangenem Zeiger, Kompass mit Höhe über NHN und über Grund. |
 | **Messen** | Ein Modus für alles: ein Klick gibt eine Koordinate, zwei eine Strecke, drei und mehr Fläche, Umfang und Volumen. Fang auf Ecke, Kante, Silhouette und Raster. Wählbar, worauf gemessen wird — Modell, Splat oder Gelände. |
 | **Topografisches Aufmaß** | Volumen unter einem Polygon aus den Punkten selbst, dazu eine Höhenschichtenkarte mit Schummerung. |
+| **Punktwolken** | Detailstufe, Punktgröße und Eye-Dome-Lighting; der Höhenmodus ist ein Messgerät: ein Band von wenigen Millimetern, über den ganzen Farbraum gespreizt, mit Dicke und Mitte geführt und bandweise durch eine Platte geschoben. |
 | **Schneiden** | Schnittbox um ein angeklicktes Bauteil, sechs Flächengriffe, wahlweise Inhalt freistellen oder ausstanzen. |
 | **Bauteile** | Filter über die IFC-Klassen, Eigenschaften nach Fachrolle sortiert, Einzelne ausblenden und isolieren. |
 | **Notizen** | Notizen an Bauteil, Splat oder freiem Punkt, im Modell verankert beschriftet, Export als BCF 2.1. |
@@ -95,7 +96,7 @@ i18n.js            Sprachumschaltung (muss zuerst laden)
 core.js            Viewer, Modellverwaltung, das BimViewer-Objekt
 shader-verbund.js  mehrere Werkzeuge an EINEM customShader
 features.js        IFC-Filter, Auswahl, Eigenschaften
-pointcloud.js      Detailstufe, Punktgröße, Eye-Dome-Lighting, Farbmodus
+pointcloud.js      Detailstufe, Punktgröße, Eye-Dome-Lighting, Höhenband
 splat-pick.js      Anklicken von Gaussian Splats (die schreiben keine Tiefe)
 aufmass*.js        Messen samt Fang
 volume-topo.js     topografisches Aufmaß
