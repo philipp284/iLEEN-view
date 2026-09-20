@@ -1214,34 +1214,15 @@
     }, 0);
   });
 
-  // ── Einstieg aus der Modell-Liste ──────────────────────────────────────
-
-  BimViewer.injectSectionBoxButton = function (assetId) {
-    var karte = document.getElementById('asset_' + assetId.toString());
-    if (!karte) return;
-    var leiste = karte.querySelector('.modern-asset-controls');
-    if (!leiste || document.getElementById('sboxBtn_' + assetId)) return;
-
-    var btn = document.createElement('button');
-    btn.id = 'sboxBtn_' + assetId;
-    btn.className = 'modern-icon-btn';
-    btn.title = 'Schnittbox um ein Bauteil dieses Modells';
-    btn.textContent = '📦';
-    btn.onclick = function () {
-      if (BimViewerUI && BimViewerUI.activateSection) BimViewerUI.activateSection('tools');
-      if (BimViewerUI && BimViewerUI.showToolsTab) BimViewerUI.showToolsTab('sbox');
-      BimViewer.SectionBox.auswahlStarten();
-    };
-    leiste.insertBefore(btn, leiste.lastElementChild);
-  };
-
-  if (window.BimViewerUI && typeof BimViewerUI.createAssetControls === 'function') {
-    var urspruenglich = BimViewerUI.createAssetControls.bind(BimViewerUI);
-    BimViewerUI.createAssetControls = function (assetId) {
-      urspruenglich(assetId);
-      BimViewer.injectSectionBoxButton(assetId);
-    };
-  }
+  // ── Kein Einstieg aus der Modell-Liste ─────────────────────────────
+  //
+  // Früher hing an jeder Modellzeile ein 📦, das den Reiter öffnete und die
+  // Bauteilauswahl startete. Der Weg war doppelt — derselbe Knopf steht oben
+  // im Reiter selbst — und die Modellzeile trug am Ende fünf Symbole
+  // nebeneinander.
+  // Die Schnittbox hängt ohnehin nicht an einem Modell, sondern an dem
+  // Bauteil, das man anklickt; in der Zeile eines einzelnen Modells zu stehen
+  // war schon deshalb irreführend.
 
   // Ein entladenes Modell darf keine Box mehr tragen — ihre Ebenen zeigten
   // sonst auf ein Tileset, das Cesium bereits zerstört hat.

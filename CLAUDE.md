@@ -202,6 +202,16 @@ Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
   am `DynamicEnvironmentMapManager` sind Felder ohne Setzer — ohne
   `manager.reset()` bleibt jede Änderung stumm. Herleitung und Messwerte in der
   CLAUDE.md der Vollfassung.
+* **Der Reiter „Schnitte“ gehört ui.js, sein Inhalt den Modulen.**
+  `schnitte-xyz.js` setzt die drei Achsschnitte (Ost/Nord/Höhe durch **alle**
+  Modelle) davor, `ui-new-features-extension.js` hängt die Google-Freistellung
+  an — beide, indem sie `BimViewerUI.getDrawingContent` umschließen. Die
+  Ladereihenfolge in `index.html` bestimmt damit die Reihenfolge im Panel.
+  Der Einzelbauteil-Ausschnitt bleibt die Schnittbox im Reiter daneben.
+* **In der Modellzeile stehen nur 🎯, ✥ und ✕.** Notizen, Baustufen und
+  Schnittbox hatten dort einen zweiten Einstieg; seit 2026-09-19 sind sie
+  heraus. Baustufen gibt es in dieser Fassung ohnehin nicht (`sequencing.js`
+  liegt nur in der Vollfassung) — der Knopf zeigte hier ins Leere.
 * **Bauteileigenschaften nur über `feature.getProperty()`**, nie über einen
   eigenen IFC-Parser, und nie exakt verglichen — Revit, Allplan, ArchiCAD und
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.

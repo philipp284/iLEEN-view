@@ -1104,9 +1104,12 @@ const BimViewerUI = {
   },
 
   /**
-   * Reiter „Schnitte". Ein Schnitt durch das Modell ist die Schnittbox
-   * (eigener Reiter); hier stehen die Ausschnitte der Weltkulisse.
-   * ui-new-features-extension.js hängt die Google-Freistellung an.
+   * Reiter „Schnitte".
+   *
+   * Der Reiter gehört ui.js, sein Inhalt kommt aus den Modulen: `schnitte-xyz.js`
+   * setzt die drei Achsschnitte davor, `ui-new-features-extension.js` hängt die
+   * Google-Freistellung an. Hier steht nur der Verweis dazwischen — auf die
+   * Schnittbox (eigener Reiter) für den Ausschnitt um ein einzelnes Bauteil.
    */
   getDrawingContent() {
     return `
@@ -2261,15 +2264,15 @@ const BimViewerUI = {
 
     const splat = assetData.tileset && assetData.tileset._isGaussianSplat;
     const symbol = assetData.isPointCloud ? '☁️' : splat ? '✨' : assetData.type === 'BACKEND' ? '🏢' : '🌐';
-    // Baustufen gibt es nur an Bauteilen — eine Punktwolke hat keine.
-    const stufen = (!assetData.isPointCloud && !splat)
-      ? `<button class="modern-icon-btn" data-seq-asset="${assetId}"
-                 onclick="BimViewer.toggleSequencing('${assetId}')"
-                 title="Baustufen (4D über das stage-Merkmal)">🧱</button>`
-      : '';
 
-    // Ein Eintrag = eine Zeile. Alles zum Ausrichten (Deckkraft, Verschieben,
-    // Drehen) liegt im Flyout, das seitlich neben dem Panel aufgeht.
+    // Ein Eintrag = eine Zeile, und in der Zeile steht nur, was es **nur
+    // hier** gibt: hinfliegen, ausrichten, entfernen. Notizen (eigenes
+    // Panel „Notizen & Prüfung“), Baustufen (Bauzeit, Spalte „Baustufen“)
+    // und die Schnittbox (Werkzeuge › Reiter „Schnittbox“) hatten hier
+    // jeweils einen zweiten Einstieg — dieselbe Sache an zwei Stellen, und
+    // die Zeile wurde mit jedem Symbol enger. Alles zum Ausrichten
+    // (Deckkraft, Verschieben, Drehen) liegt im Flyout, das seitlich neben
+    // dem Panel aufgeht.
     const assetDiv = document.createElement('div');
     assetDiv.className = 'modern-asset-item';
     assetDiv.id = `asset_${assetId}`;
@@ -2282,8 +2285,6 @@ const BimViewerUI = {
         </label>
         <div class="modern-asset-controls">
           <button class="modern-icon-btn" onclick="BimViewer.zoomToAsset('${assetId}')" title="${t('action.flyTo')}">🎯</button>
-          <button class="modern-icon-btn" data-tag-asset="${assetId}" onclick="typeof Tags !== 'undefined' && Tags.toggleMode('${assetId}')" title="${t('asset.tagMode')}">🏷️</button>
-          ${stufen}
           <button class="modern-icon-btn" data-transform-asset="${assetId}"
                   onclick="BimViewerUI.toggleAssetTransform('${assetId}', this)"
                   title="${t('asset.transform')}">✥</button>
