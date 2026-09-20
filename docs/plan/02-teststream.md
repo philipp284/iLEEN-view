@@ -88,6 +88,10 @@ sensor_id, bezeichnung, messgroesse, einheit, intervall_s, zone_id,
 anker_guid, brick_klasse, bereich_min, bereich_max, einbau, hersteller, modell
 ```
 
+`einbau` ist das **Einbaudatum** als ISO-Datum (der Einbauort steckt in
+`zone_id`). Hersteller- und Modellnamen sind frei erfunden und bewusst
+generisch, damit niemand echte Produktdaten unterstellt.
+
 24 Zeilen:
 
 | Gruppe | Anzahl | Messgröße | Einheit | Intervall | Zonen | Brick-Klasse |
@@ -121,7 +125,17 @@ Jede Messung ist eine Zeile JSON (JSON Lines):
  "wert":22.4,"einheit":"°C","status":"ok"}
 ```
 
-`status` ist eines von `ok`, `veraltet`, `ausfall`, `ausreisser`.
+`status` ist eines von `ok`, `veraltet`, `ausreisser`. Die vierte Vokabel
+`ausfall` kommt in den Daten **nicht** vor: ein ausgefallener Sensor sendet
+laut §4 gar keine Zeile, es gibt also nichts zu kennzeichnen. Sie bleibt für
+die Frontend-Seite, die aus dem Ausbleiben von Zeilen selbst auf Ausfall
+schließen muss.
+
+**Ein Wert mit `status: "ok"` liegt immer innerhalb von `bereich_min` und
+`bereich_max` seines Sensors.** Sonst wäre die Unterscheidung zwischen gesundem
+Wert und Ausreißer wertlos und ein Schwellwertalarm spräche auf den
+Normalbetrieb an. Die Bereiche in `sensoren.csv` sind deshalb Fühlerbereiche,
+keine Komfortbereiche — ein Raumfühler misst 5…40 °C.
 
 ### Die Tagesgänge
 
@@ -146,9 +160,16 @@ Anzeige etwas Lebendiges zeigt und Schwellwerte ansprechen.
 * **Wirkleistung je Geschoss** — Grundlast (UG 12 kW, EG 9, OG-1 8, OG-2 7,
   OG-3 6, Dach 2), werktags 07:00–19:00 Faktor 2,5, Wochenende 1,0, Rauschen
   ±8 %.
-* **Zählerstand gesamt** — monotones Integral der Summe aller Wirkleistungen
-  minus PV-Erzeugung, Startwert frei wählbar. **Monoton steigend, nie
-  fallend** — das ist prüfbar und deshalb ein Akzeptanzkriterium.
+* **Zählerstand gesamt** — Integral von `max(0, Verbrauch − PV-Erzeugung)`,
+  Startwert frei wählbar. **Monoton steigend, nie fallend.**
+
+  > **Berichtigt am 2026-09-20.** Hier stand zuerst „Integral der Summe aller
+  > Wirkleistungen minus PV-Erzeugung" **und** „monoton steigend". Beides
+  > zugleich geht nicht: am Wochenende liegt die PV-Leistung (bis 77 kW) über
+  > der Grundlast (44 kW), die Differenz wird negativ. Ein **Bezugszähler**
+  > läuft physikalisch nicht rückwärts; die Einspeisung gehört auf einen
+  > zweiten Zähler. Der Widerspruch stammt aus dieser Definition, nicht aus
+  > der Umsetzung — aufgefallen ist er beim Bau (Issue #2, Annahme 4).
 
 ### Störungen, absichtlich eingebaut
 
@@ -175,6 +196,10 @@ python3 scripts/sensor_demo.py --live --raffer 60
 
 `--raffer 60` bedeutet: eine Sekunde Echtzeit entspricht einer Minute
 Modellzeit, damit sich ein Tagesgang in zwei Minuten ansehen lässt.
+
+**Der Rückblick endet an der letzten Mitternacht UTC**, nicht „jetzt" — sonst
+trügen zwei Läufe kurz nacheinander verschiedene Zeitstempel und die
+Reproduzierbarkeit wäre nicht prüfbar. `--ende` setzt einen anderen Bezugspunkt.
 
 **`--seed` macht den Lauf reproduzierbar.** Zweimal derselbe Seed und dieselbe
 Zeitspanne müssen Byte für Byte dieselbe Ausgabe liefern — sonst ist kein
