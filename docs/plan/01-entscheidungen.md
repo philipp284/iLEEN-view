@@ -49,18 +49,73 @@ Das betraf jeden Commit in jedem Repo. Bereinigt mit
 
 ---
 
-## Noch offen
+## Nachgetragen am 2026-09-20
 
-**E6 · Auth.** iLEENs Frontend hat keine Anmeldung, gaeco hängt an Keycloak.
-Für den Kafka-Weg gleichgültig, für REST-Zugriffe auf `:5024` nicht.
-Blockiert Arbeitspaket 1 und 2, nicht die Pakete 3–7.
+**E6 · Auth kommt von gaeco.** Keycloak ist die Instanz, iLEEN baut keine eigene
+Anmeldung. Folgen, die in den Paketen auftauchen werden:
 
-**E7 · Guideline für Sensoren.** Brick liegt in gaeco als Guideline bereit
-(inkl. `sosa:`-Präfix und der vollen `brick:*_Sensor`-Hierarchie); Alternative
-wäre eine eigene iLEEN-Guideline plus Link-TTL nach dem Muster
-`demodata/gaeco/gaeco.ttl`. Am Code nicht entscheidbar — nur am laufenden
-Stack. Blockiert Arbeitspaket 1 und 2.
+* Der `/sensoren`-Zweig bleibt vorerst offen (Paket 3 hat „keine
+  Authentifizierung" ausdrücklich in der Abgrenzung). Die Absicherung kommt als
+  eigenes Paket, wenn der Stack läuft — nicht verstreut in jede Route.
+* Das Frontend hat heute keine Anmeldung und kann auch keine bekommen, ohne
+  Keycloak einzubinden. Der Weg, der in `GAECO-INTEGRATION.md` §6 schon skizziert
+  ist: iLEEN als dünner React-Remote im Plugin Host, der den Viewer im `<iframe>`
+  hostet, das Token per `postMessage` hineinreicht und Auswahl-Events herausgibt.
+* **Für die Pakete 3–7 ändert das nichts.** Sie laufen gegen das eigene Backend
+  auf `:8100`, und dort ist niemand anzumelden.
 
-Weil E6 und E7 offen sind, beginnt die Umsetzung **nicht** mit Paket 1
-(gaeco-Stack), sondern mit dem Teststream: er hängt an keiner der beiden
-Fragen.
+**E7 · Sensoren werden mit Brick beschrieben, nicht mit einer eigenen Guideline.**
+Begründung:
+
+1. Brick liegt in gaeco **fertig** als Guideline und Ontologie
+   (`demodata/Brick/Brick+patches.guideline`, 63.970 Zeilen TTL) und bringt
+   `sosa:` samt der vollen `brick:*_Sensor`-Hierarchie mit. Was es gibt, wird
+   nicht nachgebaut.
+2. Das Sensorregister aus #2 trägt bereits Brick-Klassennamen in der Spalte
+   `brick_klasse` — die Entscheidung ist dort vorweggenommen und kostet jetzt
+   nichts.
+3. Eine eigene iLEEN-Guideline müsste dieselben Begriffe zweite Male einführen
+   und würde die Frage „welcher Sensortyp ist das" doppelt beantworten.
+
+Was **zusätzlich** gebraucht wird, ist nur die Verbindung zwischen Brick-Sensor
+und IFC-Bauteil. gaeco koppelt Ontologien nicht über gemeinsame IDs, sondern über
+eine Link-Ontologie (`demodata/gaeco/gaeco.ttl`, 14 Zeilen). Für iLEEN also eine
+ebenso schmale `ileen-links.ttl`, die genau zwei Relationen erlaubt:
+
+```turtle
+sosa:hasFeatureOfInterest a owl:ObjectProperty ;
+    rdfs:domain brick:Sensor ;
+    rdfs:range  ifc:IfcProduct .
+
+sosa:observes a owl:ObjectProperty ;
+    rdfs:domain brick:Sensor ;
+    rdfs:range  sosa:ObservableProperty .
+```
+
+Damit ist der Grundsatz „nur statische SOSA/SSN-Verknüpfungen ins RDF" wörtlich
+erfüllt: **welcher** Sensor **woran** hängt und **was** er misst steht im Graphen,
+**was er gemessen hat** steht in der Zeitreihe und kommt dort nie hin.
+
+> Beides bleibt eine Annahme, bis der Stack läuft: ob die Brick-Guideline geladen
+> ist, unter welchen Klassifikations-URIs sie ihre Klassen führt, und ob der
+> InstanceService die beiden Relationen annimmt. Das ist der Inhalt von
+> Arbeitspaket 1 — jetzt nicht mehr blockiert, sondern nur noch unerledigt.
+
+## Reihenfolge geändert: früher etwas sehen
+
+Die ursprüngliche Kette 3 → 4 → 5 → 6 führt dazu, dass im Viewer **drei Pakete
+lang nichts zu sehen** ist. Deshalb rückt die Darstellung vor:
+
+| neu | Paket | warum |
+|---|---|---|
+| 1. | 3 · Zeitreihe (#3) | liefert die Werte über HTTP |
+| 2. | 5 · Frontend-Store | **Quelle austauschbar**: erst HTTP-Abruf, später WebSocket |
+| 3. | 6 · Darstellung über `Cesium3DTileStyle` | **ab hier ist es im Viewer sichtbar** |
+| 4. | 4 · WebSocket | wird in den Store eingesteckt, ohne ihn umzubauen |
+| 5. | 7 · Bedienbereich links | Sensorliste, Schwellwerte, Alarm |
+| 6. | 1 · gaeco-Stack, 2 · Exporter | sobald der Stack läuft |
+
+Der Preis dafür ist eine Anforderung an Paket 5: **der Store bekommt die Werte
+über eine Quelle, die er nicht kennt** — eine Funktion, die Werte hereinreicht.
+Ob dahinter ein `fetch`-Aufruf alle zehn Sekunden steht oder ein WebSocket, darf
+der Store nicht merken. Ohne diese Trennung wäre der Vorzug ein Umbau später.
