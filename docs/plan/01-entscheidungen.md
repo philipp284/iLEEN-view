@@ -119,3 +119,65 @@ Der Preis dafür ist eine Anforderung an Paket 5: **der Store bekommt die Werte
 über eine Quelle, die er nicht kennt** — eine Funktion, die Werte hereinreicht.
 Ob dahinter ein `fetch`-Aufruf alle zehn Sekunden steht oder ein WebSocket, darf
 der Store nicht merken. Ohne diese Trennung wäre der Vorzug ein Umbau später.
+
+---
+
+## E8 · Der Sensorstrom läuft über gaecos Kafka (2026-09-21)
+
+**Beschlossen von Philipp.** Die Messwerte kommen nicht mehr per HTTP ins Backend,
+sondern über den Kafka-Broker, den gaeco bereitstellt. iLEEN hört zu und legt ab.
+
+### Zwei Ströme, nicht einer
+
+Das ist die einzige Stelle, an der ich Einspruch anmelde, und zwar einen kleinen:
+**Messwerte gehen nicht durch den `gaecoImport`-Weg.** Das `GraphDataModel`-Schema
+beschreibt Instanzen eines Graphen; ein Minutenwert ist keine Instanz. Ginge er
+diesen Weg, wüchse der ArcadeDB-Graph um 34.000 Knoten pro Tag und Sensor, und der
+Grundsatz „nur statische SOSA/SSN-Verknüpfungen ins RDF" wäre aufgegeben.
+
+Kafka bleibt trotzdem der Transport — gaeco stellt ihn bereit, iLEEN benutzt ihn.
+Nur eben mit zwei getrennten Strömen auf demselben Broker:
+
+| Strom | Topic | Inhalt | Ziel | wann |
+|---|---|---|---|---|
+| **statisch** | `ekkodale.gaeco.instance.public.<useCaseId>.gaecoImport` | Sensor als Brick-Instanz, `sosa:hasFeatureOfInterest` auf das IFC-Bauteil | gaeco-Graph | einmalig je Sensor |
+| **dynamisch** | `ileen.sensor.messwerte` | die Messwerte selbst, eine Zeile JSON je Wert | iLEENs Zeitreihe | fortlaufend |
+
+Der erste Strom ist Arbeitspaket 2 und bleibt, wo er war. Der zweite ist neu und
+ersetzt den HTTP-Weg als **Regelbetrieb**; `POST /sensoren/messwerte` bleibt für
+Einspeisungen aus Dateien und für die Prüfsteine.
+
+### Am laufenden Broker erprobt (2026-09-21)
+
+Nicht aus der Doku geschlossen — durchgespielt:
+
+```
+docker compose up -d gaeco-broker          # der einzige Dienst, den es dafür braucht
+kafka-topics.sh --create --topic ileen.sensor.messwerte --partitions 1 --replication-factor 1
+echo '{"sensor":"PROBE",…}' | kafka-console-producer.sh --topic ileen.sensor.messwerte
+kafka-console-consumer.sh --topic ileen.sensor.messwerte --from-beginning --max-messages 1
+  → Processed a total of 1 messages
+```
+
+Befunde dabei:
+
+* **Der Broker genügt allein.** Keycloak, InstanceService und die übrigen Dienste
+  müssen dafür nicht laufen — und tun es gerade auch nicht (`Exited (255)`,
+  Keycloak in einer Neustartschleife). Für den Messwertstrom ist das gleichgültig;
+  für Arbeitspaket 2 nicht.
+* **Adressen:** von außen `localhost:9092`, im Netz `gaeco-broker:29092`.
+* **Die Netze sind getrennt.** `cesium-api` hängt in `ileen_default`, der Broker in
+  `gaeco-local`. Der Container erreicht ihn erst, wenn iLEENs Compose das Netz als
+  `external` dazunimmt — oder ersatzweise über `host.docker.internal:9092`.
+* Kafka warnt bei Topics, die Punkt **und** Unterstrich mischen. `ileen.sensor.messwerte`
+  hat nur Punkte.
+
+### Was sich an der Reihenfolge ändert
+
+Der WebSocket (Paket 4) wird dadurch **wertvoller, nicht überflüssig**: Kafka bringt
+die Werte ins Backend, der WebSocket bringt sie von dort in den Browser. Erst beide
+zusammen ergeben einen durchgehenden Strom von der Quelle bis ins Bild.
+
+Neu eingeschoben wird Paket **3b · Kafka-Anbindung** — Ausgang im Generator, Eingang
+im Backend. Es steht vor Paket 4, weil ein WebSocket ohne fließende Quelle nichts zu
+verteilen hat.
