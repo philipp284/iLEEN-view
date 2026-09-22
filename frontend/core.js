@@ -710,10 +710,10 @@ const BimViewer = {
       const KNOWN_SPLAT_ASSETS = new Set([4587934, 4574084]);
       const isSplatTileset = KNOWN_SPLAT_ASSETS.has(Number(assetId));
 
-      // Splat-Tilesets: Minimallader (NICHTS außer fromIonAssetId).
-      // fromUrl mit Optionen + nachträgliches Patchen erzeugt Spike-Artefakte.
+      // Splat-Tilesets: nur die Splat-Optionen (splatLoadOptions), nicht die der
+      // Meshes — deren LOD-Skip-Optionen erzeugen bei Splats Spike-Artefakte.
       const tileset = isSplatTileset
-        ? await Cesium.Cesium3DTileset.fromIonAssetId(assetId)
+        ? await Cesium.Cesium3DTileset.fromIonAssetId(assetId, this.splatLoadOptions())
         : await Cesium.Cesium3DTileset.fromUrl(await Cesium.IonResource.fromAssetId(assetId),
                                                 this.meshLoadOptions());
 
@@ -723,6 +723,7 @@ const BimViewer = {
       }
 
       this.viewer.scene.primitives.add(tileset);
+      if (tileset._isGaussianSplat) this._splatReglerStarten();
 
       // Splat-Tilesets: KEINE Beleuchtungs- oder Darstellungseingriffe.
       // Splats bringen ihre eigene Spherical-Harmonics-Beleuchtung mit;
@@ -868,20 +869,49 @@ const BimViewer = {
     }
   },
 
+  /**
+   * Ladeoptionen für Gaussian-Splat-Tilesets — gemessen in #8
+   * (frontend/tests/splat-bench/ergebnisse/VERGLEICH.md).
+   *
+   * Absichtlich fast leer. Cesiums Voreinstellungen (dynamicScreenSpaceError,
+   * foveatedScreenSpaceError, 512 MB Cache) waren für Splats nicht messbar zu
+   * verbessern; `maximumScreenSpaceError` führt splat-leistung.js nach der
+   * Bildrate. Was hier steht, ist der Startwert davor.
+   */
+  splatLoadOptions() {
+    return { maximumScreenSpaceError: 16 };
+  },
+
+  /**
+   * Bildratenregler für Splats einschalten, sobald das erste Splat-Tileset in
+   * der Szene liegt (splat-leistung.js). Er dreht maximumScreenSpaceError der
+   * Splat-Tilesets zwischen 8 und 64 und erst danach resolutionScale, mit
+   * Hysterese; ohne Splats gibt er alles zurück. Abschalten:
+   * `localStorage.ileen_splat_regler = 'aus'` oder `SplatLeistung.aus()`.
+   */
+  _splatReglerStarten() {
+    if (!window.SplatLeistung || SplatLeistung.aktiv()) return;
+    let schalter = 'an';
+    try { schalter = localStorage.getItem('ileen_splat_regler') || 'an'; } catch (e) { /* privat */ }
+    if (schalter === 'aus') return;
+    SplatLeistung.an(this.viewer, { zielFps: 60 });
+  },
+
   /** Lädt ein Tileset mit dem Lader, der zu seiner Art passt. */
   async _backendTilesetLaden(tilesetUrl) {
     const { isSplat: isSplatTileset, isPointCloud: isPointCloudPre } = await this.detectTilesetKind(tilesetUrl);
 
-    // Splat-Tilesets: NUR fromUrl ohne Optionen. Die aggressiven
-    // LOD-Skip-Optionen erzeugen bei Gaussian Splats Spike-Artefakte — grobe
-    // Octree-Knoten mit großskalierten Splats bleiben sichtbar stehen,
-    // während feinere Kind-Tiles nachladen.
+    // Splat-Tilesets: fromUrl mit den Optionen aus splatLoadOptions(), die
+    // aggressiven LOD-Skip-Optionen der Meshes bleiben draußen — sie erzeugen
+    // bei Gaussian Splats Spike-Artefakte: grobe Octree-Knoten mit
+    // großskalierten Splats bleiben sichtbar stehen, während feinere
+    // Kind-Tiles nachladen.
     //
     // Punktwolken bekommen denselben Minimal-Loader (siehe detectTilesetKind()):
     // derselbe aggressive Optionssatz lässt ein PNTS-Tileset komplett leer
     // bleiben, obwohl die Kacheln laut Netzwerk-Tab korrekt laden.
     const tileset = isSplatTileset
-      ? await Cesium.Cesium3DTileset.fromUrl(tilesetUrl)
+      ? await Cesium.Cesium3DTileset.fromUrl(tilesetUrl, this.splatLoadOptions())
       : isPointCloudPre
       ? await Cesium.Cesium3DTileset.fromUrl(tilesetUrl,
           typeof this.pointCloudLoadOptions === 'function'
@@ -924,6 +954,7 @@ const BimViewer = {
       }
 
       this.viewer.scene.primitives.add(tileset);
+      if (tileset._isGaussianSplat) this._splatReglerStarten();
 
       // Splat-Tilesets bringen eigene Spherical-Harmonics-Beleuchtung mit;
       // Schatten und Darstellungsstufen drüberzulegen erzeugt Render-Artefakte.
@@ -1003,6 +1034,7 @@ const BimViewer = {
       }
 
       this.viewer.scene.primitives.add(tileset);
+      if (tileset._isGaussianSplat) this._splatReglerStarten();
 
       if (!tileset._isGaussianSplat) {
         this.enableTilesetLighting(tileset);
@@ -1382,6 +1414,8 @@ const BimViewer = {
     scene.postProcessStages.fxaa.enabled = !!einstellungen.enableFXAA;
     if ('msaaSamples' in scene) scene.msaaSamples = einstellungen.enableMSAA ? 4 : 1;
     viewer.resolutionScale = einstellungen.resolutionScale || 1.0;
+    // Der Splat-Regler darf nur wegnehmen, was die Stufe hergibt.
+    if (window.SplatLeistung) SplatLeistung.aufloesungBasis(viewer.resolutionScale);
 
     viewer.shadows = !!einstellungen.shadows;
     viewer.shadowMap.enabled = !!einstellungen.shadows;
