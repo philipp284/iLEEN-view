@@ -99,6 +99,13 @@
        Unmittelbar NACH core.js — core.js legt `window.BimViewer` erst an,
        und der Verbund hängt sich dort ein. -->
   <script src="shader-verbund.js"></script>
+  <!-- Kunstlicht im Modell: Grundaufhellung und Taschenlampe (Taste L).
+       Nach dem Shader-Verbund — es meldet dort einen Baustein an. -->
+  <script src="licht.js"></script>
+  <!-- Weißabgleich der Szene: Cesiums Umgebungslicht neutral stellen, das
+       fertige Bild nachbearbeiten, Verglasung auf Anthrazit ziehen. Nach
+       licht.js — der Glasbaustein liegt im Shader-Verbund vor dem Kunstlicht. -->
+  <script src="farben.js"></script>
   <script src="walkMode.js"></script>
   <!-- Fliegen am Trackpad: Fadenkreuz, 1 Finger umsehen, 2 Finger schieben,
        Aufziehen = Öffnungswinkel, WASD dauerhaft. Nach walkMode.js. -->
@@ -160,6 +167,10 @@
   <script src="views.js"></script>
 
   <!-- Notizen auf IFC / B3DM / Splats / freien Punkten -->
+  <!-- Themenablage — Notizen und Messungen im Backend (/issues), mit
+       localStorage als Rückfall. Vor tags.js: dessen DualStore fragt danach. -->
+  <script src="issues-store.js"></script>
+
   <script src="tags.js"></script>
   <!-- Annotationen — zeichnen die Notizen in die Szene. Nach tags.js und ui.js. -->
   <script src="annotations.js"></script>
@@ -170,6 +181,9 @@
   <!-- Skizzenarchiv (IndexedDB) — bildebenen.js legt die Bilder der Bildebenen
        hier ab und holt sie von hier zurück. -->
   <script src="skizzen-store.js"></script>
+
+  <!-- Schnitte X/Y/Z — hängt sich in den Reiter „Schnitte" von ui.js -->
+  <script src="schnitte-xyz.js"></script>
 
   <!-- Google-Freistellung · Isolieren · Gebäudemarken -->
   <script src="google-tiles-mask.js"></script>
@@ -208,6 +222,8 @@
 
   <!-- Bildrate der Szene (Strg/Cmd+Alt+F) -->
   <script src="fps.js"></script>
+  <!-- Bildrate halten, solange Gaussian Splats in der Szene liegen (#8) -->
+  <script src="splat-leistung.js"></script>
 
   <!-- ============================================
        START

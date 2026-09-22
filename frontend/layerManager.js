@@ -66,7 +66,9 @@
 
       this.terrains = [
         { id: 'world', name: 'Cesium World Terrain',
-          laden: () => Cesium.createWorldTerrainAsync({ requestVertexNormals: true }) },
+          // `requestWaterMask` wie in core.js — sonst verlöre ein Wechsel des
+          // Geländes das Wasser, das beim Start noch da war.
+          laden: () => Cesium.createWorldTerrainAsync({ requestVertexNormals: true, requestWaterMask: true }) },
         { id: 'ellipsoid', name: 'Ohne Gelände (Ellipsoid)',
           laden: async () => new Cesium.EllipsoidTerrainProvider() }
       ];

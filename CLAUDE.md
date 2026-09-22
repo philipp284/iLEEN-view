@@ -86,6 +86,15 @@ Reiter Solar und BIM-LP nach `solar-panel.js` und `bimlp-panel.js`. Alle vier
 liegen ausschließlich in der Vollfassung. Wer sie hierher kopiert, hebt die
 Trennung auf; `tests/trennung/test-trennung.mjs` schlägt dann an.
 
+**Notizen liegen seit September 2026 im Backend, nicht nur im Browser.**
+`issues-store.js` ist mitgekommen (es hängt an `tags.js`, und das ist links,
+also Viewer): geschrieben wird zuerst lokal, danach an `/issues`; was nicht
+durchgeht, wird vorgemerkt und nachgeholt. Läuft kein Backend oder kennt es die
+Route nicht, bleibt alles beim Alten — der `localStorage` trägt dann allein.
+**Der Issue-Manager** (Reiter ISS, Verlauf, BCF, Bericht) ist eine Auswertung
+und steht ausschließlich in der Vollfassung; er hierher zu kopieren hebt die
+Trennung auf.
+
 **Der Port ist keine Kleinigkeit.** Beide Fassungen führen `strictPort: true`.
 Läuft die Vollfassung auf 5181 und hier stünde ebenfalls 5181, startet dieser
 Server gar nicht — und der Browser-Prüfstein bekommt HTTP 200 von der
@@ -172,8 +181,37 @@ Die ausführliche Herleitung jedes Moduls steht in der CLAUDE.md der
 Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
 
 * **`tileset.customShader` wird nie direkt gesetzt**, immer über
-  `BimViewer.ShaderVerbund`. Rückseitenschnitt, Explosion, Schnittbox und
-  Bildprojektion wollen denselben einen Steckplatz.
+  `BimViewer.ShaderVerbund`. Rückseitenschnitt, Explosion, Schnittbox,
+  Bildprojektion und das Kunstlicht wollen denselben einen Steckplatz.
+* **Licht kommt bei Cesium nur von der Sonne** — `scene.light` ist ein
+  einzelner Steckplatz, Schattenkarten gibt es nur für ihn, und innen kommt
+  von ihr nichts an. `licht.js` legt deshalb Grundaufhellung und Taschenlampe
+  (Taste **L**) im Materialshader nach, über `material.emissive`: `diffuse` ist
+  die Albedo und macht eine unbeleuchtete Wand nicht heller. Der Lichtkegel
+  rechnet in Augenkoordinaten — dort sitzt die Kamera im Ursprung und blickt
+  entlang −Z, weshalb er ohne ein einziges je Bild nachgeführtes Uniform
+  auskommt. Herleitung in der CLAUDE.md der Vollfassung.
+* **Der Farbstich ist hausgemacht, nicht Cesiums Schuld allein.** `farben.js`
+  fasst die drei Ursachen zusammen: die Typfarben aus `IFC_ENTITIES`
+  (`IfcCovering` beige, `IfcWindow` hellblau) — dagegen das Farbschema
+  `'neutral'` aus `IFC_FARBEN_NEUTRAL`; die dunkelbraune Eigenfarbe der
+  IFC-Materialien — dagegen ein **Grundton** im Materialshader, denn ein
+  entsättigtes Dunkelbraun ist nur ein dunkles Grau; und Cesiums gedachten
+  Erdboden `AVERAGE_EARTH_GROUND_COLOR` = `#717145` in der
+  Umgebungsbeleuchtung. **Falle:** `groundColor`, `saturation` und `brightness`
+  am `DynamicEnvironmentMapManager` sind Felder ohne Setzer — ohne
+  `manager.reset()` bleibt jede Änderung stumm. Herleitung und Messwerte in der
+  CLAUDE.md der Vollfassung.
+* **Der Reiter „Schnitte“ gehört ui.js, sein Inhalt den Modulen.**
+  `schnitte-xyz.js` setzt die drei Achsschnitte (Ost/Nord/Höhe durch **alle**
+  Modelle) davor, `ui-new-features-extension.js` hängt die Google-Freistellung
+  an — beide, indem sie `BimViewerUI.getDrawingContent` umschließen. Die
+  Ladereihenfolge in `index.html` bestimmt damit die Reihenfolge im Panel.
+  Der Einzelbauteil-Ausschnitt bleibt die Schnittbox im Reiter daneben.
+* **In der Modellzeile stehen nur 🎯, ✥ und ✕.** Notizen, Baustufen und
+  Schnittbox hatten dort einen zweiten Einstieg; seit 2026-09-19 sind sie
+  heraus. Baustufen gibt es in dieser Fassung ohnehin nicht (`sequencing.js`
+  liegt nur in der Vollfassung) — der Knopf zeigte hier ins Leere.
 * **Bauteileigenschaften nur über `feature.getProperty()`**, nie über einen
   eigenen IFC-Parser, und nie exakt verglichen — Revit, Allplan, ArchiCAD und
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.
@@ -225,6 +263,9 @@ for f in tests/*/test-*.js; do node "$f"; done
 npx vite --port 5190 &
 npm i --no-save puppeteer-core
 node tests/start/test-start.mjs
+
+# 4 · Das Kunstlicht — braucht denselben Dev-Server
+VIEWER_URL=http://localhost:5190/ node tests/licht/test-browser.mjs
 ```
 
 `tests/trennung/test-trennung.mjs` liest nur Dateinamen und `index.html`: liegt

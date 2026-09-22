@@ -207,6 +207,119 @@ const IFC_ENTITIES = [
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
+// FARBSCHEMA
+//
+// Die Farben oben codieren den IFC-TYP: jede Klasse eine eigene Farbe, damit
+// man im Filter erkennt, was man gerade an- und abwählt. Für das Bild eines
+// Bauwerks ist das die falsche Aussage. Eine Vorhangfassade ist nicht
+// hellblau, weil sie `IfcCurtainWall` heißt — sie ist anthrazit, weil das
+// Bauwerk so aussieht.
+//
+// Deshalb zwei Schemata über derselben Liste:
+//
+//   'ifc'      Typfarben wie oben — Filtern, Prüfen, Aussortieren
+//   'neutral'  Bauwerksfarben — graue Hülle, anthrazitfarbene Öffnungen
+//
+// Die Umschaltung hängt in farben.js; hier steht nur die Tabelle und die
+// Abfrage. Getragen wird die Farbe in beiden Fällen von `Cesium3DTileStyle`
+// (features.js), und die multipliziert sich über das beleuchtete Material —
+// die Eigenfarbe des Bauteils bleibt also mit drin, weshalb farben.js sie
+// zusätzlich entsättigt.
+//
+// Eingetragen ist nur die Gebäudehülle. Alles andere wird aus seiner Typfarbe
+// entsättigt: so bleibt die Technik unterscheidbar, ohne bunt zu sein, und
+// ein Typ, den erst der Typ-Scan nachträgt (`ifcTypEinordnen`), bekommt ohne
+// weiteres Zutun eine passende Farbe.
+// ───────────────────────────────────────────────────────────────────────────
+
+const IFC_FARBEN_NEUTRAL = {
+  // Hülle und Tragwerk — Grau, nach Bauteilschwere abgestuft
+  IfcWall: '#B4B4B2',
+  IfcWallStandardCase: '#B4B4B2',
+  IfcWallElementedCase: '#B4B4B2',
+  IfcCovering: '#ACACA8',          // Fassadenbekleidung, Putz, Estrich
+  IfcSlab: '#C2C2C0',
+  IfcSlabStandardCase: '#C2C2C0',
+  IfcSlabElementedCase: '#C2C2C0',
+  IfcRoof: '#8E8E8C',
+  IfcColumn: '#9A9A98',
+  IfcColumnStandardCase: '#9A9A98',
+  IfcBeam: '#8C8C8A',
+  IfcBeamStandardCase: '#8C8C8A',
+  IfcFooting: '#6F6F6E',
+  IfcPile: '#5E5E5D',
+  IfcBuildingElementPart: '#A8A8A4',
+  IfcElementAssembly: '#9E9E9A',
+  IfcElementComponent: '#9E9E9A',
+  IfcChimney: '#8E8E8C',
+
+  // Öffnungen und Fassade — Anthrazit
+  IfcWindow: '#3C4043',
+  IfcWindowStandardCase: '#3C4043',
+  IfcCurtainWall: '#3C4043',
+  IfcPlate: '#454B4F',             // Glasfeld der Vorhangfassade
+  IfcPlateStandardCase: '#454B4F',
+  IfcMember: '#33383B',            // Pfosten und Riegel
+  IfcMemberStandardCase: '#33383B',
+  IfcDoor: '#4A4F52',
+  IfcDoorStandardCase: '#4A4F52',
+  IfcShadingDevice: '#5A5F62',
+  IfcRailing: '#6E7174',
+
+  // Ausbau
+  IfcStair: '#9A9A98',
+  IfcStairFlight: '#9A9A98',
+  IfcRamp: '#9A9A98',
+  IfcRampFlight: '#9A9A98',
+  IfcFurnishingElement: '#9C9A96',
+  IfcFurniture: '#9C9A96',
+
+  // Gebäudestruktur
+  IfcSpace: '#D2D6CE',
+  IfcSite: '#A8AFA2',
+  IfcBuilding: '#CFCFCF',
+  IfcBuildingStorey: '#DADADA',
+  IfcBuildingElementProxy: '#B0B0AE'
+};
+
+/** Wie weit nicht eingetragene Typen im neutralen Schema entsättigt werden. */
+const IFC_NEUTRAL_ENTSAETTIGUNG = 0.72;
+
+/** Eine Hexfarbe in Richtung ihrer eigenen Helligkeit ziehen. */
+function farbeEntsaettigen(hex, anteil) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return hex;
+  const z = parseInt(m[1], 16);
+  const r = (z >> 16) & 255, g = (z >> 8) & 255, b = z & 255;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const misch = (k) => Math.round(Math.max(0, Math.min(255, k + (y - k) * anteil)));
+  return '#' + [misch(r), misch(g), misch(b)]
+    .map((k) => k.toString(16).padStart(2, '0')).join('');
+}
+
+/** Das gerade gewählte Schema — farben.js trägt es, hier nur abgefragt. */
+function ifcFarbschema() {
+  const f = window.BimViewer && window.BimViewer.Farben;
+  return (f && typeof f.schema === 'function' && f.schema()) || 'neutral';
+}
+
+/**
+ * Die Farbe, mit der ein IFC-Typ dargestellt wird.
+ *
+ * Eine Stelle für beide Verbraucher — den Tileset-Stil in features.js und den
+ * Punkt in der Filterliste (ifc-filter-pro.js). Liefen sie auseinander, zeigte
+ * die Legende eine Farbe, die im Bild nicht vorkommt.
+ */
+function ifcFarbe(eintrag) {
+  if (!eintrag) return '#ffffff';
+  const typ = eintrag.entity || eintrag;
+  const eigen = eintrag.color || '#ffffff';
+  if (ifcFarbschema() !== 'neutral') return eigen;
+  return IFC_FARBEN_NEUTRAL[typ] || farbeEntsaettigen(eigen, IFC_NEUTRAL_ENTSAETTIGUNG);
+}
+
+
+// ───────────────────────────────────────────────────────────────────────────
 // TYPEN, DIE NICHT IN DER LISTE STEHEN
 //
 // Die Liste oben ist lang, aber niemals vollstaendig: IFC kennt ueber 700
@@ -434,7 +547,11 @@ const BimViewer = {
     let gelaende;
     try {
       gelaende = token
-        ? await Cesium.createWorldTerrainAsync({ requestVertexNormals: true })
+        // `requestWaterMask`: ohne die Maske weiß der Globus nicht, wo Wasser
+        // liegt, und `showWaterEffect` läuft ins Leere — Seen und Meer bleiben
+        // eine matte Textur. Mit ihr und `globe.enableLighting` (weiter unten)
+        // zeichnet Cesium Wellen und den Sonnenglanz auf dem Wasser.
+        ? await Cesium.createWorldTerrainAsync({ requestVertexNormals: true, requestWaterMask: true })
         : new Cesium.EllipsoidTerrainProvider();
     } catch (fehler) {
       console.warn('Weltgelände nicht verfügbar, weiter ohne Gelände:', fehler.message);
@@ -477,6 +594,10 @@ const BimViewer = {
 
     scene.globe.depthTestAgainstTerrain = true;
     scene.globe.enableLighting = true;
+    // Wellen und Sonnenglanz auf Seen und Meer. Voreinstellung von Cesium,
+    // hier ausdrücklich gesetzt, damit die Zeile neben der Wassermaske steht,
+    // von der sie abhängt (siehe `createWorldTerrainAsync` oben).
+    scene.globe.showWaterEffect = true;
     scene.highDynamicRange = true;
     scene.fog.enabled = true;
     scene.postProcessStages.fxaa.enabled = true;
@@ -589,10 +710,10 @@ const BimViewer = {
       const KNOWN_SPLAT_ASSETS = new Set([4587934, 4574084]);
       const isSplatTileset = KNOWN_SPLAT_ASSETS.has(Number(assetId));
 
-      // Splat-Tilesets: Minimallader (NICHTS außer fromIonAssetId).
-      // fromUrl mit Optionen + nachträgliches Patchen erzeugt Spike-Artefakte.
+      // Splat-Tilesets: nur die Splat-Optionen (splatLoadOptions), nicht die der
+      // Meshes — deren LOD-Skip-Optionen erzeugen bei Splats Spike-Artefakte.
       const tileset = isSplatTileset
-        ? await Cesium.Cesium3DTileset.fromIonAssetId(assetId)
+        ? await Cesium.Cesium3DTileset.fromIonAssetId(assetId, this.splatLoadOptions())
         : await Cesium.Cesium3DTileset.fromUrl(await Cesium.IonResource.fromAssetId(assetId),
                                                 this.meshLoadOptions());
 
@@ -602,6 +723,7 @@ const BimViewer = {
       }
 
       this.viewer.scene.primitives.add(tileset);
+      if (tileset._isGaussianSplat) this._splatReglerStarten();
 
       // Splat-Tilesets: KEINE Beleuchtungs- oder Darstellungseingriffe.
       // Splats bringen ihre eigene Spherical-Harmonics-Beleuchtung mit;
@@ -747,20 +869,49 @@ const BimViewer = {
     }
   },
 
+  /**
+   * Ladeoptionen für Gaussian-Splat-Tilesets — gemessen in #8
+   * (frontend/tests/splat-bench/ergebnisse/VERGLEICH.md).
+   *
+   * Absichtlich fast leer. Cesiums Voreinstellungen (dynamicScreenSpaceError,
+   * foveatedScreenSpaceError, 512 MB Cache) waren für Splats nicht messbar zu
+   * verbessern; `maximumScreenSpaceError` führt splat-leistung.js nach der
+   * Bildrate. Was hier steht, ist der Startwert davor.
+   */
+  splatLoadOptions() {
+    return { maximumScreenSpaceError: 16 };
+  },
+
+  /**
+   * Bildratenregler für Splats einschalten, sobald das erste Splat-Tileset in
+   * der Szene liegt (splat-leistung.js). Er dreht maximumScreenSpaceError der
+   * Splat-Tilesets zwischen 8 und 64 und erst danach resolutionScale, mit
+   * Hysterese; ohne Splats gibt er alles zurück. Abschalten:
+   * `localStorage.ileen_splat_regler = 'aus'` oder `SplatLeistung.aus()`.
+   */
+  _splatReglerStarten() {
+    if (!window.SplatLeistung || SplatLeistung.aktiv()) return;
+    let schalter = 'an';
+    try { schalter = localStorage.getItem('ileen_splat_regler') || 'an'; } catch (e) { /* privat */ }
+    if (schalter === 'aus') return;
+    SplatLeistung.an(this.viewer, { zielFps: 60 });
+  },
+
   /** Lädt ein Tileset mit dem Lader, der zu seiner Art passt. */
   async _backendTilesetLaden(tilesetUrl) {
     const { isSplat: isSplatTileset, isPointCloud: isPointCloudPre } = await this.detectTilesetKind(tilesetUrl);
 
-    // Splat-Tilesets: NUR fromUrl ohne Optionen. Die aggressiven
-    // LOD-Skip-Optionen erzeugen bei Gaussian Splats Spike-Artefakte — grobe
-    // Octree-Knoten mit großskalierten Splats bleiben sichtbar stehen,
-    // während feinere Kind-Tiles nachladen.
+    // Splat-Tilesets: fromUrl mit den Optionen aus splatLoadOptions(), die
+    // aggressiven LOD-Skip-Optionen der Meshes bleiben draußen — sie erzeugen
+    // bei Gaussian Splats Spike-Artefakte: grobe Octree-Knoten mit
+    // großskalierten Splats bleiben sichtbar stehen, während feinere
+    // Kind-Tiles nachladen.
     //
     // Punktwolken bekommen denselben Minimal-Loader (siehe detectTilesetKind()):
     // derselbe aggressive Optionssatz lässt ein PNTS-Tileset komplett leer
     // bleiben, obwohl die Kacheln laut Netzwerk-Tab korrekt laden.
     const tileset = isSplatTileset
-      ? await Cesium.Cesium3DTileset.fromUrl(tilesetUrl)
+      ? await Cesium.Cesium3DTileset.fromUrl(tilesetUrl, this.splatLoadOptions())
       : isPointCloudPre
       ? await Cesium.Cesium3DTileset.fromUrl(tilesetUrl,
           typeof this.pointCloudLoadOptions === 'function'
@@ -803,6 +954,7 @@ const BimViewer = {
       }
 
       this.viewer.scene.primitives.add(tileset);
+      if (tileset._isGaussianSplat) this._splatReglerStarten();
 
       // Splat-Tilesets bringen eigene Spherical-Harmonics-Beleuchtung mit;
       // Schatten und Darstellungsstufen drüberzulegen erzeugt Render-Artefakte.
@@ -882,6 +1034,7 @@ const BimViewer = {
       }
 
       this.viewer.scene.primitives.add(tileset);
+      if (tileset._isGaussianSplat) this._splatReglerStarten();
 
       if (!tileset._isGaussianSplat) {
         this.enableTilesetLighting(tileset);
@@ -1261,6 +1414,8 @@ const BimViewer = {
     scene.postProcessStages.fxaa.enabled = !!einstellungen.enableFXAA;
     if ('msaaSamples' in scene) scene.msaaSamples = einstellungen.enableMSAA ? 4 : 1;
     viewer.resolutionScale = einstellungen.resolutionScale || 1.0;
+    // Der Splat-Regler darf nur wegnehmen, was die Stufe hergibt.
+    if (window.SplatLeistung) SplatLeistung.aufloesungBasis(viewer.resolutionScale);
 
     viewer.shadows = !!einstellungen.shadows;
     viewer.shadowMap.enabled = !!einstellungen.shadows;
@@ -1564,5 +1719,8 @@ const BimViewer = {
 // nicht auf `window`; Module prüfen aber `window.BimViewer`.
 window.CONFIG = CONFIG;
 window.IFC_ENTITIES = IFC_ENTITIES;
+window.IFC_FARBEN_NEUTRAL = IFC_FARBEN_NEUTRAL;
+window.ifcFarbe = ifcFarbe;
+window.farbeEntsaettigen = farbeEntsaettigen;
 window.ifcTypEinordnen = ifcTypEinordnen;
 window.BimViewer = BimViewer;

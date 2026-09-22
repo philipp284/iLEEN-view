@@ -95,6 +95,11 @@
     // manchmal nur die Fläche will. Das eigenständige Aufmaß im Panel bleibt
     // davon unberührt: es ist ein eigener Modus und kein Anhängsel hier.
     autoBaugrube: true,
+    // Ob jede abgeschlossene Messung als Notiz abgelegt wird. An, weil eine
+    // Messung, die niemand aufschreibt, mit dem nächsten Neuladen weg ist —
+    // und weil die Notiz das ist, was man später sucht: beschriftbar,
+    // auffindbar in der Liste, mit im BCF.
+    autoNotiz: true,
     schnitte: [],      // [{ tileset, sammlung }] — bleiben hängen, siehe schnitt()
   };
 
@@ -241,6 +246,7 @@
       fangart: treffer.art,
       trefferart: bauteil ? 'Bauteil' : trefferartAus(treffer),
       bauteil: bauteil,
+      modell: modellOrt(treffer.position, bauteil),
       zeit: new Date().toISOString(),
       iri: null,
     };
@@ -283,6 +289,10 @@
       globalId: gid, ifcType: hol(TYP_NAMEN), name: hol(NAME_NAMEN),
       geschoss: hol(GESCHOSS_NAMEN), modell: modell, jobId: jobId,
       mengen: null,
+      // Nur zum Umrechnen in das örtliche System des Modells. Geht in nichts
+      // ein, was geschrieben wird: `jsonFest()` und `aufmass-rdf.js` nehmen
+      // beide nur benannte Felder.
+      _tileset: f.tileset,
     };
 
     // Volumen, Material und CO₂ stehen nicht in der Batch Table, sondern in
@@ -296,6 +306,35 @@
       });
     }
     return bauteil;
+  }
+
+  /**
+   * Der Punkt im örtlichen System des getroffenen Modells: Ost, Nord und Hoch
+   * ab dem Ursprung seines Tilesets.
+   *
+   * **Nicht** die rohen Tile-Koordinaten aus `root.computedTransform`
+   * rückwärts. Deren Achsen hängen daran, wie der Export gedreht hat — mal
+   * z-hoch, mal y-hoch —, und eine Zahl, die „X" heißt und je nach Werkzeug
+   * etwas anderes meint, ist schlimmer als gar keine. Ost/Nord/Hoch am
+   * Modellursprung ist überall dasselbe und bei einem nordausgerichteten
+   * Modell genau die Modellkoordinate.
+   */
+  function modellOrt(ecef, bauteil) {
+    const ts = bauteil && bauteil._tileset;
+    if (!ts) return null;
+    try {
+      const t = ts.root && ts.root.transform;
+      const ursprung = (t && !Cesium.Matrix4.equals(t, Cesium.Matrix4.IDENTITY))
+        ? Cesium.Matrix4.getTranslation(t, new Cesium.Cartesian3())
+        : (ts.boundingSphere ? ts.boundingSphere.center : null);
+      if (!ursprung) return null;
+      const nach = Cesium.Matrix4.inverse(
+        Cesium.Transforms.eastNorthUpToFixedFrame(ursprung), new Cesium.Matrix4());
+      const o = Cesium.Matrix4.multiplyByPoint(nach, ecef, new Cesium.Cartesian3());
+      return isFinite(o.x) ? { x: o.x, y: o.y, z: o.z } : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function zurueck() {
@@ -618,6 +657,7 @@
 
     inGraph(m);
     inSitzung(m);
+    if (Z.autoNotiz) alsNotiz(m);
     Z.messungen.push(m);
     Z.letzte = m;
     kastenZeichnen(m);
@@ -743,6 +783,128 @@
     });
   }
 
+  // ══ Notiz ═════════════════════════════════════════════════════════════════
+
+  /**
+   * Eine abgeschlossene Messung als Notiz (`tags.js`, gezeichnet von
+   * `annotations.js`).
+   *
+   * Bisher endete eine Messung in drei Ablagen, die alle etwas anderes
+   * können: dem Graphen (vollständig, aber nur über SPIDER zu lesen), der
+   * Sitzung (flüchtig) und einem Schild in der Szene (sichtbar, aber nicht
+   * beschriftbar, nicht auffindbar, beim Neuladen weg). Die Notiz ist die
+   * vierte und die einzige, die beides ist: sie steht im Bild **und** in der
+   * Liste, sie überlebt das Neuladen im localStorage, sie lässt sich
+   * verschieben, kommentieren, auf „erledigt" stellen und geht mit ins BCF.
+   *
+   * Deshalb wandern die Messwerte hierher, statt als Cesium-Beschriftung in
+   * der Szene zu hängen: `annotations.js` zeichnet Notizen als DOM, das in
+   * jeder Entfernung scharf bleibt — einer Cesium-Beschriftung gelingt das
+   * über ihren Atlas nicht.
+   *
+   * Der Anker ist der Schwerpunkt, wenn es einen gibt, sonst der erste Punkt.
+   * Ein getroffenes Bauteil macht die Notiz zu einer IFC-Notiz — damit hängt
+   * sie im BCF an seiner GlobalId und nicht an einer bloßen Koordinate.
+   */
+  function alsNotiz(m) {
+    if (!m || !window.Tags || typeof Tags.make !== 'function') return null;
+    if (!Array.isArray(Tags.items)) Tags.items = [];
+    const anker = (m.ergebnis && m.ergebnis.schwerpunkt) || m.ecefs[0];
+    const c = Cesium.Cartographic.fromCartesian(anker);
+    const b = (m.punkte.find((q) => q.bauteil) || {}).bauteil;
+    let tag;
+    try {
+      tag = Tags.make({
+        type: 'measurement-anchor',
+        position: {
+          worldCart: { x: anker.x, y: anker.y, z: anker.z },
+          lon: c ? Cesium.Math.toDegrees(c.longitude) : null,
+          lat: c ? Cesium.Math.toDegrees(c.latitude) : null,
+          height: c ? c.height : null,
+        },
+        target: b
+          ? { kind: 'ifc', ifcGuid: b.globalId,
+              featureProps: { IfcType: b.ifcType, Name: b.name,
+                              Geschoss: b.geschoss, Modell: b.modell } }
+          : { kind: 'free' },
+        payload: { title: kurzfassung(m), body: notizText(m), topicType: 'Info' },
+      });
+    } catch (e) {
+      console.warn('[Aufmaß] Notiz nicht gebaut', e);
+      return null;
+    }
+    m.notizId = tag.id;
+    // Speichern läuft asynchron (IndexedDB für Anhänge, localStorage für den
+    // Rest); gezeichnet wird trotzdem sofort, sobald `tags:changed` fällt.
+    Promise.resolve(Tags.save(tag)).then(() => {
+      // Ein Ereignis genügt: `annotations.js` zeichnet darauf neu und `ui.js`
+      // frischt Liste und Filter auf.
+      document.dispatchEvent(new CustomEvent('tags:changed', { detail: { tag } }));
+    }).catch((e) => console.warn('[Aufmaß] Notiz nicht gespeichert', e));
+    return tag;
+  }
+
+  /**
+   * Der Text der Notiz — als Liste, weil `annotations.js` ein kleines
+   * Markdown kennt und eine Liste in der Beschriftung schmaler umbricht als
+   * ein Absatz.
+   */
+  function notizText(m) {
+    const r = m.ergebnis || {};
+    const z = [];
+
+    if (m.punkte.length === 1) {
+      // Die erste Zeile von punktInfo() ist der Kopf und steht schon im Titel.
+      punktInfo(m.punkte[0]).split('\n').slice(1).forEach((l) => z.push('- ' + l));
+      return z.join('\n');
+    }
+
+    if (m.punkte.length === 2) {
+      const s = r.strecken && r.strecken[0];
+      if (s) {
+        z.push('- **' + meter(s.distanz) + '** Strecke');
+        z.push('- ΔO ' + meter(s.dx) + ' · ΔN ' + meter(s.dy) + ' · ΔH ' + meter(s.dz));
+        z.push('- horizontal ' + meter(s.horizontal) + ' · Neigung ' + nf(s.neigung, 1) + '°');
+      }
+    } else {
+      z.push('- **' + meter2(r.flaeche) + '** Fläche · Umfang ' + meter(r.umfang));
+      if (r.flaecheHorizontal) z.push('- Grundriss ' + meter2(r.flaecheHorizontal));
+      if (m.box && m.box.hoehe > 0.005) {
+        z.push('- Box ' + meter(m.box.laenge) + ' × ' + meter(m.box.breite) + ' × ' +
+          meter(m.box.hoehe) + ' = ' + meter3(m.box.volumen));
+      }
+      if (m.volumen != null && isFinite(m.volumen)) {
+        z.push('- Volumen ' + meter3(m.volumen) +
+          (m.volumenQuelle ? ' *(' + m.volumenQuelle + ')*' : ''));
+      }
+      if (m.fuellverhaeltnis != null) z.push('- Füllung ' + nf(m.fuellverhaeltnis * 100, 1) + ' %');
+    }
+
+    const p0 = m.punkte[0];
+    if (isFinite(p0.lat)) {
+      z.push('- ' + m.punkte.length + ' Punkte ab ' + nf(p0.lat, 6) + '° N · ' +
+        nf(p0.lon, 6) + '° E · H ' + nf(p0.hoehe, 3) + ' m');
+    }
+
+    [...new Map(m.punkte.filter((q) => q.bauteil)
+      .map((q) => [q.bauteil.globalId, q.bauteil])).values()].forEach((b) => {
+      const t = [(b.ifcType || 'Bauteil') + (b.name ? ' · ' + b.name : '')];
+      if (b.geschoss) t.push(b.geschoss);
+      if (b.mengen && isFinite(b.mengen.volumen)) t.push(meter3(b.mengen.volumen));
+      if (b.mengen && (b.mengen.material || b.mengen.werkstoff)) {
+        t.push(b.mengen.material || b.mengen.werkstoff);
+      }
+      z.push('- ' + t.join(' · '));
+    });
+
+    if (m.mengen && m.mengen.anzahl) {
+      z.push('- ' + m.mengen.anzahl + ' Bauteile betroffen' +
+        (isFinite(m.mengen.volumen) ? ' · ' + meter3(m.mengen.volumen) : '') +
+        (isFinite(m.mengen.co2) ? ' · CO₂ ' + nf(m.mengen.co2, 0) + ' kg' : ''));
+    }
+    return z.join('\n');
+  }
+
   // ══ Darstellung ═══════════════════════════════════════════════════════════
 
   function grundEntities() {
@@ -793,16 +955,107 @@
         return meter2(r.flaeche) + '\n' + 'U ' + meter(r.umfang);
       }, false), GRUEN, 15),
     });
+
+    // Das Schild der Punktmessung. Es steht, solange genau ein Punkt gesetzt
+    // ist; mit dem zweiten wird daraus eine Strecke, und es verschwindet von
+    // selbst, ohne dass jemand es wegräumen müsste.
+    E.add({
+      name: 'aufmass-punktinfo',
+      position: new Cesium.CallbackProperty(
+        () => (Z.punkte.length === 1 ? Z.punkte[0].ecef : undefined), false),
+      label: beschriftung(new Cesium.CallbackProperty(
+        () => (Z.punkte.length === 1 ? punktInfo(Z.punkte[0]) : ''), false),
+        GRUEN, 15, schild()),
+    });
   }
 
-  function beschriftung(text, farbe, groesse) {
-    return {
+  /**
+   * Das Schild einer Punktmessung: wo der Punkt liegt und was dort steht.
+   *
+   * Die Punktmessung ist die einzige der drei, die keine Maßzahl hat — ihr
+   * Ergebnis *ist* die Stelle. Ohne Schild stand sie bisher als weißer Punkt
+   * im Bild, und die Koordinate war nur über das Panel oder den Graphen zu
+   * bekommen; das ist ein Umweg für die häufigste Frage überhaupt.
+   *
+   * Aufgebaut vom Allgemeinen zum Besonderen: erst wo (geografisch, dann
+   * örtlich im Modell), dann was (Bauteil, Herkunft, Kennung), dann wie viel
+   * (Mengen, sobald `aufmass-mengen.js` geantwortet hat — deshalb liest das
+   * laufende Schild seinen Text über eine CallbackProperty und nicht einmal
+   * beim Setzen).
+   */
+  function punktInfo(d) {
+    if (!d) return '';
+    const z = [];
+    z.push('Punkt · ' + (ARTTEXT[d.fangart] || d.fangart) + ' auf ' + d.trefferart);
+    if (isFinite(d.lat) && isFinite(d.lon)) z.push(nf(d.lat, 7) + '° N · ' + nf(d.lon, 7) + '° E');
+    if (isFinite(d.hoehe)) {
+      const nn = hoeheNN(d);
+      z.push('H ' + nf(d.hoehe, 3) + ' m ell.' + (nn === null ? '' : ' · NN ' + nf(nn, 3) + ' m'));
+    }
+    // Kurz halten: jede Zeile, die breiter ist als nötig, drückt das Schild
+    // über die Stelle, die es beschreibt.
+    if (d.modell) z.push('Modell  X ' + nf(d.modell.x, 2) + ' · Y ' + nf(d.modell.y, 2) +
+      ' · Z ' + nf(d.modell.z, 2));
+    const b = d.bauteil;
+    if (b) {
+      z.push((b.ifcType || 'Bauteil') + (b.name ? ' · ' + b.name : ''));
+      const herkunft = [b.geschoss, kurzName(b.modell)].filter(Boolean).join(' · ');
+      if (herkunft) z.push(herkunft);
+      z.push('GlobalId ' + b.globalId);
+      const m = b.mengen;
+      if (m) {
+        const t = [];
+        if (isFinite(m.volumen)) t.push(meter3(m.volumen));
+        if (m.material || m.werkstoff) t.push(m.material || m.werkstoff);
+        if (isFinite(m.masse)) t.push(nf(m.masse, 0) + ' kg');
+        if (isFinite(m.co2)) t.push('CO₂ ' + nf(m.co2, 0) + ' kg');
+        if (t.length) z.push(t.join(' · '));
+      }
+    }
+    return z.join('\n');
+  }
+
+  /** Dateiname ohne Endung, auf Schildbreite gekappt. */
+  function kurzName(s) {
+    if (!s) return null;
+    const ohne = String(s).replace(/\.(ifc|glb|gltf|json|ply|las|laz|e57)$/i, '');
+    return ohne.length > 30 ? ohne.slice(0, 29) + '…' : ohne;
+  }
+
+  /**
+   * Höhe über NN, wenn das Geoidgitter geladen ist — sonst gar nichts.
+   * `geoid.js` gibt bewusst `null` statt einer Null zurück: eine Höhe, die um
+   * achtundvierzig Meter danebenliegt, sieht aus wie eine gemessene.
+   */
+  function hoeheNN(d) {
+    try {
+      const g = window.ILEEN_GEOID;
+      if (!g || !g.geladen) return null;
+      const r = g.toOrthometric(d.hoehe, d.lat, d.lon);
+      return r ? r.orthometric : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function beschriftung(text, farbe, groesse, extra) {
+    return Object.assign({
       text: text,
-      font: (groesse || 14) + 'px "Inter", system-ui, sans-serif',
+      // Halbfett, nicht normal: Cesium zeichnet Beschriftungen über ein
+      // Abstandsfeld (SDF) und skaliert dessen Atlas auf die Bildgröße. Dünne
+      // Striche verlieren dabei am meisten — bei `resolutionScale = 1` auf
+      // einem Retina-Schirm wird jeder gezeichnete Bildpunkt nochmals auf
+      // zwei physische gezogen, und eine 13-px-Grotesk in Strichstärke 400
+      // kommt dort als Grauschleier an. 600 kostet nichts und trägt durch
+      // beide Vergrößerungen.
+      font: '600 ' + (groesse || 14) + 'px "Inter", system-ui, sans-serif',
       fillColor: Cesium.Color.WHITE,
       showBackground: true,
-      backgroundColor: Cesium.Color.fromCssColorString('#101314').withAlpha(0.82),
-      backgroundPadding: new Cesium.Cartesian2(8, 5),
+      // Fast deckend. Die 0,82 von vorher ließen Fassade und Baumkronen
+      // durchscheinen, und ein Text auf wanderndem Untergrund ist selbst bei
+      // gutem Kontrast mühsam zu lesen.
+      backgroundColor: Cesium.Color.fromCssColorString('#0B0E10').withAlpha(0.94),
+      backgroundPadding: new Cesium.Cartesian2(10, 7),
       outlineColor: Cesium.Color.fromCssColorString(farbe),
       style: Cesium.LabelStyle.FILL,
       horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
@@ -811,6 +1064,25 @@
       // einer Seite.
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       scaleByDistance: new Cesium.NearFarScalar(2, 1.0, 400, 0.75),
+    }, extra || {});
+  }
+
+  /**
+   * Ein Schild steht **neben** seinem Punkt, nicht auf ihm: linksbündig und
+   * ein Stück nach rechts oben versetzt, damit die Punktmarke frei bleibt und
+   * mehrzeiliger Text nicht über die Stelle wächst, die er beschreibt.
+   */
+  function schild() {
+    return {
+      horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(14, -12),
+      // **Keine** Distanzskalierung. Eine Maßzahl darf in der Ferne kleiner
+      // werden, weil sie zu ihrer Strecke gehört und mit ihr schrumpfen soll.
+      // Das Schild gehört zu keiner Länge, sondern zu einer Stelle — und
+      // jeder Faktor ungleich 1 zieht den SDF-Atlas auf krumme Bildpunkte
+      // und macht genau die Zeilen weich, die man lesen will.
+      scaleByDistance: undefined,
     };
   }
 
@@ -878,6 +1150,12 @@
                outlineColor: Cesium.Color.WHITE, outlineWidth: 1.5,
                disableDepthTestDistance: Number.POSITIVE_INFINITY },
     })));
+    // Bleibt die Messung bei einem Punkt und ist **keine** Notiz daraus
+    // geworden, bleibt ihr Schild stehen. Mit Notiz wäre es doppelt: die
+    // Notiz sagt dasselbe, nur scharf, verschiebbar und auffindbar.
+    if (m.punkte.length === 1 && !m.notizId) gruppe.push(E.add({
+      position: ps[0], label: beschriftung(punktInfo(m.punkte[0]), GRUEN, 15, schild()),
+    }));
     (m.ergebnis.strecken || []).forEach((s) => gruppe.push(E.add({
       position: s.mitte, label: beschriftung(meter(s.distanz), GRUEN, 13),
     })));
@@ -1124,7 +1402,12 @@
 
   function kurzfassung(m) {
     const r = m.ergebnis || {};
-    if (m.punkte.length === 1) return 'Punkt';
+    if (m.punkte.length === 1) {
+      const p = m.punkte[0];
+      return isFinite(p.lat)
+        ? 'Punkt ' + nf(p.lat, 6) + '° / ' + nf(p.lon, 6) + '° / ' + nf(p.hoehe, 3) + ' m'
+        : 'Punkt';
+    }
     if (m.punkte.length === 2) return meter(r.laenge);
     let s = meter2(r.flaeche);
     if (m.volumen) s += ' · ' + meter3(m.volumen);
@@ -1143,6 +1426,7 @@
     const r = m.ergebnis || {};
     return {
       id: m.id, art: m.art, iri: m.iri, zeit: m.zeit, punkte: m.punkte.length,
+      notizId: m.notizId || null,
       koordinaten: m.punkte.map((p) => ({
         lon: rund(p.lon, 9), lat: rund(p.lat, 9), hoehe: rund(p.hoehe, 4),
         ost: rund(p.ost, 4), nord: rund(p.nord, 4), auf: rund(p.auf, 4),
@@ -1222,6 +1506,7 @@
       messungen: Z.messungen.map(jsonFest),
       schnitt: Z.schnittAn,
       autoBaugrube: Z.autoBaugrube,
+      autoNotiz: Z.autoNotiz,
       graph: window.AufmassRDF ? AufmassRDF.stand() : null,
     };
   }
@@ -1269,6 +1554,10 @@
     klick, klickWelt, zustand, rasterWeiter,
     /** Das topografische Aufmaß bei jeder fertigen Fläche mitrechnen lassen. */
     setAutoBaugrube: (an) => { Z.autoBaugrube = !!an; return Z.autoBaugrube; },
+    /** Jede abgeschlossene Messung als Notiz ablegen. */
+    setAutoNotiz: (an) => { Z.autoNotiz = !!an; return Z.autoNotiz; },
+    /** Eine Messung von Hand als Notiz ablegen — ohne Angabe die letzte. */
+    notiz: (m) => { const t = alsNotiz(m || Z.letzte); return t ? t.id : null; },
     schnitt, schnittAus, fokus, ttlLaden,
     ttl: () => (window.AufmassRDF ? AufmassRDF.turtle() : ''),
     export: (name) => (window.AufmassRDF ? AufmassRDF.export(name) : 0),

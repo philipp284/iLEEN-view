@@ -49,10 +49,28 @@ class C3 {
   static clone(v, z) { z = z || new C3(); z.x = v.x; z.y = v.y; z.z = v.z; return z; }
   static add(a, b, z) { z.x = a.x + b.x; z.y = a.y + b.y; z.z = a.z + b.z; return z; }
   static multiplyByScalar(v, s, z) { z.x = v.x * s; z.y = v.y * s; z.z = v.z * s; return z; }
+  static subtract(a, b, z) { z.x = a.x - b.x; z.y = a.y - b.y; z.z = a.z - b.z; return z; }
+  static dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
   static magnitude(v) { return Math.hypot(v.x, v.y, v.z); }
   static normalize(v, z) {
     const m = C3.magnitude(v); z.x = v.x / m; z.y = v.y / m; z.z = v.z / m; return z;
   }
+}
+
+class C4 {
+  constructor(x = 0, y = 0, z = 0, w = 0) { this.x = x; this.y = y; this.z = z; this.w = w; }
+  clone(z) { z = z || new C4(); z.x = this.x; z.y = this.y; z.z = this.z; z.w = this.w; return z; }
+}
+
+/**
+ * Eine Sichtmatrix, so weit sie hier gebraucht wird: Drehung Eins,
+ * Verschiebung „minus Kameralage". Genau das ist der Punkt der Prüfung —
+ * `multiplyByPoint` muss aus einer Erdkoordinate eine kleine Zahl machen.
+ */
+class M4 {
+  constructor(kamera) { this.kamera = kamera; }
+  static multiplyByPoint(m, p, z) { return C3.subtract(p, m.kamera, z); }
+  static multiplyByPointAsVector(m, v, z) { return C3.clone(v, z); }
 }
 
 class M3 {
@@ -289,6 +307,202 @@ function alsAsset(tileset, id = 'w1') {
     splat.style === null && splat.maximumScreenSpaceError === 16,
     'Punktwolken-Einstellungen erzeugen dort Artefakte');
   pruefe('und gilt auch nicht als Punktwolke', BV.isPointCloudTileset(splat) === false);
+}
+
+// ══ 8 · Der feine Weg: Millimeterbänder im Augensystem ══════════════════
+//
+// Der Höhenmodus über die Stilsprache löst rund einen halben Meter auf
+// (`${POSITION_ABSOLUTE}` ist eine Erdkoordinate in float32). Für eine
+// Ebenheitsmessung ist das nutzlos. Sobald Cesium `CustomShader` und der
+// Shader-Verbund da sind, rechnet pointcloud.js deshalb im AUGENSYSTEM.
+//
+// Alles ab hier prüft diesen zweiten Weg — und dass der erste weiterhin
+// einspringt, wenn er fehlt (das haben Abschnitt 2 und 3 oben getan, mit
+// genau demselben Code, nur ohne Verbund).
+
+// Der Verbund als Attrappe: er merkt sich, was angemeldet und welches
+// Uniform gesetzt wurde. Beides ist das Ergebnis, das geprüft wird.
+const verbund = {
+  bausteine: new Map(),
+  setzenRufe: 0,
+  setzen(t, name, b) {
+    this.setzenRufe++;
+    const m = this.bausteine.get(t) || {};
+    m[name] = b;
+    this.bausteine.set(t, m);
+    return b;
+  },
+  entfernen(t, name) { const m = this.bausteine.get(t); if (m) delete m[name]; },
+  hat(t, name) { const m = this.bausteine.get(t); return !!(m && m[name]); },
+  baustein(t, name) { const m = this.bausteine.get(t); return m && m[name]; },
+  uniform(t, feld, wert) {
+    const m = this.bausteine.get(t);
+    if (!m) return false;
+    Object.keys(m).forEach((k) => {
+      const u = m[k].uniforms;
+      if (u && u[feld]) u[feld].value = wert;
+    });
+    return true;
+  },
+};
+
+// Die Kamera steht 20 m über der Wolkenmitte. Die Sichtmatrix macht daraus
+// eine Zahl, die float32 trägt — darum geht es.
+const kamera = new C3(0, 0, R + 120);
+const preRenderHaken = [];
+BV.viewer.scene.camera = { viewMatrix: new M4(kamera) };
+BV.viewer.scene.preRender = {
+  addEventListener(f) { preRenderHaken.push(f); },
+  removeEventListener(f) {
+    const i = preRenderHaken.indexOf(f);
+    if (i >= 0) preRenderHaken.splice(i, 1);
+  },
+};
+
+Object.assign(globalThis.Cesium, {
+  Cartesian4: C4,
+  Matrix4: M4,
+  CustomShader: class { constructor(o) { Object.assign(this, o); } },
+  CustomShaderMode: { MODIFY_MATERIAL: 'MODIFY_MATERIAL' },
+  UniformType: { VEC3: 'vec3', VEC4: 'vec4', FLOAT: 'float' },
+  LightingModel: { UNLIT: 'UNLIT', PBR: 'PBR' },
+});
+BV.ShaderVerbund = verbund;
+
+{
+  const ts = alsAsset(wolke(100, 15), 'fein');
+  BV.loadedAssets.delete('w1');
+  BV.setColorMode('height');
+
+  const b = verbund.baustein(ts, I.HOEHE_BLOCK);
+  pruefe('der Höhenmodus meldet einen Shader-Baustein an', !!b,
+    'ohne ihn bliebe es beim halben Meter der Stilsprache');
+  pruefe('er liest die Lage im Augensystem',
+    !!b && b.fragment.includes('fsInput.attributes.positionEC'),
+    'positionWC wäre wieder eine Erdkoordinate in float32');
+  pruefe('er rechnet NICHT mit ${POSITION_ABSOLUTE}',
+    !!b && !b.fragment.includes('POSITION_ABSOLUTE'));
+  pruefe('er färbt ohne Beleuchtungsmodell',
+    !!b && b.lightingModel === 'UNLIT',
+    'eine Messgröße darf nicht vom Blickwinkel abhängen');
+  pruefe('der Stil trägt keine Farbe mehr',
+    !ts.style.definition.color,
+    'sonst rechnete das Grobe daneben mit und gewänne nichts');
+}
+
+{
+  // Der eigentliche Anlass: ein Band unter einem Zentimeter.
+  const ts = BV.loadedAssets.get('fein').tileset;
+  BV.setHeightWindow(99.9975, 100.0025);
+  const u = verbund.baustein(ts, I.HOEHE_BLOCK).uniforms.u_pcHoeheFenster.value;
+  pruefe('ein 5-mm-Band kommt als 5-mm-Band im Shader an',
+    nahe(u.y - u.x, 0.005, 1e-9),
+    `Spanne=${(u.y - u.x)} m`);
+  pruefe('das Fenster steht relativ zum Bezugspunkt, nicht über dem Ellipsoid',
+    Math.abs(u.x) < 1 && Math.abs(u.y) < 1,
+    'Zahlen um 100 verlören in float32 genau die Millimeter, um die es geht');
+
+  // Ein halber Millimeter — unterhalb dessen, was ein Scan auflöst, aber
+  // die Darstellung darf ihn nicht verschlucken.
+  BV.setHeightWindow(99.99975, 100.00025);
+  const u2 = verbund.baustein(ts, I.HOEHE_BLOCK).uniforms.u_pcHoeheFenster.value;
+  pruefe('auch ein halber Millimeter überlebt den Weg', nahe(u2.y - u2.x, 0.0005, 1e-10));
+}
+
+{
+  // Ein Reglerzug darf keinen neuen Shader bauen: Cesium übersetzt bei jedem
+  // `customShader` und bei jedem `style` den Shader jedes Kachelinhalts neu.
+  const ts = BV.loadedAssets.get('fein').tileset;
+  const vorher = verbund.setzenRufe;
+  const stilVorher = ts.style;
+  for (let i = 0; i < 20; i++) BV.setHeightCenter(100 + i * 0.001);
+  pruefe('zwanzig Reglerzüge bauen keinen neuen Shader',
+    verbund.setzenRufe === vorher,
+    `${verbund.setzenRufe - vorher} Neubauten — der Dickenregler würde ruckeln`);
+  pruefe('und auch keinen neuen Stil', ts.style === stilVorher,
+    'ein neuer Cesium3DTileStyle stößt dieselbe Übersetzung an');
+}
+
+{
+  // Bezugspunkt und Lot werden je Bild ins Augensystem gedreht. Das ist der
+  // ganze Trick: aus 6 400 km wird der Abstand zur Kamera.
+  const ts = BV.loadedAssets.get('fein').tileset;
+  preRenderHaken.forEach((f) => f());
+  const u = verbund.baustein(ts, I.HOEHE_BLOCK).uniforms;
+  const ref = u.u_pcHoeheRef.value;
+  pruefe('der Bezugspunkt liegt im Augensystem und ist klein',
+    C3.magnitude(ref) < 1000,
+    `|ref| = ${C3.magnitude(ref).toFixed(1)} m — als Erdkoordinate wären es 6 400 000`);
+  pruefe('er zeigt den echten Abstand zur Kamera', nahe(Math.abs(ref.z), 20, 1e-6));
+  pruefe('das Lot ist ein Einheitsvektor', nahe(C3.magnitude(u.u_pcHoeheLot.value), 1, 1e-9));
+}
+
+{
+  const ts = BV.loadedAssets.get('fein').tileset;
+  BV.setColorMode('rgb');
+  pruefe('ein anderer Farbmodus meldet den Baustein wieder ab',
+    !verbund.hat(ts, I.HOEHE_BLOCK),
+    'sonst färbte der Shader weiter, während der Stil längst Originalfarbe sagt');
+  BV.setColorMode('height');
+}
+
+// ══ 9 · Das Band führen: Dicke, Mitte, Schritt ══════════════════════════
+
+{
+  BV.setHeightWindow(100, 100.1);
+
+  BV.setHeightThickness(0.005);
+  let w = BV.pointCloudSettings.heightWindow;
+  pruefe('die Dicke ändert sich, die Mitte bleibt',
+    nahe(w.max - w.min, 0.005, 1e-12) && nahe((w.min + w.max) / 2, 100.05, 1e-9));
+
+  BV.setHeightCenter(102);
+  w = BV.pointCloudSettings.heightWindow;
+  pruefe('die Mitte ändert sich, die Dicke bleibt',
+    nahe(w.max - w.min, 0.005, 1e-12) && nahe((w.min + w.max) / 2, 102, 1e-9));
+
+  BV.stepHeightWindow(1);
+  w = BV.pointCloudSettings.heightWindow;
+  pruefe('ein Schritt versetzt um genau eine Banddicke — lückenlos, ohne Überlappung',
+    nahe((w.min + w.max) / 2, 102.005, 1e-9) && nahe(w.max - w.min, 0.005, 1e-12));
+
+  BV.stepHeightWindow(-3);
+  w = BV.pointCloudSettings.heightWindow;
+  pruefe('und zurück', nahe((w.min + w.max) / 2, 101.99, 1e-9));
+
+  BV.setHeightThickness(0);
+  w = BV.pointCloudSettings.heightWindow;
+  pruefe('eine Dicke von Null wird auf den unteren Anschlag gelegt',
+    nahe(w.max - w.min, I.FENSTER_MIN, 1e-12),
+    'ein Band der Dicke Null ließe den Shader durch Null teilen');
+}
+
+{
+  pruefe('„außerhalb" kennt drei Zustände',
+    I.AUSSEN.klemmen === 0 && I.AUSSEN.aus === 1 && I.AUSSEN.grau === 2);
+  BV.setHeightOutside('aus');
+  pruefe('„ausblenden" kommt am Tileset an',
+    BV.loadedAssets.get('fein').tileset._ileenHoehenBezug &&
+    verbund.baustein(BV.loadedAssets.get('fein').tileset, I.HOEHE_BLOCK)
+      .uniforms.u_pcHoeheFenster.value.z === 1);
+  BV.setHeightOutside('quatsch');
+  pruefe('ein unbekannter Zustand fällt auf „klemmen" zurück',
+    BV.pointCloudSettings.heightOutside === 'klemmen');
+}
+
+{
+  // Der Dickenregler läuft logarithmisch, sonst läge der Messbereich auf dem
+  // ersten Promille des Weges.
+  const hin = I.reglerAusDicke(0.005);
+  pruefe('Reglerstellung und Dicke sind umkehrbar',
+    nahe(I.dickeAusRegler(hin), 0.005, 1e-4),
+    `5 mm → ${hin} → ${I.dickeAusRegler(hin)}`);
+  pruefe('der Regler erreicht den Millimeterbereich in seiner unteren Hälfte',
+    I.reglerAusDicke(0.005) < 500,
+    'linear verteilt läge er auf dem ersten Promille');
+  pruefe('ein Millimeter wird als Millimeter geschrieben',
+    I.hoeheText(0.005) === '5.00 mm', I.hoeheText(0.005));
+  pruefe('ein Meter bleibt ein Meter', I.hoeheText(2.5) === '2.500 m', I.hoeheText(2.5));
 }
 
 // ══ Ergebnis ═════════════════════════════════════════════════════════════

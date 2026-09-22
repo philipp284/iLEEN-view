@@ -233,20 +233,45 @@
   // STORE — lokal
   // ============================================================
 
-  // Notizen liegen ausschließlich im localStorage; bcf-export.js liest window.Tags.items.
+  // Zwei Ablagen, eine Wahrheit: der localStorage ist der Schreibblock, der
+  // immer da ist, das Backend (`issues-store.js` → `/issues`) die Ablage mit
+  // Verlauf, BCF und allem, was andere angelegt haben. Geschrieben wird
+  // **zuerst lokal** — eine Notiz auf der Baustelle darf nicht daran scheitern,
+  // dass gerade kein Netz da ist; was nicht durchgeht, merkt `issues-store.js`
+  // vor und holt es nach.
   const DualStore = {
     async load() {
-      return LocalStore.load();
+      const lokal = LocalStore.load();
+      if (!window.ILEEN_ISSUES) return lokal;
+      try {
+        const fern = await ILEEN_ISSUES.alleAlsTags(lokal);
+        if (Array.isArray(fern)) {
+          // Der Server führt. Lokal wird nachgezogen, damit ein späterer
+          // Start ohne Netz denselben Stand zeigt.
+          LocalStore.save(fern);
+          return fern;
+        }
+      } catch (e) {
+        console.warn('[Tags] Backend nicht erreichbar, es gilt der lokale Stand', e);
+      }
+      return lokal;
     },
     async upsert(tag) {
       LocalStore.upsert(tag);
+      if (window.ILEEN_ISSUES) ILEEN_ISSUES.tagSichern(tag).catch(() => {});
       return tag;
     },
     async remove(id) {
       LocalStore.remove(id);
+      if (window.ILEEN_ISSUES) ILEEN_ISSUES.entfernen(id).catch(() => {});
     },
 
-    async flushRetryQueue() { return { flushed: 0, remaining: 0 }; }
+    async flushRetryQueue() {
+      if (!window.ILEEN_ISSUES) return { flushed: 0, remaining: 0 };
+      const stand = await ILEEN_ISSUES.nachholen().catch(() => null);
+      return stand ? { flushed: stand.erledigt, remaining: stand.offen }
+                   : { flushed: 0, remaining: ILEEN_ISSUES.offen };
+    }
   };
 
   // ============================================================
@@ -1213,6 +1238,13 @@
     openDialog(pickResult, screenPos) {
       return openDialog(pickResult, screenPos);
     },
+
+    /**
+     * Build a tag without the dialog — for code that already knows position,
+     * target and payload. `aufmass.js` uses it to file a finished measurement
+     * as a note; the dialog path is unchanged.
+     */
+    make(opts) { return makeTag(opts); },
 
     /**
      * Save (create or update) a tag.

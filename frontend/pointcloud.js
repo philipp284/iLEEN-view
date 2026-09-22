@@ -35,6 +35,20 @@
  * misst am `postRender` der Szene — dieselbe Stelle wie fps.js, also die
  * Bildrate der Szene und nicht die des Fensters — und bewegt sich langsam,
  * mit Totband: eine Regelung, die bei jedem Ruckler zurückschlägt, pumpt.
+ *
+ * Der Höhenmodus misst
+ * ====================
+ * Er war eine Ansicht: blau unten, rot oben, über die ganze Wolke. Für eine
+ * Ebenheitsmessung muss er ein Messgerät sein — Ober- und Untergrenze
+ * wenige Millimeter auseinander, und was dazwischen liegt, über den ganzen
+ * Farbraum gespreizt.
+ *
+ * Das ging über die Stilsprache nicht. `${POSITION_ABSOLUTE}` ist eine
+ * Erdkoordinate in float32; bei 6 400 km Betrag sind das rund 0,5 m
+ * Quantisierung, und eine Rampe über 5 mm hätte darin genau zwei Stufen.
+ * Deshalb rechnet der Höhenmodus jetzt im AUGENSYSTEM (siehe
+ * `hoehenBausteinBauen`): dort ist die Zahl so groß wie der Abstand zur
+ * Kamera, und aus einem halben Meter Auflösung werden ein paar Mikrometer.
  */
 'use strict';
 
@@ -65,8 +79,20 @@
     autoLeistung: true,
     zielFps: 30,
     // Höhenmodus: null = Spanne aus dem Bounding-Volume der Wolke.
-    heightWindow: null
+    heightWindow: null,
+    // Was außerhalb des Höhenfensters liegt: 'klemmen' (Randfarbe halten),
+    // 'aus' (verwerfen) oder 'grau'. Zum Messen taugt nur, was das Band
+    // sichtbar begrenzt — geklemmt sieht eine 5-mm-Rampe aus wie eine Wolke,
+    // die zur Hälfte blau und zur Hälfte rot ist.
+    heightOutside: 'klemmen'
   };
+
+  // Grenzen des Höhenfensters. Die Untergrenze ist nicht das, was eine Wolke
+  // auflöst — ein Laserscan liegt bei ein bis zwei Millimetern Rauschen —,
+  // sondern das, was float32 im Augensystem noch sicher trägt. Wer 0,2 mm
+  // einstellt, sieht Rauschen; er sieht es aber richtig.
+  const FENSTER_MIN = 0.0002;    // 0,2 mm
+  const FENSTER_MAX = 2000;      // m, darüber ist es keine Wolke mehr
 
   // Grenzen der Bildratenautomatik.
   const AUTO_MIN_FAKTOR = 1.0;   // nie feiner als eingestellt
@@ -230,13 +256,20 @@
   // ── Höhenspanne einer Wolke ──────────────────────────────────────────────
 
   /**
-   * Tiefste und höchste Stelle einer Wolke, in Metern über dem Ellipsoid,
-   * samt Bezugspunkt und Lotrichtung für den Stil.
+   * Tiefste und höchste Stelle einer Wolke, samt Bezugspunkt und Lotrichtung.
    *
    * Gelesen wird das Bounding-Volume der Wurzel: py3dtiles schreibt dort eine
    * orientierte Box, deren acht Ecken die Wolke sicher einschließen. Nur wenn
    * keine Box da ist, muss die Hüllkugel herhalten — die ist zu großzügig,
    * weil ihr Radius die waagerechte Ausdehnung mitträgt.
+   *
+   * Gemessen wird gegen die WAAGERECHTE DURCH DEN BEZUGSPUNKT, nicht gegen
+   * das Ellipsoid — also genau so, wie der Shader später rechnet. Der
+   * Unterschied ist die Erdkrümmung, `d²/2R`: über einen Raum hinweg ein
+   * Hundertstel Millimeter, über einen Kilometer acht Zentimeter. Solange
+   * beide Seiten dieselbe Bezugsfläche benutzen, steht ein eingetipptes
+   * Millimeterband überall dort, wo es stehen soll; mischte man die
+   * Konventionen, wanderte es am Rand einer großen Wolke aus dem Bild.
    */
   function hoehenBezug(tileset) {
     if (!tileset || !tileset.root) return null;
@@ -281,18 +314,24 @@
       };
     }
 
-    let hMin = Infinity, hMax = -Infinity;
-    ecken.forEach((p) => {
-      const c = ellipsoid.cartesianToCartographic(p);
-      if (!c) return;
-      if (c.height < hMin) hMin = c.height;
-      if (c.height > hMax) hMax = c.height;
-    });
-    if (!isFinite(hMin) || !isFinite(hMax)) return null;
-
     const hm = ellipsoid.cartesianToCartographic(mitte);
     const lot = ellipsoid.geodeticSurfaceNormal(mitte, new Cesium.Cartesian3());
-    return { mitte: mitte, lot: lot, hMitte: hm ? hm.height : 0, hMin: hMin, hMax: hMax };
+    const hMitte = hm ? hm.height : 0;
+
+    let dMin = Infinity, dMax = -Infinity;
+    const ab = new Cesium.Cartesian3();
+    ecken.forEach((p) => {
+      Cesium.Cartesian3.subtract(p, mitte, ab);
+      const d = Cesium.Cartesian3.dot(ab, lot);
+      if (d < dMin) dMin = d;
+      if (d > dMax) dMax = d;
+    });
+    if (!isFinite(dMin) || !isFinite(dMax)) return null;
+
+    return {
+      mitte: mitte, lot: lot, hMitte: hMitte,
+      hMin: hMitte + dMin, hMax: hMitte + dMax
+    };
   }
 
   BimViewer.pointCloudHeightRange = hoehenBezug;
@@ -318,43 +357,215 @@
            ' + ' + f(bezug.hMitte) + ')';
   }
 
+  // ── Höhe im Augensystem: der feine Weg ───────────────────────────────────
+  //
+  // Die Stilsprache hört bei einem halben Meter auf (siehe `hoehenAusdruck`).
+  // Für eine Ebenheitsmessung ist das nutzlos — dort liegen Ober- und
+  // Untergrenze wenige Millimeter auseinander.
+  //
+  // Der Ausweg führt an der Stilsprache vorbei. Punktwolken laufen über
+  // denselben Modell-Renderer wie die IFC-Kacheln
+  // (`Cesium3DTileContentFactory.pnts → Model3DTileContent.fromPnts`), und
+  // damit greift `customShader` auch auf ihnen. Dort steht
+  // `fsInput.attributes.positionEC` bereit: die Lage des Punktes im
+  // AUGENSYSTEM. Die ist nicht 6 400 km groß, sondern so groß wie der
+  // Abstand zur Kamera — bei zwanzig Metern bleiben in float32 rund zwei
+  // Mikrometer Auflösung. Genau deshalb rechnet Cesium selbst alles dort.
+  //
+  // Bezugspunkt und Lot wandern je Bild auf der CPU ins Augensystem
+  // (`hoehenNachfuehren`): dort in doppelter Genauigkeit, und erst das
+  // Ergebnis — eine kleine Zahl — geht als Uniform in den Shader.
+
+  const HOEHE_BLOCK = 'punktwolken-hoehe';
+
+  /** Was außerhalb des Bandes passiert, als Zahl für den Shader. */
+  const AUSSEN = { klemmen: 0, aus: 1, grau: 2 };
+
+  /** Trägt diese Cesium-Fassung den feinen Weg? Sonst bleibt es beim Stil. */
+  function hoehenShaderMoeglich() {
+    return !!(typeof Cesium !== 'undefined' &&
+              Cesium.CustomShader && Cesium.UniformType && Cesium.LightingModel &&
+              Cesium.Cartesian4 && Cesium.Matrix4 &&
+              Cesium.Matrix4.multiplyByPointAsVector &&
+              BimViewer.ShaderVerbund);
+  }
+
+  /**
+   * Der Baustein für den Shader-Verbund.
+   *
+   * `fenster` ist ein `Cartesian4`: x/y sind Unter- und Obergrenze in Metern
+   * ÜBER DEM BEZUGSPUNKT (nicht über dem Ellipsoid — kleine Zahlen bleiben
+   * in float32 klein), z ist der Umgang mit allem außerhalb.
+   */
+  function hoehenBausteinBauen(fenster) {
+    return {
+      ordnung: 30,
+      // Eine Höhenrampe ist eine Messgröße, kein Werkstoff: ein
+      // Beleuchtungsmodell würde denselben Millimeter je nach Blickwinkel
+      // anders einfärben. Die Plastik der Wolke kommt vom Eye-Dome-Lighting,
+      // und das ist ein Nachbearbeitungsschritt, kein Materialmodell.
+      lightingModel: Cesium.LightingModel.UNLIT,
+      uniforms: {
+        u_pcHoeheRef: { type: Cesium.UniformType.VEC3, value: new Cesium.Cartesian3(0, 0, 0) },
+        u_pcHoeheLot: { type: Cesium.UniformType.VEC3, value: new Cesium.Cartesian3(0, 0, 1) },
+        u_pcHoeheFenster: { type: Cesium.UniformType.VEC4, value: fenster }
+      },
+      fragment: [
+        '    float h = dot(fsInput.attributes.positionEC - u_pcHoeheRef, u_pcHoeheLot);',
+        '    float unten = u_pcHoeheFenster.x;',
+        '    float spanne = max(u_pcHoeheFenster.y - unten, 1.0e-7);',
+        '    float t = (h - unten) / spanne;',
+        '    float aussen = u_pcHoeheFenster.z;',
+        '    bool draussen = (t < 0.0 || t > 1.0);',
+        '    if (draussen && aussen > 0.5 && aussen < 1.5) discard;',
+        '    if (draussen && aussen > 1.5) {',
+        '      material.diffuse = vec3(0.26, 0.28, 0.31);',
+        '    } else {',
+        // Blau unten über Cyan, Grün und Gelb nach Rot oben — dieselbe Rampe
+        // wie im Stilweg. 0.6667 ist Blau im Farbkreis.
+        '      material.diffuse = czm_HSLToRGB(vec3((1.0 - clamp(t, 0.0, 1.0)) * 0.6667, 0.9, 0.5));',
+        '    }'
+      ].join('\n')
+    };
+  }
+
+  /** Den Baustein von einer Wolke abmelden. */
+  function hoehenShaderAus(tileset) {
+    const V = BimViewer.ShaderVerbund;
+    if (!V || !tileset) return;
+    try { if (V.hat(tileset, HOEHE_BLOCK)) V.entfernen(tileset, HOEHE_BLOCK); }
+    catch (e) { /* Tileset schon entladen */ }
+  }
+
+  let hoehenWacheAn = false;
+
+  /**
+   * Bezugspunkt und Lot je Bild ins Augensystem drehen.
+   *
+   * `camera.viewMatrix` rechnet in doppelter Genauigkeit; ihr
+   * Verschiebungsanteil hebt die Erdkoordinate des Bezugspunkts fast
+   * vollständig auf, und was übrig bleibt, ist der Abstand zur Kamera. Erst
+   * DIESE kleine Zahl wird float32 — dieselbe Reihenfolge, in der auch
+   * `czm_modelView` entsteht, mit der der Shader `positionEC` bildet.
+   *
+   * Für jede Wolke ein frisches `Cartesian3`: `ShaderVerbund.uniform()`
+   * schreibt den Wert nicht nur in den Shader, sondern auch in die
+   * Baustein-Definition zurück. Ein geteiltes Objekt wäre damit ein stiller
+   * Kanal zwischen zwei Wolken (derselbe Grund wie in licht.js).
+   */
+  function hoehenNachfuehren() {
+    const V = BimViewer.ShaderVerbund;
+    const szene = BimViewer.viewer && BimViewer.viewer.scene;
+    if (!V || !szene) { hoehenWacheStoppen(); return; }
+    const sicht = szene.camera && szene.camera.viewMatrix;
+    if (!sicht) return;
+
+    let laufen = 0;
+    punktwolken((tileset) => {
+      if (!V.hat(tileset, HOEHE_BLOCK)) return;
+      const b = tileset._ileenHoehenBezug;
+      if (!b || !b.mitte || !b.lot) return;
+      laufen++;
+      const ref = Cesium.Matrix4.multiplyByPoint(sicht, b.mitte, new Cesium.Cartesian3());
+      const lot = Cesium.Matrix4.multiplyByPointAsVector(sicht, b.lot, new Cesium.Cartesian3());
+      Cesium.Cartesian3.normalize(lot, lot);
+      V.uniform(tileset, 'u_pcHoeheRef', ref);
+      V.uniform(tileset, 'u_pcHoeheLot', lot);
+    });
+
+    // Niemand mehr da, der den Baustein trägt — die Wache hat nichts mehr zu
+    // tun und soll nicht je Bild über alle Assets laufen.
+    if (!laufen) hoehenWacheStoppen();
+  }
+
+  function hoehenWacheStarten() {
+    if (hoehenWacheAn) return;
+    const szene = BimViewer.viewer && BimViewer.viewer.scene;
+    if (!szene || !szene.preRender || !szene.preRender.addEventListener) return;
+    szene.preRender.addEventListener(hoehenNachfuehren);
+    hoehenWacheAn = true;
+    // Einmal sofort: ohne das stünde das erste Bild auf den Anfangswerten.
+    hoehenNachfuehren();
+  }
+
+  function hoehenWacheStoppen() {
+    if (!hoehenWacheAn) return;
+    const szene = BimViewer.viewer && BimViewer.viewer.scene;
+    try {
+      if (szene && szene.preRender) szene.preRender.removeEventListener(hoehenNachfuehren);
+    } catch (e) { /* Szene weg */ }
+    hoehenWacheAn = false;
+  }
+
   /** Farbmodus als Tileset-Stil; die Punktgröße reist im selben Stil mit. */
   BimViewer.applyColorMode = function (tileset, modus) {
     if (!tileset) return;
+    if (modus !== 'height') hoehenShaderAus(tileset);
     try {
       const s = this.pointCloudSettings || {};
       // Mit aktiver Abschwächung keine Punktgröße im Stil: Cesium ignoriert
       // die Abschwächung, sobald der Stil eine Größe vorgibt.
       const groesse = s.attenuationEnabled ? undefined : (s.pointSize || 2.0);
+      // Jeder neue `Cesium3DTileStyle` lässt Cesium den Shader jedes
+      // Kachelinhalts neu übersetzen. Beim Ziehen eines Reglers wäre das
+      // sechzigmal in der Sekunde — also nur setzen, wenn sich am Stil
+      // wirklich etwas geändert hat.
       const stil = (definition) => {
         if (groesse !== undefined) definition.pointSize = groesse;
-        return new Cesium.Cesium3DTileStyle(definition);
+        const signatur = modus + '|' + JSON.stringify(definition);
+        if (tileset._ileenStilSignatur === signatur) return;
+        tileset._ileenStilSignatur = signatur;
+        tileset.style = new Cesium.Cesium3DTileStyle(definition);
       };
 
       switch (modus) {
         case 'height': {
           const bezug = hoehenBezug(tileset);
-          if (!bezug) { tileset.style = stil({}); break; }
+          if (!bezug) { stil({}); break; }
           const fenster = s.heightWindow;
           let hMin = fenster && isFinite(fenster.min) ? fenster.min : bezug.hMin;
           let hMax = fenster && isFinite(fenster.max) ? fenster.max : bezug.hMax;
-          if (!(hMax > hMin)) hMax = hMin + 1;
-          const t = '(clamp((' + hoehenAusdruck(bezug) + ' - ' + hMin.toFixed(3) +
-                    ') / ' + (hMax - hMin).toFixed(3) + ', 0.0, 1.0))';
+          if (!(hMax > hMin)) hMax = hMin + FENSTER_MIN;
+          tileset._ileenHoehenBezug = {
+            min: hMin, max: hMax, autoMin: bezug.hMin, autoMax: bezug.hMax,
+            mitte: bezug.mitte, lot: bezug.lot, hMitte: bezug.hMitte
+          };
+
+          if (hoehenShaderMoeglich()) {
+            // Der Stil trägt nur noch die Punktgröße — die Farbe kommt aus
+            // dem Shader, und beides zu rechnen brächte nichts als das
+            // gröbere Ergebnis obendrauf.
+            stil({});
+            const V = BimViewer.ShaderVerbund;
+            const w = new Cesium.Cartesian4(hMin - bezug.hMitte, hMax - bezug.hMitte,
+                                            AUSSEN[s.heightOutside] || 0, 0);
+            // Läuft der Baustein schon, reicht das Uniform: ein neuer
+            // Baustein hieße neuer Shader, und der Dickenregler baute ihn
+            // bei jedem Pixel Reglerweg neu.
+            if (V.hat(tileset, HOEHE_BLOCK)) V.uniform(tileset, 'u_pcHoeheFenster', w);
+            else V.setzen(tileset, HOEHE_BLOCK, hoehenBausteinBauen(w));
+            tileset._ileenHoehenFein = true;
+            hoehenWacheStarten();
+            break;
+          }
+
+          // Rückfallweg: grob, aber besser als gar keine Höhe.
+          tileset._ileenHoehenFein = false;
+          const t = '(clamp((' + hoehenAusdruck(bezug) + ' - ' + hMin.toFixed(4) +
+                    ') / ' + (hMax - hMin).toFixed(4) + ', 0.0, 1.0))';
           // Blau unten über Cyan, Grün und Gelb nach Rot oben — die Rampe,
           // die jede Höhenkarte benutzt. 0.6667 ist Blau im Farbkreis.
-          tileset.style = stil({ color: 'hsl((1.0 - ' + t + ') * 0.6667, 0.9, 0.5)' });
-          tileset._ileenHoehenBezug = { min: hMin, max: hMax, autoMin: bezug.hMin, autoMax: bezug.hMax };
+          stil({ color: 'hsl((1.0 - ' + t + ') * 0.6667, 0.9, 0.5)' });
           break;
         }
         case 'intensity':
-          tileset.style = stil({
+          stil({
             color: "color() * (typeof ${Intensity} !== 'undefined' ? ${Intensity} : 1.0)"
           });
           break;
         case 'classification':
           // ASPRS-Klassen: 2 Boden, 3–5 Vegetation, 6 Gebäude, 9 Wasser
-          tileset.style = stil({
+          stil({
             color: {
               conditions: [
                 ["typeof ${Classification} !== 'undefined' && ${Classification} === 0", "color('#808080')"],
@@ -371,7 +582,7 @@
           });
           break;
         default:
-          tileset.style = stil({});
+          stil({});
       }
     } catch (fehler) {
       console.warn('Farbmodus nicht anwendbar:', fehler.message);
@@ -508,6 +719,102 @@
     BimViewer.updatePointCloudUI();
   };
 
+  // ── Das Band führen ──────────────────────────────────────────────────────
+  //
+  // Zum Messen greift niemand nach zwei absoluten Höhen. Er sagt „fünf
+  // Millimeter dick" und schiebt das Band durch die Platte. Dicke und Mitte
+  // sind deshalb die Handgriffe; `heightWindow` bleibt der Zustand, aus dem
+  // sich beides ergibt — zwei nebeneinander geführte Darstellungen desselben
+  // laufen früher oder später auseinander.
+
+  /** Das geltende Fenster: das gesetzte, sonst die Spanne der Wolke. */
+  function hoehenSpanne() {
+    const s = BimViewer.pointCloudSettings;
+    if (s.heightWindow) return { min: s.heightWindow.min, max: s.heightWindow.max, auto: false };
+    let auto = null;
+    punktwolken((ts) => { if (!auto && ts._ileenHoehenBezug) auto = ts._ileenHoehenBezug; });
+    if (auto) return { min: auto.autoMin, max: auto.autoMax, auto: true };
+    return null;
+  }
+
+  BimViewer.getHeightWindow = function () { return hoehenSpanne(); };
+
+  function fensterSetzen(mitte, dicke) {
+    const d = Math.min(FENSTER_MAX, Math.max(FENSTER_MIN, dicke));
+    BimViewer.setHeightWindow(mitte - d / 2, mitte + d / 2);
+  }
+
+  /** Banddicke in Metern; die Bandmitte bleibt stehen. */
+  BimViewer.setHeightThickness = function (meter) {
+    const sp = hoehenSpanne();
+    const d = parseFloat(meter);
+    if (!sp || !isFinite(d)) return;
+    fensterSetzen((sp.min + sp.max) / 2, d);
+  };
+
+  /** Bandmitte in Metern über dem Ellipsoid; die Dicke bleibt stehen. */
+  BimViewer.setHeightCenter = function (meter) {
+    const sp = hoehenSpanne();
+    const m = parseFloat(meter);
+    if (!sp || !isFinite(m)) return;
+    fensterSetzen(m, sp.max - sp.min);
+  };
+
+  /**
+   * Das Band um `n` ganze Banddicken verschieben.
+   *
+   * Der Handgriff, mit dem man eine Platte abtastet: Dicke einmal einstellen,
+   * dann Schritt für Schritt durch. Lückenlos und ohne Überlappung — genau
+   * das kann ein Regler nicht, dessen Rasterung an der Wolkenhöhe hängt.
+   */
+  BimViewer.stepHeightWindow = function (n) {
+    const sp = hoehenSpanne();
+    const k = parseFloat(n);
+    if (!sp || !isFinite(k)) return;
+    const d = Math.max(FENSTER_MIN, sp.max - sp.min);
+    BimViewer.setHeightWindow(sp.min + k * d, sp.max + k * d);
+  };
+
+  /** Was außerhalb des Bandes liegt: 'klemmen' | 'aus' | 'grau'. */
+  BimViewer.setHeightOutside = function (art) {
+    setzen('heightOutside', AUSSEN[art] === undefined ? 'klemmen' : art);
+  };
+
+  // ── Zahlen, die man noch lesen kann ──────────────────────────────────────
+
+  /** Ein Höhenmaß in der Einheit, in der es nicht zur Ziffernkolonne wird. */
+  function hoeheText(m) {
+    if (!isFinite(m)) return '–';
+    const a = Math.abs(m);
+    if (a < 0.01) return (m * 1000).toFixed(2) + ' mm';
+    if (a < 0.1)  return (m * 1000).toFixed(1) + ' mm';
+    if (a < 1)    return (m * 100).toFixed(1) + ' cm';
+    return m.toFixed(3) + ' m';
+  }
+
+  // Der Dickenregler läuft logarithmisch: zwischen einem halben Millimeter
+  // und fünfzig Metern liegen fünf Zehnerpotenzen. Linear verteilt läge der
+  // ganze Messbereich auf dem ersten Promille des Reglerwegs.
+  const DICKE_REGLER_MIN = 0.0005;
+  const DICKE_REGLER_MAX = 50;
+  const DICKE_REGLER_SCHRITTE = 1000;
+
+  function dickeAusRegler(v) {
+    const f = Math.min(1, Math.max(0, (parseFloat(v) || 0) / DICKE_REGLER_SCHRITTE));
+    return DICKE_REGLER_MIN * Math.pow(DICKE_REGLER_MAX / DICKE_REGLER_MIN, f);
+  }
+
+  function reglerAusDicke(d) {
+    const g = Math.min(DICKE_REGLER_MAX, Math.max(DICKE_REGLER_MIN, d || DICKE_REGLER_MIN));
+    const f = Math.log(g / DICKE_REGLER_MIN) / Math.log(DICKE_REGLER_MAX / DICKE_REGLER_MIN);
+    return Math.round(f * DICKE_REGLER_SCHRITTE);
+  }
+
+  /** Der Dickenregler im Panel — die Umrechnung bleibt hier, nicht im Markup. */
+  BimViewer.setHeightThicknessSlider = function (v) {
+    BimViewer.setHeightThickness(dickeAusRegler(v));
+  };
+
   BimViewer.resetPointCloudSettings = function () {
     this.pointCloudSettings = Object.assign({}, VORGABE);
     this._autoSse = VORGABE.maximumScreenSpaceError;
@@ -567,15 +874,60 @@
     // die automatisch ermittelte Spanne als Platzhalter.
     const fensterZeile = document.getElementById('pcHeightWindow');
     if (fensterZeile) fensterZeile.hidden = s.colorMode !== 'height';
-    if (s.colorMode === 'height') {
-      let auto = null;
-      punktwolken((ts) => { if (!auto && ts._ileenHoehenBezug) auto = ts._ileenHoehenBezug; });
-      const min = document.getElementById('pcHeightMin');
-      const max = document.getElementById('pcHeightMax');
-      if (min && auto) min.placeholder = auto.autoMin.toFixed(1);
-      if (max && auto) max.placeholder = auto.autoMax.toFixed(1);
-      if (min) min.value = s.heightWindow ? s.heightWindow.min : '';
-      if (max) max.value = s.heightWindow ? s.heightWindow.max : '';
+    if (s.colorMode !== 'height') return;
+
+    let auto = null;
+    punktwolken((ts) => { if (!auto && ts._ileenHoehenBezug) auto = ts._ileenHoehenBezug; });
+    const spanne = hoehenSpanne();
+    const dicke = spanne ? Math.max(0, spanne.max - spanne.min) : 0;
+    const mitte = spanne ? (spanne.min + spanne.max) / 2 : 0;
+
+    // Vier Nachkommastellen — ein Zehntelmillimeter. Weniger, und das
+    // Zurückschreiben des gerundeten Werts würde ein eingestelltes Band bei
+    // jedem Handgriff ein Stück verschieben.
+    const min = document.getElementById('pcHeightMin');
+    const max = document.getElementById('pcHeightMax');
+    if (min && auto) min.placeholder = auto.autoMin.toFixed(4);
+    if (max && auto) max.placeholder = auto.autoMax.toFixed(4);
+    if (min) min.value = s.heightWindow ? s.heightWindow.min.toFixed(4) : '';
+    if (max) max.value = s.heightWindow ? s.heightWindow.max.toFixed(4) : '';
+
+    sync('pcHeightDicke', reglerAusDicke(dicke));
+    syncText('pcHeightDickeValue', spanne ? hoeheText(dicke) : '–');
+
+    // Der Mittenregler läuft in Metern über die Spanne der Wolke, mit
+    // Millimeterrasterung. Ein Regler mit fester Skala hätte bei einer
+    // dreißig Meter hohen Wolke drei Zentimeter je Pixel — mehr als das
+    // ganze Band, das er verschieben soll.
+    const mReg = document.getElementById('pcHeightMitte');
+    if (mReg) {
+      if (auto) {
+        mReg.min = auto.autoMin.toFixed(4);
+        mReg.max = auto.autoMax.toFixed(4);
+      }
+      // `step="any"`, nicht `0.001`: ein Raster liegt auf `min + n · step`,
+      // und eine Bandmitte, die dort nicht genau hineinfällt, würde beim
+      // Zurückschreiben um bis zu einen halben Rasterschritt wandern. Bei
+      // einem Zweimillimeterband ist das ein Fünftel des Bandes, jedes Mal.
+      // Fein eingestellt wird ohnehin mit dem Zahlenfeld und den Pfeilen.
+      mReg.step = 'any';
+      if (spanne) mReg.value = mitte;
+    }
+    syncText('pcHeightMitteValue', spanne ? mitte.toFixed(3) + ' m' : '–');
+
+    sync('pcHeightAussen', s.heightOutside || 'klemmen');
+
+    syncText('pcHeightVon', spanne ? hoeheText(-dicke / 2) : '–');
+    syncText('pcHeightBand', spanne ? hoeheText(dicke) : '–');
+    syncText('pcHeightBis', spanne ? '+' + hoeheText(dicke / 2) : '–');
+
+    // Der Rückfallweg ist grob (siehe Kopf der Datei). Ein Band, das feiner
+    // ist, als er auflöst, sähe dort schlicht falsch aus — also sagen wir es.
+    const hinweis = document.getElementById('pcHeightGrob');
+    if (hinweis) {
+      let fein = true;
+      punktwolken((ts) => { if (ts._ileenHoehenFein === false) fein = false; });
+      hinweis.hidden = fein || dicke > 0.5;
     }
   };
 
@@ -631,5 +983,11 @@
   };
 
   // Prüfsteine hängen an der reinen Rechnerei.
-  BimViewer._pointCloudIntern = { hoehenBezug: hoehenBezug, hoehenAusdruck: hoehenAusdruck, VORGABE: VORGABE };
+  BimViewer._pointCloudIntern = {
+    hoehenBezug: hoehenBezug, hoehenAusdruck: hoehenAusdruck, VORGABE: VORGABE,
+    hoehenBausteinBauen: hoehenBausteinBauen, hoehenNachfuehren: hoehenNachfuehren,
+    hoehenSpanne: hoehenSpanne, hoeheText: hoeheText,
+    dickeAusRegler: dickeAusRegler, reglerAusDicke: reglerAusDicke,
+    HOEHE_BLOCK: HOEHE_BLOCK, AUSSEN: AUSSEN, FENSTER_MIN: FENSTER_MIN
+  };
 })();

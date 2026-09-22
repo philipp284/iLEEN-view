@@ -315,7 +315,7 @@ IFCFilterPro.renderFilterList = function () {
               <div class="ifcp-item${isOn ? ' ifcp-item-active' : ''}${entity.entdeckt ? ' ifcp-item-entdeckt' : ''}"
                    onclick="IFCFilterPro.toggleClick('${entity.entity}', this)"
                    title="${entity.entity}${entity.entdeckt ? ' — im Modell gefunden, nicht in der Typenliste' : ''}">
-                <span class="ifcp-dot" style="background:${entity.color};"></span>
+                <span class="ifcp-dot" style="background:${typeof ifcFarbe === 'function' ? ifcFarbe(entity) : entity.color};"></span>
                 <span class="ifcp-name">${deName}</span>
                 ${zaehler}
                 <span class="ifcp-sub">${entity.entity}</span>
