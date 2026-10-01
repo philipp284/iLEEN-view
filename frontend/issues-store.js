@@ -470,36 +470,19 @@
     return false;
   }
 
+  // Der Flug selbst steht in features.js (BimViewer.bauteilAnfliegen) — die
+  // gaeco-Brücke braucht dieselbe Rechnung, und zwei Abschriften davon liefen
+  // beim ersten Eingriff in die Zentrierung auseinander.
   async function _aufBauteil(globalId) {
-    const assets = window.BimViewer && BimViewer.loadedAssets;
-    if (!assets) return false;
-    for (const [schluessel, asset] of assets) {
-      const jobId = asset.jobId || schluessel;
-      if (!jobId || !asset.tileset || !asset.tileset.root) continue;
-      let box;
-      try {
-        const antwort = await fetch(BimViewer.getBackendUrl() + '/assets/' + jobId +
-          '/elements/' + encodeURIComponent(globalId) + '/box');
-        if (!antwort.ok) continue;
-        box = await antwort.json();
-      } catch (e) {
-        continue;
-      }
-      const mitte = Cesium.Matrix4.multiplyByPoint(
-        asset.tileset.root.computedTransform,
-        new Cesium.Cartesian3(box.center[0], box.center[1], box.center[2]),
-        new Cesium.Cartesian3());
-      const halb = Math.max(1.5, 0.75 * Math.hypot(box.size[0], box.size[1], box.size[2]));
-      BimViewer.viewer.camera.flyToBoundingSphere(
-        new Cesium.BoundingSphere(mitte, halb), { duration: 1.2 });
-      // Freistellen, wenn das Aufmaß-Modul da ist: hinfliegen allein hilft in
-      // einem dichten Modell wenig, wenn das Bauteil hinter drei anderen liegt.
-      if (window.AufmassRDF && AufmassRDF.fokus) {
-        AufmassRDF.fokus([globalId], 0.12).catch(function () { /* optional */ });
-      }
-      return true;
+    if (!window.BimViewer || typeof BimViewer.bauteilAnfliegen !== 'function') return false;
+    const getroffen = await BimViewer.bauteilAnfliegen(globalId);
+    if (!getroffen) return false;
+    // Freistellen, wenn das Aufmaß-Modul da ist: hinfliegen allein hilft in
+    // einem dichten Modell wenig, wenn das Bauteil hinter drei anderen liegt.
+    if (window.AufmassRDF && AufmassRDF.fokus) {
+      AufmassRDF.fokus([globalId], 0.12).catch(function () { /* optional */ });
     }
-    return false;
+    return true;
   }
 
   window.ILEEN_ISSUES = {

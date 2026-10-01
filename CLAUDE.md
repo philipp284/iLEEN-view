@@ -215,6 +215,15 @@ Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
 * **Bauteileigenschaften nur über `feature.getProperty()`**, nie über einen
   eigenen IFC-Parser, und nie exakt verglichen — Revit, Allplan, ArchiCAD und
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.
+* **In gaeco läuft dieser Viewer im Rahmen.** `gaeco-bruecke.js` spricht das
+  Protokoll `ileen-gaeco/1` mit dem gaeco-Modul (das Modul selbst, der Export
+  und die Einrichtung liegen nur in der Vollfassung: `gaeco/`, `backend/`).
+  Angenommen wird nur, was vom Elternfenster kommt und von einem Origin aus
+  `ILEEN_CONFIG.gaecoOrigins`. Gebaut auf drei Stellen, die jedes Panel nutzen
+  kann: die Ereignisse `ileen:auswahl` (features.js) und `ileen:modelle`
+  (core.js) und `BimViewer.bauteilAnfliegen()`. Allein geöffnet tut die Brücke
+  nichts. Beschreibung: `GAECO-INTEGRATION.md` der Vollfassung; Prüfstein dort
+  `VIEWER_URL=http://localhost:5190/ node gaeco/tests/test-modul.mjs`.
 * **Jede neue Datei trägt den Lizenzkopf** (`PolyForm-Noncommercial-1.0.0`).
 * **Kein Code aus `~/Projekte/CesiumJS`** — das Repo enthält Code unter fremder
   Lizenz. Die einzige Gemeinsamkeit mit anderen Cesium-Anwendungen ist

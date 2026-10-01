@@ -17,5 +17,10 @@ window.ILEEN_CONFIG = {
 
   // Eigenes Backend (backend/). Zur Laufzeit im Modelle-Panel überschreibbar
   // (localStorage 'ileen_backend_url'). Leer → Backend-Teil inaktiv.
-  backendUrl: 'http://localhost:8100'
+  backendUrl: 'http://localhost:8100',
+
+  // Wer iLEEN-view als Modul einbetten und fernsteuern darf (gaeco-bruecke.js):
+  // die Origins des gaeco Plugin Host. Zur Laufzeit ergänzbar über
+  // localStorage 'ileen_gaeco_origins' (kommagetrennt).
+  gaecoOrigins: ['http://localhost:5000']
 };

@@ -48,7 +48,7 @@ function pruefe(name, bedingung, hinweis) {
 const ERWARTET = [
   'BimViewer', 'BimViewerUI', 'ILeenI18n', 'WalkMode', 'FlugTrackpad', 'Greifweite',
   'AufmassFang', 'AufmassPanel', 'SplatPick', 'LayerManager', 'Tags',
-  'FpsAnzeige',
+  'FpsAnzeige', 'ILeenGaecoBruecke',
 ];
 
 // Dieselbe Frage für die Module, die sich unter `BimViewer` anmelden statt

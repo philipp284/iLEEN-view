@@ -754,7 +754,19 @@ const BimViewer = {
   },
 
   /** Was nach jedem Laden gleich abläuft: Oberfläche, Punktwolke, IFC-Merkmal. */
+  // Wer die geladenen Modelle kennen muss (die gaeco-Brücke, künftig jedes
+  // Panel), hört auf `ileen:modelle` am document. `detail` ist die ganze
+  // Liste, nicht die Änderung: wer erst später zuhört, braucht den Stand,
+  // nicht die Geschichte.
+  _modelleMelden() {
+    const liste = Array.from(this.loadedAssets.entries()).map(([schluessel, a]) => ({
+      schluessel: String(schluessel), jobId: a.jobId || null, name: a.name, typ: a.type,
+    }));
+    document.dispatchEvent(new CustomEvent('ileen:modelle', { detail: liste }));
+  },
+
   _nachDemLaden(schluessel, assetData) {
+    this._modelleMelden();
     if (assetData.isPointCloud && typeof this.applyPointCloudSettings === 'function') {
       this.applyPointCloudSettings(assetData.tileset);
     }
@@ -1101,6 +1113,7 @@ const BimViewer = {
     if (window.BimViewerUI && typeof BimViewerUI.updateLoadedAssetsCount === 'function') {
       BimViewerUI.updateLoadedAssetsCount();
     }
+    this._modelleMelden();
     this.updateStatus('Entfernt: ' + assetData.name, 'info');
   },
 
