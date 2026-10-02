@@ -22,20 +22,24 @@ ohne Anmeldung, ohne Konto — ein Ordner statischer Dateien und ein Browser.
 
 | | |
 |---|---|
-| **Modelle** | 3D Tiles aus Cesium ion oder einem eigenen Backend: IFC (B3DM mit Bauteileigenschaften), Punktwolken (PNTS), Gaussian Splats. Mehrere gleichzeitig, jedes einzeln ausrichtbar in Lage, Höhe und Drehung. |
+| **Modelle** | 3D Tiles aus Cesium ion oder einem eigenen Backend: IFC (B3DM mit Bauteileigenschaften), Punktwolken (PNTS), Gaussian Splats. Mehrere gleichzeitig, jedes einzeln ausrichtbar in Lage, Höhe und Drehung — und die so gefundene Lage auf Wunsch als Platzierung ins Backend zurückgeschrieben. |
 | **Untergrund** | Die Kamera darf unter das Gelände. Nullebene mit metrischem Raster, Erddecke von unten, Durchblick auf Modelle, die im Boden stecken. |
 | **Navigation** | Gehen und Fliegen mit WASD, stufenlose Geschwindigkeitsrampe, Fadenkreuz mit gefangenem Zeiger, Kompass mit Höhe über NHN und über Grund. |
 | **Messen** | Ein Modus für alles: ein Klick gibt eine Koordinate, zwei eine Strecke, drei und mehr Fläche, Umfang und Volumen. Fang auf Ecke, Kante, Silhouette und Raster. Wählbar, worauf gemessen wird — Modell, Splat oder Gelände. |
 | **Topografisches Aufmaß** | Volumen unter einem Polygon aus den Punkten selbst, dazu eine Höhenschichtenkarte mit Schummerung. |
 | **Punktwolken** | Detailstufe, Punktgröße und Eye-Dome-Lighting; der Höhenmodus ist ein Messgerät: ein Band von wenigen Millimetern, über den ganzen Farbraum gespreizt, mit Dicke und Mitte geführt und bandweise durch eine Platte geschoben. |
-| **Schneiden** | Schnittbox um ein angeklicktes Bauteil, sechs Flächengriffe, wahlweise Inhalt freistellen oder ausstanzen. |
+| **Schneiden** | Eine Box über alle Modelle, an sechs Seiten aufgeschnitten, dazu beliebig viele Scheiben quer durch das Bauwerk — bedient an Griffen im Bild oder auf einer Schnittkarte in der Draufsicht. Inhalt freistellen oder ausstanzen; geschnittene Wände erscheinen als gefüllte Schnittfläche wie im Plan. |
 | **Bauteile** | Filter über die IFC-Klassen, Eigenschaften nach Fachrolle sortiert, Einzelne ausblenden und isolieren. |
 | **Notizen** | Notizen an Bauteil, Splat oder freiem Punkt, im Modell verankert beschriftet, Export als BCF 2.1. |
 | **Ansicht** | Geschosse auseinanderziehen und flach drücken, Geschossgrundrisse als Bild in den Stapel, Bild oder PDF ins Modell legen und auf die Bauteile projizieren. |
 | **Rundgang** | 360°-Panoramen als begehbare Tour. |
+| **Präsentation** | Folien aus Kamerapose, Text und Szene — welche Modelle, welcher Schnitt, welches Licht. Von Hand weitergeklickt, zeitgesteuert abgespielt oder als Video aufgenommen; zwischen zwei Folien fahren Kamera, Schnitt und Sonne stetig mit. |
+| **Sensoren** | Messwerte aus dem Backend am Modell: Geschosse nach Raumtemperatur oder Wirkleistung eingefärbt, mit Legende, Ausreißern und veralteten Fühlern. |
 | **Karten** | Luftbild, OpenStreetMap, Sentinel-2, Vektorkacheln von basemap.de, Weltgelände, OSM Buildings, Google Photorealistic 3D Tiles. |
 
-Oberfläche und Hilfetexte gibt es auf Deutsch und Englisch.
+Oberfläche und Hilfetexte gibt es auf Deutsch und Englisch. Die Erklärung zu
+einer Einstellung erscheint als Sprechblase, sobald der Mauszeiger darauf
+liegt; ein Handbuch im Bereich **Info** beschreibt jedes Werkzeug.
 
 ---
 
@@ -100,9 +104,13 @@ pointcloud.js      Detailstufe, Punktgröße, Eye-Dome-Lighting, Höhenband
 splat-pick.js      Anklicken von Gaussian Splats (die schreiben keine Tiefe)
 aufmass*.js        Messen samt Fang
 volume-topo.js     topografisches Aufmaß
-section-box.js     Schnittbox
+schnitt*.js        Box über alle Modelle, Scheiben, Schnittkarte
 explosion.js       Geschosse auseinanderziehen
 tags.js            Notizen · annotations.js zeichnet sie
+sensor-*.js        Messwerte halten, einfärben, anzeigen
+zustand*.js        die Szene als Zustand — lesen und wiederherstellen
+praesentation*.js  Folien, Vorführung, Video
+hilfe.js           Handbuch · hinweise.js die Sprechblasen
 layerManager.js    Karten, Gelände, 3D-Ebenen
 ui.js              die Oberfläche
 ```

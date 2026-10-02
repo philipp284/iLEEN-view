@@ -1712,9 +1712,8 @@ const BimViewer = {
   /**
    * Nimmt den Rückseitenschnitt zurück, ohne den übrigen Verbund zu räumen.
    *
-   * Für section-box.js: „Rückseiten zeigen" heißt, genau diesen einen
-   * Baustein abzumelden — eine laufende Explosion oder eine Bildprojektion
-   * bleiben dabei stehen.
+   * „Rückseiten zeigen" heißt, genau diesen einen Baustein abzumelden — eine
+   * laufende Explosion oder eine Bildprojektion bleiben dabei stehen.
    */
   removeBackFaceCulling(tileset) {
     if (!tileset) return;

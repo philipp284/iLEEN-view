@@ -84,6 +84,12 @@
   let enabled = true;
   let onlyOpen = false;
   let maxDistance = 1000;
+  // Welche Notizen überhaupt gezeigt werden dürfen. null = alle — so sieht es
+  // jede Sitzung und jede Notiz, die erst später dazukommt. Die Präsentation
+  // (praesentation.js, Zustand „notizen") setzt eine Liste, damit eine Folie
+  // genau die Notizen zeigt, von denen sie spricht. Nicht gespeichert: es ist
+  // Teil einer Folie, keine Einstellung der Sitzung.
+  let nurIds = null;
 
   const views  = new Map();    // tagId → LabelView
   const layout = loadLayout(); // tagId → { x, y, collapsed }
@@ -186,6 +192,7 @@
     return items.filter((tag) => {
       if (!tag?.position?.worldCart) return false;
       if (onlyOpen && tag.payload?.status === 'closed') return false;
+      if (nurIds && !nurIds.has(tag.id)) return false;
       return true;
     });
   }
@@ -629,6 +636,15 @@
       if (viewer) viewer.scene.requestRender();
     },
     isEnabled() { return enabled; },
+
+    /** Nur diese Notizen zeigen (Liste von Kennungen) — null hebt die Einschränkung auf. */
+    setVisibleSet(ids) {
+      nurIds = Array.isArray(ids) ? new Set(ids) : null;
+      if (viewer) viewer.scene.requestRender();
+    },
+    getVisibleSet() { return nurIds ? Array.from(nurIds) : null; },
+    isOnlyOpen() { return onlyOpen; },
+    getMaxDistance() { return maxDistance; },
 
     /** Erledigte Notizen ausblenden. */
     setOnlyOpen(on) {

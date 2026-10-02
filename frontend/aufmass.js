@@ -1214,7 +1214,7 @@
    * führen — der nächste Bildaufbau stirbt mit „Cannot read properties of
    * undefined (reading '_target')" und das Bild bleibt schwarz stehen. Die
    * Sammlung bleibt deshalb hängen und wird nur auf `enabled = false`
-   * gestellt; dasselbe tut `section-box.js` aus demselben Grund.
+   * gestellt; dasselbe tat die abgelöste Schnittbox aus demselben Grund.
    *
    * Ein Tileset, das bereits fremde Schnittebenen trägt (etwa von der
    * Schnittbox), wird ausgelassen statt übernommen. Zwei Werkzeuge, die sich

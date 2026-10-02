@@ -1,0 +1,6 @@
+{
+  "name": "aufmass-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". Diese Prüfskripte laden die Module über eine VM-Umgebung und brauchen CommonJS — der Modultyp gilt für das nächstgelegene package.json, also hier für diesen Ordner.",
+  "type": "commonjs"
+}

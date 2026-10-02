@@ -42,12 +42,17 @@ const VERBOTENE_DATEIEN = [
   'solar-panel.js', 'bimlp-panel.js', 'stalite-tool.js', 'geg-tool.js',
   'bericht.js', 'tragwerk-panel.js', 'volumen-panel.js',
   'tragwerk-ergebnisse.css', 'werkzeuge-auswertung.css',
+  // seit der Trennung dazugekommen: Einsturz (💥) und der Issue-Manager (ISS)
+  'einsturz-panel.js', 'einsturz.js', 'einsturz.css',
+  'issue-manager.js', 'issue-manager.css',
   // linke Seite — Gruppen und eigene Bereiche
   'ifclash-panel.js', 'room-concept-panel.js', 'bauplaner-panel.js',
-  'konzept-panel.js', 'ifc-4d-panel.js',
+  'konzept-panel.js', 'ifc-4d-panel.js', 'plan-panel.js',
   // Rechenkerne dahinter
   'solar.js', 'ifclash.js', 'room-concept.js', 'flight-tracker.js',
-  'tragwerk-ergebnisse.js', 'volumen.js', 'plan-bauteil.js',
+  'tragwerk-ergebnisse.js', 'tragwerk-eingriffe.js', 'volumen.js', 'plan-2d.js',
+  'plan-bauteil.js', 'fe-browser.js', 'geg-huelle.js', 'sequencing.js',
+  'aufmass-rdf.js', 'aufmass-mengen.js',
 ];
 
 const gefunden = VERBOTENE_DATEIEN.filter((d) => existsSync(join(FRONTEND, d)));

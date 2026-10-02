@@ -16,7 +16,7 @@
 //                  IFC-Modellen dauerhaft, gegen das Z-Fighting doppel-
 //                  seitiger Wände
 //   explosion.js   Geschosse anheben und flachdrücken (Vertex)
-//   section-box.js schaltet den Rückseitenschnitt ab und wieder an
+//   schnitt.js     übernimmt den Rückseitenschnitt, solange er läuft
 //   bildprojektion.js  Bild auf die Flächen projizieren (Fragment)
 //
 // Bisher lief das über „merk dir den vorherigen und leg ihn nachher

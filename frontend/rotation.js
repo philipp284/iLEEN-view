@@ -57,7 +57,12 @@
       originalCartographic.height
     );
 
-    const axis = Cesium.Cartesian3.normalize(originalCenter, new Cesium.Cartesian3());
+    // Ellipsoidnormale, nicht normalize(originalCenter): die geozentrische
+    // Richtung liegt bei 50° Breite rund 0,19° daneben — das Modell kippte
+    // beim Drehen, und lage-backend.js könnte die Drehung nicht als reines
+    // Heading ins Backend schreiben. Aus Länge/Breite statt aus dem Punkt:
+    // dieselbe Hochachse, die z-offset.js und das Backend (ENU) benutzen.
+    const axis = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormalCartographic(originalCartographic, new Cesium.Cartesian3());
     const quaternion = Cesium.Quaternion.fromAxisAngle(axis, -Cesium.Math.toRadians(headingDegrees));
     const rotation3 = Cesium.Matrix3.fromQuaternion(quaternion);
     const rotate = Cesium.Matrix4.fromRotationTranslation(rotation3, Cesium.Cartesian3.ZERO, new Cesium.Matrix4());

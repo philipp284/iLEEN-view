@@ -1,0 +1,222 @@
+/* © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+   SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+   iLEEN — Handbuch
+
+   Die Erklärtexte sind aus den Panels in die Sprechblase gewandert
+   (`hinweise.js`). Wer nicht ein einzelnes Feld nachschlägt, sondern wissen
+   will, was das Programm überhaupt kann, findet es hier: ein Bogen über alle
+   Werkzeuge, aufgeschlagen aus dem Bereich „Info".
+
+   Bewusst ein Überlagerungsfenster und kein zweiter Browsertab: das Handbuch
+   soll neben dem Modell stehen, ohne dass ein Fensterblocker dazwischenfunkt
+   oder die Sitzung ein zweites Mal geladen wird. */
+
+.ileen-hilfe {
+  position: fixed;
+  inset: 0;
+  z-index: 99000;
+  display: none;
+  background: rgba(8, 9, 10, .72);
+  backdrop-filter: blur(3px);
+  font-family: inherit;
+}
+
+.ileen-hilfe.is-offen { display: block; }
+
+.ileen-hilfe__fenster {
+  position: absolute;
+  inset: 4vh 6vw;
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border: 1px solid var(--ds-border-strong, rgba(255, 255, 255, .2));
+  border-radius: var(--ds-radius-lg, 10px);
+  background: var(--bg-panel, #161819);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .6);
+}
+
+/* ── Kopfzeile ───────────────────────────────────────────────────────────── */
+
+.ileen-hilfe__kopf {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3, 12px);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ds-border, rgba(255, 255, 255, .11));
+  background: rgba(255, 255, 255, .02);
+}
+
+.ileen-hilfe__titel {
+  margin: 0;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .2px;
+}
+
+.ileen-hilfe__titel span {
+  color: var(--ds-accent, #97BF0D);
+}
+
+.ileen-hilfe__suche {
+  flex: 1;
+  max-width: 320px;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, .11));
+  border-radius: var(--ds-radius, 6px);
+  background: rgba(255, 255, 255, .04);
+  color: var(--text-primary, #e8e8e8);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.ileen-hilfe__suche:focus {
+  outline: none;
+  border-color: var(--ds-accent, #97BF0D);
+}
+
+/* ── Kapitelnavigation ───────────────────────────────────────────────────── */
+
+.ileen-hilfe__nav {
+  overflow-y: auto;
+  padding: 10px 0;
+  border-right: 1px solid var(--ds-border, rgba(255, 255, 255, .11));
+  background: rgba(0, 0, 0, .18);
+}
+
+.ileen-hilfe__navknopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 14px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary, #9a9a9a);
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ileen-hilfe__navknopf:hover { background: rgba(255, 255, 255, .04); color: var(--text-primary, #e8e8e8); }
+
+.ileen-hilfe__navknopf.is-aktiv {
+  border-left-color: var(--ds-accent, #97BF0D);
+  background: rgba(var(--ds-accent-rgb, 151, 191, 13), .1);
+  color: var(--text-primary, #e8e8e8);
+}
+
+.ileen-hilfe__navknopf[hidden] { display: none; }
+
+/* ── Inhalt ──────────────────────────────────────────────────────────────── */
+
+.ileen-hilfe__inhalt {
+  overflow-y: auto;
+  padding: 20px 28px 60px;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 12.5px;
+  line-height: 1.65;
+  scroll-behavior: smooth;
+}
+
+.ileen-hilfe__kapitel { margin-bottom: 34px; scroll-margin-top: 12px; }
+.ileen-hilfe__kapitel[hidden] { display: none; }
+
+.ileen-hilfe__kapitel > h2 {
+  margin: 0 0 4px;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ileen-hilfe__lead {
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ds-border, rgba(255, 255, 255, .11));
+  color: var(--text-secondary, #9a9a9a);
+}
+
+.ileen-hilfe__eintrag { margin-bottom: 16px; }
+.ileen-hilfe__eintrag[hidden] { display: none; }
+
+.ileen-hilfe__eintrag > h3 {
+  margin: 0 0 2px;
+  color: var(--ds-accent, #97BF0D);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.ileen-hilfe__wo {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, .11));
+  border-radius: 999px;
+  color: var(--text-muted, #777);
+  font-size: 10px;
+  letter-spacing: .3px;
+}
+
+.ileen-hilfe__eintrag p { margin: 0 0 6px; color: var(--text-secondary, #b4b4b4); }
+.ileen-hilfe__eintrag ul { margin: 4px 0 6px; padding-left: 18px; color: var(--text-secondary, #b4b4b4); }
+.ileen-hilfe__eintrag li { margin-bottom: 3px; }
+.ileen-hilfe__eintrag strong { color: var(--text-primary, #e8e8e8); font-weight: 600; }
+
+.ileen-hilfe__eintrag code,
+.ileen-hilfe kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, .11));
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .06);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+
+.ileen-hilfe kbd { color: var(--text-primary, #e8e8e8); white-space: nowrap; }
+
+/* Tastentabelle */
+.ileen-hilfe__tasten { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.ileen-hilfe__tasten td { padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); color: var(--text-secondary, #b4b4b4); }
+.ileen-hilfe__tasten td:last-child { width: 1%; white-space: nowrap; text-align: right; }
+
+/* Befehlstabelle — gebaut wie die Tastentabelle, aber der Befehl darf
+   umbrechen. Die Tastentabelle hält ihre rechte Spalte mit `nowrap` auf einer
+   Zeile, weil ein Kürzel wie ⇧H nie umbrechen soll; ein Terminalbefehl ist
+   dafür zu lang und liefe über den Rand. */
+.ileen-hilfe__befehle { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.ileen-hilfe__befehle td {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+  color: var(--text-secondary, #b4b4b4);
+  vertical-align: top;
+}
+.ileen-hilfe__befehle td:first-child { width: 32%; padding-right: 14px; }
+.ileen-hilfe__befehle code { white-space: normal; overflow-wrap: anywhere; line-height: 1.7; }
+
+.ileen-hilfe__leer {
+  padding: 24px 0;
+  color: var(--text-muted, #777);
+  font-style: italic;
+}
+.ileen-hilfe__leer[hidden] { display: none; }
+
+/* ── Gedruckt ────────────────────────────────────────────────────────────── */
+
+@media print {
+  body > *:not(.ileen-hilfe) { display: none !important; }
+  .ileen-hilfe { position: static; display: block !important; background: #fff; backdrop-filter: none; }
+  .ileen-hilfe__fenster { position: static; display: block; inset: auto; border: 0; box-shadow: none; background: #fff; }
+  .ileen-hilfe__nav, .ileen-hilfe__suche, .ileen-hilfe__werkzeuge { display: none !important; }
+  .ileen-hilfe__inhalt { overflow: visible; padding: 0; color: #000; }
+  .ileen-hilfe__kapitel, .ileen-hilfe__eintrag { break-inside: avoid; }
+  .ileen-hilfe__kapitel > h2, .ileen-hilfe__titel { color: #000; }
+  .ileen-hilfe__eintrag > h3 { color: #4a5f00; }
+  .ileen-hilfe__eintrag p, .ileen-hilfe__eintrag ul, .ileen-hilfe__lead { color: #333; }
+}

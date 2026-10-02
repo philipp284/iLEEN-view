@@ -457,8 +457,15 @@
           `\${${ifcPropertyName}} !== '${entity}'`);
 
         // Farben — die Hervorhebung zuerst, denn Cesium3DTileStyle nimmt die
-        // erste zutreffende Bedingung.
-        const colorConditions = hlBedingungen.slice();
+        // erste zutreffende Bedingung. Danach die Sensorfarben
+        // (`sensor-farben.js`): ein Tileset hat genau einen Stil, also müssen
+        // sie hier einsteigen statt daneben einen zweiten zu setzen — sonst
+        // löschte der nächste Filterlauf sie wieder. Die Abfrage über `window`
+        // hält den Filter lauffähig, wenn es die Datei nicht gibt.
+        const sensorBedingungen = (typeof window !== 'undefined' && window.SensorFarben
+          && typeof SensorFarben.bedingungen === 'function')
+          ? SensorFarben.bedingungen(assetData) : [];
+        const colorConditions = hlBedingungen.concat(sensorBedingungen);
         IFC_ENTITIES.forEach(e => {
           if (this.ifcFilter.enabledEntities.has(e.entity)) {
             // `ifcFarbe()` statt `e.color`: dieselbe Farbe, die auch die
@@ -627,6 +634,11 @@
   // KLICK AUF EIN BAUTEIL
   // ─────────────────────────────────────────────────────────────────────
 
+  // Das gewählte Bauteil wird nur getönt, nicht zugedeckt: liegt die IFC als
+  // halbdurchsichtige Semantikebene über Scan oder Splat, bleibt die Wirklichkeit
+  // dahinter auch am gewählten Bauteil sichtbar.
+  const AUSWAHL_FARBE = Cesium.Color.LIME.withAlpha(0.4);
+
   BimViewer.initClickHandler = function () {
     if (this._klickHandler || !this.viewer) return;
     const handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
@@ -645,9 +657,10 @@
       this._unterZeigerAusblenden(position);
       return;
     }
-    // Solange die Schnittbox auf ihr Bauteil wartet, gehört der Klick ihr:
-    // sonst öffnete derselbe Klick zusätzlich die Eigenschaftsanzeige und
-    // färbte das Bauteil ein, das gleich hinter einer Box verschwindet.
+    // Solange der Schnitt auf sein Bauteil wartet oder ein Boxgriff gezogen
+    // wird, gehört der Klick ihm: sonst öffnete derselbe Klick zusätzlich die
+    // Eigenschaftsanzeige und färbte das Bauteil ein, das gleich hinter einer
+    // Box verschwindet.
     if (this.SectionBox && this.SectionBox.faengtKlick()) {
       return;
     }
@@ -680,7 +693,7 @@
     this.selectedFeature = picked;
     try {
       this._auswahlVorher = Cesium.Color.clone(picked.color);
-      picked.color = Cesium.Color.LIME;
+      picked.color = AUSWAHL_FARBE;
     } catch (e) { /* Feature ohne Farbe (Punktwolke) */ }
 
     const properties = {};

@@ -26,8 +26,8 @@
   <!-- Annotationen — verankerte Beschriftungen zu den Notizen aus tags.js -->
   <link rel="stylesheet" href="annotations.css">
 
-  <!-- Schnittbox — Ausschnitt um ein angeklicktes Bauteil -->
-  <link rel="stylesheet" href="section-box.css">
+  <!-- Schnitt — Box, Scheiben und Schnittkarte -->
+  <link rel="stylesheet" href="schnitt.css">
 
   <!-- Bildebenen — Galerie und Liste der im Modell gesetzten Bilder und PDF-Pläne -->
   <link rel="stylesheet" href="bildebenen.css">
@@ -43,9 +43,18 @@
   <!-- 360°-Rundgang (Matterport-artig) -->
   <link rel="stylesheet" href="pano-tour.css">
 
+  <!-- Präsentation: Folien aus Kamerapose und Text (aus splides) -->
+  <link rel="stylesheet" href="praesentation.css">
+
   <!-- Design-System — MUSS als letztes Stylesheet stehen: es vereinheitlicht
        Schaltflächen, Schalter und Regler aus allen Panels darüber -->
   <link rel="stylesheet" href="design-system.css">
+
+  <!-- Erklärtexte als Sprechblase und das Handbuch — nach dem Design-System,
+       beide bauen auf dessen Marken auf -->
+  <link rel="stylesheet" href="hinweise.css">
+  <link rel="stylesheet" href="hilfe.css">
+  <link rel="stylesheet" href="sensor-panel.css">
 </head>
 
 <body>
@@ -93,6 +102,14 @@
   <!-- 1. Kern -->
   <script src="glb-glas.js"></script>
   <script src="core.js"></script>
+
+  <!-- Zustands-Registry: jedes Werkzeug meldet an, wie seine Einstellungen gelesen
+       und wiederhergestellt werden — Grundlage der Folien mit Szene (Präsentation).
+       Nach core.js (legt BimViewer an). Die Anmelder der bestehenden Werkzeuge
+       greifen auf deren Schnittstellen erst beim Aufruf zu; fehlt ein Werkzeug
+       (in dieser Fassung etwa der Bauplaner), liefert sein Anmelder nichts. -->
+  <script src="zustand.js"></script>
+  <script src="zustand-anmelder.js"></script>
   <!-- Untergrund-Modus mit Nullebene — hängt sich an BimViewer.Untergrund -->
   <script src="untergrund.js"></script>
   <!-- Der Shader-Verbund: mehrere Werkzeuge an EINEM `customShader`.
@@ -133,6 +150,8 @@
   <script src="rotation.js"></script>
   <script src="translation.js"></script>
   <script src="terrain-align.js"></script>
+  <!-- Die im Flyout gesetzte Lage als Platzierung ins Backend schreiben (📍) -->
+  <script src="lage-backend.js"></script>
 
   <!-- 3. Karte, Gelände, amtliche Gebäudekulisse -->
   <script src="layerManager.js"></script>
@@ -166,11 +185,27 @@
   <script src="dof-shader.js"></script>
   <script src="views.js"></script>
 
-  <!-- Notizen auf IFC / B3DM / Splats / freien Punkten -->
   <!-- Themenablage — Notizen und Messungen im Backend (/issues), mit
        localStorage als Rückfall. Vor tags.js: dessen DualStore fragt danach. -->
   <script src="issues-store.js"></script>
 
+  <!-- Sensorablage — hält die Messwerte aus /sensoren/stand und meldet
+       Änderungen als `ileen:sensor-geaendert`. Die Quelle ist austauschbar:
+       heute HTTP im Zehn-Sekunden-Takt, später ein WebSocket. Ohne Backend
+       bleibt sie still. -->
+  <script src="sensor-store.js"></script>
+
+  <!-- Sensorfarben — färbt die Geschosse nach Messwert. Setzt keinen eigenen
+       Stil, sondern liefert Bedingungen, die features.js in den einen Stil des
+       Tilesets einreiht. Nach sensor-store.js. -->
+  <script src="sensor-farben.js"></script>
+
+  <!-- Sensor-Panel — ein Knopf in der linken Leiste (Steckplatz `aktion`),
+       das Panel schwebt über der Szene. Öffnen färbt das Modell, Schließen
+       nimmt die Farbe wieder weg. Nach sensor-farben.js und nach ui.js. -->
+  <script src="sensor-panel.js"></script>
+
+  <!-- Notizen auf IFC / B3DM / Splats / freien Punkten -->
   <script src="tags.js"></script>
   <!-- Annotationen — zeichnen die Notizen in die Szene. Nach tags.js und ui.js. -->
   <script src="annotations.js"></script>
@@ -188,8 +223,13 @@
        hier ab und holt sie von hier zurück. -->
   <script src="skizzen-store.js"></script>
 
-  <!-- Schnitte X/Y/Z — hängt sich in den Reiter „Schnitte" von ui.js -->
-  <script src="schnitte-xyz.js"></script>
+  <!-- Schnitt — Box über alle Modelle, Scheiben, Schnittkarte; hängt sich in den
+       Reiter „Schnitte" von ui.js und führt BimViewer.SectionBox als Schnittstelle
+       weiter. Vor ui-new-features-extension.js: die Google-Freistellung steht im
+       Reiter dahinter. -->
+  <script src="schnitt-rechnen.js"></script>
+  <script src="schnitt.js"></script>
+  <script src="schnitt-karte.js"></script>
 
   <!-- Google-Freistellung · Isolieren · Gebäudemarken -->
   <script src="google-tiles-mask.js"></script>
@@ -199,15 +239,6 @@
 
   <!-- Navigations-HUD — Walk/Fly/VR, Kompass, Höhe -->
   <script src="nav-hud.js"></script>
-
-  <!-- Plan 2D — Bauzeichnung aus dem Backend-Schnitt oder einer PDF-Vorlage.
-       Alle prüfen ihre Nachbarn zur Laufzeit; die Reihenfolge ist die des
-       Aufrufwegs. -->
-
-  <!-- Werkzeuge der rechten Seite. Nach den Plan-Modulen, weil sie darauf zugreifen. -->
-
-  <!-- Schnittbox — nach den Plan-Modulen und nach ui.js -->
-  <script src="section-box.js"></script>
 
   <!-- Explosionsansicht — ganz zum Schluss, weil das Modul Kern und
        Oberfläche kennen muss -->
@@ -226,10 +257,26 @@
   <script src="pano-tour.js"></script>
   <script src="pano-tour-panel.js"></script>
 
+  <!-- Präsentation (aus splides, dort „Slide-Modus"): Folien aus Kamerapose und
+       Markdown-Text, von Hand weitergeklickt, zeitgesteuert oder als Video.
+       Reihenfolge: Text, Kern, dann das Panel — der Kern braucht den Text beim
+       Laden, das Panel beide. Untergruppe im Bereich „Ansicht". -->
+  <script src="praesentation-text.js"></script>
+  <script src="praesentation.js"></script>
+  <script src="praesentation-panel.js"></script>
+
   <!-- Bildrate der Szene (Strg/Cmd+Alt+F) -->
   <script src="fps.js"></script>
   <!-- Bildrate halten, solange Gaussian Splats in der Szene liegen (#8) -->
   <script src="splat-leistung.js"></script>
+
+  <!-- Erklärtexte aus den Panels in die Sprechblase. Ganz zum Schluss: das
+       Modul beobachtet den Body und muss keine Reihenfolge kennen. -->
+  <script src="hinweise.js"></script>
+
+  <!-- Handbuch — aufgeschlagen aus dem Bereich „Info". Es zeigt nur die
+       Kapitel, deren Werkzeuge hier geladen sind. -->
+  <script src="hilfe.js"></script>
 
   <!-- ============================================
        START
