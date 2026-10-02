@@ -80,13 +80,10 @@ const ILeenHilfe = (() => {
             immer nebeneinander zu sehen.</p>`
         },
         {
-          titel: 'Rechter Rand — die Rollen',
+          titel: 'Rechter Rand',
           wo: 'Leiste rechts',
           braucht: () => !rechtsBelegt(),
-          text: `<p>Am rechten Rand stehen die <strong>Rollen</strong> — Architektur, Ingenieur,
-            Bauleitung, Facility Management, Vermessung. Sie ordnen die Eigenschaften eines
-            angeklickten Bauteils nach dem, was die jeweilige Rolle zuerst wissen will.</p>
-            <p>Auswertungen — Statik, Energie, Bericht — gehören nicht zu diesem Viewer. Das
+          text: `<p>Auswertungen — Statik, Energie, Bericht — gehören nicht zu diesem Viewer. Das
             Panelgerüst dafür ist trotzdem da: ein Analysewerkzeug meldet sich dort als eigener
             Reiter an, ohne dass am Viewer etwas zu ändern wäre.</p>`
         },
