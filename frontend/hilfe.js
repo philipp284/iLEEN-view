@@ -177,8 +177,14 @@ const ILeenHilfe = (() => {
             <code>frontend/tools/quest-dienst.sh install</code>. Danach läuft der Server von selbst
             und passt sich Netzwechseln an. In der Brille <code>https://&lt;Mac-Adresse&gt;:5443</code>
             öffnen (<code>quest-dienst.sh status</code> zeigt sie) und die Zertifikatswarnung einmal
-            über „Erweitert → Weiter“ bestätigen. Mac und Brille müssen im selben Netz sein.
-            Splats zeigt die Brille noch nicht.</p>`
+            über „Erweitert → Weiter“ bestätigen. Mac und Brille müssen im selben Netz sein.</p>
+            <p><b>Apple Vision Pro</b> (Safari, ab visionOS 2): Safari nimmt keine Zertifikatswarnung hin.
+            Einmal <code>http://&lt;Mac-Adresse&gt;:5443/einrichten</code> öffnen, das Profil laden, unter
+            Einstellungen › Allgemein › VPN &amp; Geräteverwaltung installieren und unter Allgemein › Info ›
+            Zertifikatsvertrauenseinstellungen einschalten. Bedient wird mit Blick und Kneifen: hinsehen und
+            kurz kneifen springt oder zeigt das Bauteil, lange kneifen zeigt immer die Info. Das Tablet schwebt
+            vor dir, auf ihm tippt Kneifen, Kneifen und Ziehen rollt; Drehen und „Zum Start“ stehen unter
+            Werkzeuge. Das Tischmodell bietet Safari auf der Vision Pro nicht an.</p>`
         },
         {
           titel: 'Gespeicherte Ansichten',
