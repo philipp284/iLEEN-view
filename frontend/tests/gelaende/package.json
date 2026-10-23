@@ -1,0 +1,6 @@
+{
+  "name": "untergrund-tests",
+  "private": true,
+  "//": "Die Repo-Wurzel führt \"type\": \"module\". test-untergrund.js lädt untergrund.js über vm und echtes Cesium über require und braucht deshalb CommonJS; test-browser.mjs bleibt ein Modul.",
+  "type": "commonjs"
+}

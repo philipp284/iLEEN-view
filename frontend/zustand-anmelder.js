@@ -503,8 +503,9 @@
 
   Z.anmelden({
     id: 'welt', ordnung: 60, titel: 'Welt: Karte, Gelände, 3D-Kulissen',
-    beschreibung: 'Basiskarte und Gelände (Kennungen der Layer-Liste), OSM-Gebäude, Google 3D Tiles, ' +
-                  'amtliche Gebäudeebenen und die Durchsichtigkeit des Globus.',
+    beschreibung: 'Basiskarte und Gelände (Kennungen der Layer-Liste), Google 3D Tiles, ' +
+                  'amtliche Gebäudeebenen (lod2-de …) und die Durchsichtigkeit des Globus. ' +
+                  '„osm" ist veraltet und schaltet LoD2 Deutschland.',
     weich: ['globusTransparenz'],
     schema: { karte: { typ: 'text' }, gelaende: { typ: 'text' }, osm: { typ: 'bool' }, google: { typ: 'bool' },
               ebenen: { typ: 'objekt', beschreibung: '{ ebenenId: bool }' },
@@ -513,8 +514,7 @@
     lesen: function () {
       if (!B.viewer) return undefined;
       var LM = window.LayerManager;
-      var aus = { osm: !!(B.osmBuildings && B.osmBuildings.enabled),
-                  google: !!(B.googleTiles && B.googleTiles.enabled),
+      var aus = { google: !!(B.googleTiles && B.googleTiles.enabled),
                   globusTransparenz: rund(globusAlpha(), 3) };
       if (LM && LM.aktiveKarte) aus.karte = LM.aktiveKarte;
       if (LM && LM.aktivesGelaende) aus.gelaende = LM.aktivesGelaende;
@@ -543,7 +543,11 @@
         }
       }
       try {
-        if (typeof w.osm === 'boolean' && !!(B.osmBuildings && B.osmBuildings.enabled) !== w.osm) await B.toggleOSMBuildings(w.osm);
+        // Zustände aus der ion-Zeit: OSM Buildings → LoD2 Deutschland
+        var lod2 = LM && Array.isArray(LM.tilesetLayers) && LM.tilesetLayers.find(function (t) { return t.id === 'lod2-de'; });
+        if (typeof w.osm === 'boolean' && lod2 && !(w.ebenen && 'lod2-de' in w.ebenen) && !!lod2.active !== w.osm) {
+          await B.toggleOSMBuildings(w.osm);
+        }
         if (typeof w.google === 'boolean' && !!(B.googleTiles && B.googleTiles.enabled) !== w.google) await B.toggleGoogle3DTiles();
       } catch (e) { console.warn('[Zustand] Kulisse:', e.message); }
     },

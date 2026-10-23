@@ -84,7 +84,13 @@
     // 'aus' (verwerfen) oder 'grau'. Zum Messen taugt nur, was das Band
     // sichtbar begrenzt — geklemmt sieht eine 5-mm-Rampe aus wie eine Wolke,
     // die zur Hälfte blau und zur Hälfte rot ist.
-    heightOutside: 'klemmen'
+    heightOutside: 'klemmen',
+    // Gaussian Splats (splat-leistung.js). Sie sind keine Punktwolken, wohnen
+    // aber im selben Menü. `splatDetail` ist der gröbste Bildschirmfehler, den
+    // die Automatik je einstellen darf — ohne Automatik der feste Wert.
+    splatDetail: 16,
+    splatAuto: true,
+    splatAufloesungMin: 0.5
   };
 
   // Grenzen des Höhenfensters. Die Untergrenze ist nicht das, was eine Wolke
@@ -665,6 +671,80 @@
     if (anzeige) anzeige.textContent = neu.toFixed(0) + ' px · ' + fps.toFixed(0) + ' fps';
   }
 
+  // ── Gaussian Splats ──────────────────────────────────────────────────────
+  //
+  // Splats laufen nicht durch `applyPointCloudSettings` (eigener Renderweg,
+  // siehe `isPointCloudTileset`), ihre Detailstufe führt die Bildratenautomatik
+  // in splat-leistung.js. Die ging bis zu 64 px hoch und danach an die
+  // Auflösung — ohne dass es im Menü irgendwo stand. Hier bekommt der Nutzer
+  // die beiden Grenzen in die Hand.
+
+  const SPLAT_SSE_MIN = 1;
+  const SPLAT_SSE_MAX = 64;
+  const SPLAT_SSE_START = 16;   // Cesiums Voreinstellung
+
+  function splatReglerErlaubt() {
+    try { return localStorage.getItem('ileen_splat_regler') !== 'aus'; }
+    catch (e) { return true; }
+  }
+
+  /**
+   * Die Splat-Einstellungen an Regler und Tilesets bringen. Mit Automatik ist
+   * `splatDetail` die Obergrenze und die Hälfte davon die Untergrenze; ohne
+   * sie steht jedes Splat-Tileset fest auf dem eingestellten Wert.
+   */
+  BimViewer.applySplatSettings = function () {
+    const L = window.SplatLeistung;
+    const viewer = this.viewer;
+    if (!L || !viewer) return;
+    const s = this.pointCloudSettings;
+    L.beiMessung = splatAnzeige;
+    const grob = s.splatDetail;
+    const fein = Math.max(SPLAT_SSE_MIN, Math.floor(grob / 2));
+    const start = Math.min(grob, Math.max(fein, SPLAT_SSE_START));
+
+    L.einstellen({
+      sseMax: grob, sseMin: fein,
+      sseStart: s.splatAuto ? start : grob,
+      aufloesungMin: s.splatAufloesungMin
+    });
+
+    if (s.splatAuto && splatReglerErlaubt()) {
+      if (!L.aktiv()) L.an(viewer, { zielFps: 60 });
+    } else {
+      // `aus()` gibt Auflösung und Bildschirmfehler zurück (sseStart = grob);
+      // läuft der Regler nicht, setzt `festsetzen` den Wert selbst.
+      if (L.aktiv()) L.aus();
+      L.festsetzen(viewer, grob);
+    }
+    this.updatePointCloudUI();
+  };
+
+  /** Gröbster erlaubter Bildschirmfehler der Splats in Pixeln. Klein = fein. */
+  BimViewer.setSplatDetail = function (wert) {
+    const v = Math.max(SPLAT_SSE_MIN, Math.min(SPLAT_SSE_MAX, Math.round(parseFloat(wert)) || SPLAT_SSE_START));
+    this.pointCloudSettings.splatDetail = v;
+    this.applySplatSettings();
+  };
+  BimViewer.setSplatAuto = function (an) {
+    this.pointCloudSettings.splatAuto = !!an;
+    this.applySplatSettings();
+  };
+  BimViewer.setSplatAufloesungMin = function (wert) {
+    const v = Math.max(0.25, Math.min(1, parseFloat(wert) || 0.5));
+    this.pointCloudSettings.splatAufloesungMin = Math.round(v * 20) / 20;
+    this.applySplatSettings();
+  };
+
+  /** Die Messzeile unter dem Schalter: was die Automatik gerade tut. */
+  function splatAnzeige(st) {
+    const el = document.getElementById('splatAutoWert');
+    if (!el) return;
+    el.textContent = st && st.an
+      ? (st.fps ? st.fps.toFixed(0) + ' fps · ' : '') + st.maximumScreenSpaceError.toFixed(0) +
+        ' px · ' + Math.round(st.resolutionScale * 100) + ' %'
+      : '';
+  }
   // ── Einzelne Stellschrauben ──────────────────────────────────────────────
 
   function setzen(schluessel, wert, meldung) {
@@ -819,6 +899,7 @@
     this.pointCloudSettings = Object.assign({}, VORGABE);
     this._autoSse = VORGABE.maximumScreenSpaceError;
     this.applyPointCloudSettingsToAllTilesets();
+    this.applySplatSettings();
     this.updatePointCloudUI();
     this.updateStatus('Punktwolken-Darstellung zurückgesetzt', 'success');
   };
@@ -869,6 +950,13 @@
     syncText('geometricErrorValue', s.geometricErrorScale.toFixed(1));
 
     syncCheck('toggleBackFaceCulling', s.backFaceCulling);
+
+    sync('splatDetailSlider', s.splatDetail);
+    syncText('splatDetailValue', s.splatDetail + ' px');
+    syncCheck('toggleSplatAuto', s.splatAuto);
+    sync('splatAufloesungSlider', s.splatAufloesungMin);
+    syncText('splatAufloesungValue', Math.round(s.splatAufloesungMin * 100) + ' %');
+    syncDisabled('splatAufloesungGroup', !s.splatAuto);
 
     // Höhenfenster: nur im Höhenmodus sichtbar, und die leeren Felder zeigen
     // die automatisch ermittelte Spanne als Platzhalter.

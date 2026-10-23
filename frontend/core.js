@@ -44,6 +44,13 @@ const CONFIG = {
 
   // Darstellungsstufen. `maximumScreenSpaceError` ist der eigentliche Hebel
   // für die Kachelmenge, alles andere sind Bildeffekte.
+  //
+  // `resolutionScale`: Cesium rechnet mit `useBrowserRecommendedResolution`
+  // (Vorgabe `true`) in CSS-Pixeln und ignoriert `devicePixelRatio`. Bei 1,0
+  // zeichnet der Viewer auf einem Retina-Schirm also nur ein Viertel der
+  // physischen Pixel und der Browser zieht das Bild hoch — Maßzahlen, Linien
+  // und Beschriftungen kommen weich an. Erst `resolutionScale = devicePixelRatio`
+  // liefert die native Auflösung. Nur PERFORMANCE bleibt bewusst darunter.
   performance: {
     presets: {
       PERFORMANCE: {
@@ -62,7 +69,7 @@ const CONFIG = {
         name: 'Balanced',
         maximumScreenSpaceError: 16,
         memoryUsage: 2048,
-        resolutionScale: 1.0,
+        resolutionScale: Math.min(2, window.devicePixelRatio || 1),
         shadows: true,
         shadowSize: 2048,
         enableSSAO: false,
@@ -74,7 +81,7 @@ const CONFIG = {
         name: 'Quality',
         maximumScreenSpaceError: 8,
         memoryUsage: 4096,
-        resolutionScale: 1.0,
+        resolutionScale: Math.min(2, window.devicePixelRatio || 1),
         shadows: true,
         shadowSize: 4096,
         enableSSAO: true,
@@ -397,19 +404,14 @@ const BimViewer = {
     tileset: null,
     enabled: false,
     isLoading: false,
-    preset: 'balanced'
+    preset: 'balanced',
+    hinweis: ''          // gesetzt, wenn die Kacheln über ion kommen
   },
 
   googleTilesPresets: {
     performance: { name: 'Speed', maximumScreenSpaceError: 32 },
     balanced: { name: 'Balanced', maximumScreenSpaceError: 16 },
     quality: { name: 'Quality', maximumScreenSpaceError: 6 }
-  },
-
-  osmBuildings: {
-    tileset: null,
-    enabled: false,
-    isLoading: false
   },
 
   ifcFilter: {
@@ -538,42 +540,39 @@ const BimViewer = {
   // ── Start ─────────────────────────────────────────────────────────────
 
   async init() {
+    // Der Token gilt nur noch für Modelle aus dem eigenen ion-Konto
+    // (loadSelectedAsset). Karte, Gelände, Gebäude und Suche kommen ohne ion
+    // aus — siehe kartenquellen.js und gelaende.js.
     const token = this.getIonToken();
     if (token) Cesium.Ion.defaultAccessToken = token;
+    const K = window.ILeenKarten;
+    if (K) K.einrichten();
 
-    // Ohne ion-Token gibt es weder Weltgelände noch Luftbild. Der Viewer
-    // startet dann auf dem Ellipsoid mit OpenStreetMap — Modelle aus dem
-    // eigenen Backend lassen sich trotzdem laden und bearbeiten.
+    // DGM5 (basemap.de) in Deutschland, Terrain Tiles überall sonst, beide auf
+    // den Ellipsoid gehoben. Scheitert das — etwa weil das EGM96-Gitter nicht
+    // lädt —, startet der Viewer lieber flach als mit einem Gelände 48 m zu tief.
     let gelaende;
     try {
-      gelaende = token
-        // `requestWaterMask`: ohne die Maske weiß der Globus nicht, wo Wasser
-        // liegt, und `showWaterEffect` läuft ins Leere — Seen und Meer bleiben
-        // eine matte Textur. Mit ihr und `globe.enableLighting` (weiter unten)
-        // zeichnet Cesium Wellen und den Sonnenglanz auf dem Wasser.
-        ? await Cesium.createWorldTerrainAsync({ requestVertexNormals: true, requestWaterMask: true })
-        : new Cesium.EllipsoidTerrainProvider();
+      gelaende = await window.ILeenGelaende.erzeugen();
     } catch (fehler) {
-      console.warn('Weltgelände nicht verfügbar, weiter ohne Gelände:', fehler.message);
+      console.warn('Gelände nicht verfügbar, weiter ohne Gelände:', fehler.message);
       gelaende = new Cesium.EllipsoidTerrainProvider();
     }
 
-    const grundkarte = token
-      ? Cesium.ImageryLayer.fromProviderAsync(Cesium.IonImageryProvider.fromAssetId(2))
-      : new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }));
-
     this.viewer = new Cesium.Viewer('cesiumContainer', {
       terrainProvider: gelaende,
-      baseLayer: grundkarte,
+      // Die Grundkarte legt LayerManager.init() unten in dieser Funktion
+      baseLayer: false,
       baseLayerPicker: false,
-      geocoder: !!token,
+      // Eingetippte Koordinaten zuerst, dann Nominatim bzw. Google
+      geocoder: K ? [new Cesium.CartographicGeocoderService(), K.ortssuche()] : false,
       homeButton: true,
       sceneModePicker: false,
       navigationHelpButton: false,
       animation: false,
       timeline: false,
       fullscreenButton: false,
-      vrButton: true,
+      vrButton: false,   // VR läuft über vr.html, siehe toggleVR()
       infoBox: false,
       selectionIndicator: false,
       shadows: true,
@@ -590,13 +589,13 @@ const BimViewer = {
 
     const viewer = this.viewer;
     const scene = viewer.scene;
-    if (viewer.imageryLayers.length) viewer.imageryLayers.get(0)._ileenGrundkarte = true;
 
     scene.globe.depthTestAgainstTerrain = true;
+    // Licht und Schatten auf Hängen: gelaende.js liefert dafür Vertexnormalen
     scene.globe.enableLighting = true;
-    // Wellen und Sonnenglanz auf Seen und Meer. Voreinstellung von Cesium,
-    // hier ausdrücklich gesetzt, damit die Zeile neben der Wassermaske steht,
-    // von der sie abhängt (siehe `createWorldTerrainAsync` oben).
+    // Wellen und Sonnenglanz bräuchten eine Wassermaske im Gelände. Die
+    // freien Quellen führen keine (bis 2026-10 kam sie aus Cesium World
+    // Terrain); die Zeile bleibt, damit ein Gelände mit Maske sie sofort nutzt.
     scene.globe.showWaterEffect = true;
     scene.highDynamicRange = true;
     scene.fog.enabled = true;
@@ -629,15 +628,19 @@ const BimViewer = {
     }
 
     if (window.LayerManager) {
-      try { LayerManager.init(viewer); } catch (e) { console.warn('LayerManager.init failed', e); }
+      // Legt auch die Grundkarte (amtliches Luftbild über Sentinel-2)
+      try { await LayerManager.init(viewer); } catch (e) { console.warn('LayerManager.init failed', e); }
+    } else {
+      viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }));
     }
 
     this.initLighting();
     this._speicherWacheStarten();
     // initPointCloudSettings() ruft index.html, nachdem die Darstellungsstufe
     // steht — hier wäre es einmal zu früh und einmal zu viel.
-    this.updateStatus(token ? 'iLEEN bereit' : 'iLEEN bereit — ohne ion-Token (kein Gelände, keine ion-Assets)',
-                      token ? 'success' : 'warning');
+    const flach = gelaende instanceof Cesium.EllipsoidTerrainProvider;
+    this.updateStatus(flach ? 'iLEEN bereit — ohne Gelände (siehe Konsole)' : 'iLEEN bereit',
+                      flach ? 'warning' : 'success');
   },
 
   initCamera(dauer) {
@@ -810,7 +813,22 @@ const BimViewer = {
     } catch (e) {
       // localStorage kann in privaten Fenstern blockiert sein — dann Default nutzen
     }
-    return (stored || CONFIG.backend.URL || '').replace(/\/+$/, '');
+    const roh = (stored || CONFIG.backend.URL || '').replace(/\/+$/, '');
+    // Aus einem anderen Gerät (Brille im WLAN) ist `localhost` die Brille selbst.
+    // Dann gilt der Rechner, von dem die Seite kam — über https durch den
+    // Dev-Server (`/backend`), weil eine https-Seite nichts über http lädt
+    // (tools/vite-quest.config.js, vr-rechnen.js → backendBasis).
+    try {
+      const u = new URL(roh);
+      const lokal = h => ['localhost', '127.0.0.1', '[::1]', '::1'].includes(h);
+      const h = window.location.hostname;
+      if (lokal(u.hostname) && h && !lokal(h)) {
+        if (window.location.protocol === 'https:' && u.protocol === 'http:') return `${window.location.origin}/backend`;
+        u.hostname = h;
+        return u.toString().replace(/\/+$/, '');
+      }
+    } catch (e) { /* keine gültige Adresse: unverändert lassen */ }
+    return roh;
   },
 
   setBackendUrl(url) {
@@ -891,7 +909,12 @@ const BimViewer = {
    * Bildrate. Was hier steht, ist der Startwert davor.
    */
   splatLoadOptions() {
-    return { maximumScreenSpaceError: 16 };
+    // Der Startwert folgt dem Menü (pointcloud.js → applySplatSettings): ohne
+    // Automatik der feste Wert, mit ihr Cesiums 16 px, nie gröber als die
+    // eingestellte Obergrenze.
+    const s = this.pointCloudSettings;
+    if (!s || !s.splatDetail) return { maximumScreenSpaceError: 16 };
+    return { maximumScreenSpaceError: s.splatAuto ? Math.min(16, s.splatDetail) : s.splatDetail };
   },
 
   /**
@@ -902,7 +925,11 @@ const BimViewer = {
    * `localStorage.ileen_splat_regler = 'aus'` oder `SplatLeistung.aus()`.
    */
   _splatReglerStarten() {
-    if (!window.SplatLeistung || SplatLeistung.aktiv()) return;
+    if (!window.SplatLeistung) return;
+    // Regler oder fester Wert — je nach Menü. Auch ohne Automatik muss das
+    // frisch geladene Tileset auf den eingestellten Bildschirmfehler.
+    if (typeof this.applySplatSettings === 'function') { this.applySplatSettings(); return; }
+    if (SplatLeistung.aktiv()) return;
     let schalter = 'an';
     try { schalter = localStorage.getItem('ileen_splat_regler') || 'an'; } catch (e) { /* privat */ }
     if (schalter === 'aus') return;
@@ -1380,15 +1407,22 @@ const BimViewer = {
   },
 
   toggleVR() {
-    if (!this.viewer) return;
-    // Cesiums eigener VR-Knopf kennt den Weg in den WebXR-Modus; er steht
-    // versteckt im Viewer und wird hier nur ausgelöst.
-    const vrBtn = this.viewer.container.querySelector('.cesium-vrButton');
-    if (vrBtn) {
-      vrBtn.click();
-    } else {
-      this.updateStatus('VR Mode not available', 'warning');
+    // Die Brille bekommt eine eigene Ansicht (vr.html in einer Ebene über dem
+    // Viewer, siehe vr-fenster.js): Cesium kann kein WebXR, sein VR-Knopf
+    // zeichnete nur zwei Bildhälften nebeneinander. Gezeigt wird das zuletzt
+    // geladene sichtbare Backend-Modell; Ion-Modelle kennt die Seite nicht.
+    const backendModelle = [...this.loadedAssets.values()].filter(a => a.jobId && a.visible !== false);
+    const modell = backendModelle[backendModelle.length - 1];
+    if (window.ILeenVRFenster) {
+      const art = ILeenVRFenster.oeffnen(modell && modell.jobId, modell && modell.name);
+      this.updateStatus(art === 'sitzung'
+        ? '🥽 VR startet …'
+        : '🥽 VR-Ansicht geöffnet — zum Betreten dort „1:1 begehen“ drücken', 'info');
+      return;
     }
+    const url = new URL('vr.html', window.location.href);
+    if (modell) url.searchParams.set('job', modell.jobId);
+    window.open(url.toString(), '_blank', 'noopener');
   },
 
   // ─────────────────────────────────────────────────────────────────
@@ -1448,7 +1482,10 @@ const BimViewer = {
     this.loadedAssets.forEach((asset) => {
       if (asset.tileset && !asset.isPointCloud) this.applySettingsToTileset(asset.tileset, einstellungen);
     });
-    if (this.osmBuildings.tileset) this.applySettingsToTileset(this.osmBuildings.tileset, einstellungen);
+    // Die Gebäudekulisse aus der Layer-Liste (LoD2 Deutschland) zieht mit
+    (window.LayerManager && LayerManager.tilesetLayers || []).forEach((ebene) => {
+      if (ebene.tileset) this.applySettingsToTileset(ebene.tileset, einstellungen);
+    });
     scene.requestRender();
   },
 
@@ -1519,36 +1556,27 @@ const BimViewer = {
     this.updateStatus(zustand ? 'Untergrund-Modus an' : 'Untergrund-Modus aus', 'info');
   },
 
-  // ── Weltkulisse: OSM-Gebäude und Google 3D Tiles ──────────────────────
+  // ── Weltkulisse: Gebäudeebenen und Google 3D Tiles ────────────────────
 
+  /**
+   * Früher OSM Buildings aus Cesium ion. Gespeicherte Zustände, die
+   * Präsentation und MCP-Aufrufe kennen den Schalter noch; er bedient jetzt
+   * die amtliche Gebäudeebene LoD2 Deutschland aus der Layer-Liste.
+   */
   async toggleOSMBuildings(an) {
-    const zustand = typeof an === 'boolean' ? an : !this.osmBuildings.enabled;
-    const osm = this.osmBuildings;
-    if (!zustand) {
-      if (osm.tileset) osm.tileset.show = false;
-      osm.enabled = false;
-      return;
-    }
-    if (osm.tileset) {
-      osm.tileset.show = true;
-      osm.enabled = true;
-      return;
-    }
-    if (osm.isLoading || !this.getIonToken()) return;
-    osm.isLoading = true;
-    try {
-      osm.tileset = await Cesium.createOsmBuildingsAsync();
-      this.viewer.scene.primitives.add(osm.tileset);
-      if (this._currentPerformanceSettings) this.applySettingsToTileset(osm.tileset, this._currentPerformanceSettings);
-      osm.enabled = true;
-    } catch (fehler) {
-      console.warn('OSM Buildings nicht verfügbar:', fehler.message);
-      this.updateStatus('OSM Buildings nicht verfügbar', 'error');
-    } finally {
-      osm.isLoading = false;
-      const schalter = document.getElementById('toggleOSMBuildings');
-      if (schalter) schalter.checked = osm.enabled;
-    }
+    const LM = window.LayerManager;
+    const ebene = LM && LM.tilesetLayers.find((t) => t.id === 'lod2-de');
+    if (!ebene) return;
+    const zustand = typeof an === 'boolean' ? an : !ebene.active;
+    if (zustand) await LM.enableTileset('lod2-de');
+    else LM.disableTileset('lod2-de');
+  },
+
+  /** Gebäudeebenen aus der Layer-Liste stehen unter Google 3D Tiles nicht doppelt im Bild. */
+  _gebaeudeKulisseZeigen(zeigen) {
+    (window.LayerManager && LayerManager.tilesetLayers || []).forEach((ebene) => {
+      if (ebene.tileset && ebene.active && ebene._hoehenbereit !== false) ebene.tileset.show = zeigen;
+    });
   },
 
   async toggleGoogle3DTiles() {
@@ -1560,12 +1588,14 @@ const BimViewer = {
       if (g.tileset) g.tileset.show = false;
       g.enabled = false;
       scene.globe.show = true;
-      if (this.osmBuildings.tileset && this.osmBuildings.enabled) this.osmBuildings.tileset.show = true;
+      this._gebaeudeKulisseZeigen(true);
       return;
     }
 
-    if (!this.getIonToken()) {
-      this.updateStatus('Google 3D Tiles brauchen einen ion-Token', 'warning');
+    // Direkt bei Google mit eigenem Schlüssel; was Google Projekten im EWR
+    // verweigert, kommt über Cesium ion (ILeenKarten.google3D).
+    if (!window.ILeenKarten) {
+      this.updateStatus('Google 3D Tiles nicht verfügbar', 'error');
       return;
     }
 
@@ -1573,7 +1603,9 @@ const BimViewer = {
     try {
       if (!g.tileset) {
         this.updateStatus('Google 3D Tiles werden geladen …', 'loading');
-        g.tileset = await Cesium.createGooglePhotorealistic3DTileset();
+        const geholt = await ILeenKarten.google3D();
+        g.tileset = geholt.tileset;
+        g.hinweis = geholt.hinweis;
         scene.primitives.add(g.tileset);
       }
       g.tileset.show = true;
@@ -1581,12 +1613,14 @@ const BimViewer = {
       // Die fotorealistischen Kacheln bringen ihr Gelände mit; der Globus
       // darunter stünde als zweite Oberfläche im Bild.
       scene.globe.show = false;
-      if (this.osmBuildings.tileset) this.osmBuildings.tileset.show = false;
+      this._gebaeudeKulisseZeigen(false);
       g.enabled = true;
-      this.updateStatus('Google 3D Tiles an', 'success');
+      this.updateStatus(g.hinweis ? 'Google 3D Tiles an — ' + g.hinweis : 'Google 3D Tiles an', 'success');
     } catch (fehler) {
       console.error('Google 3D Tiles nicht verfügbar:', fehler);
-      this.updateStatus('Google 3D Tiles nicht verfügbar', 'error');
+      g.tileset = null;
+      this.updateStatus(fehler && /Google/.test(fehler.message) ? fehler.message : 'Google 3D Tiles nicht verfügbar',
+                        'error');
     } finally {
       g.isLoading = false;
     }

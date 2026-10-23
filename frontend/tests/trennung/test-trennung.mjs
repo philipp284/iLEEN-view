@@ -93,11 +93,29 @@ pruefe('jedes eingebundene Stylesheet liegt hier', fehlendeStyles.length === 0,
 // schadet nicht im Betrieb, liegt aber im öffentlichen Repo — und genau so ist
 // `tragwerk-ergebnisse.css` hier liegengeblieben, nachdem ihr `<link>` schon
 // entfernt war.
+//
+// Eingebunden ist auch, was eine weitere Seite neben index.html lädt (vr.html
+// → vr.js, vr.css) und was ein eingebundenes Modul relativ importiert
+// (vr.js → vr-rechnen.js).
 const AUSNAHMEN = new Set(['vite.config.js', 'config.js', 'config.example.js']);
+const erreicht = new Set([...eingebunden, ...stylesheets]);
+for (const seite of readdirSync(FRONTEND).filter((f) => f.endsWith('.html') && f !== 'index.html')) {
+  const text = readFileSync(join(FRONTEND, seite), 'utf8');
+  for (const m of text.matchAll(/<script[^>]+src="([^"]+)"/g)) erreicht.add(m[1]);
+  for (const m of text.matchAll(/<link[^>]+href="([^"]+)"/g)) erreicht.add(m[1]);
+}
+const offen = [...erreicht].filter((f) => lokal(f) && f.endsWith('.js'));
+while (offen.length) {
+  const datei = join(FRONTEND, offen.pop());
+  if (!existsSync(datei)) continue;
+  for (const m of readFileSync(datei, 'utf8').matchAll(/(?:from|import\s*\()\s*['"]\.\/([^'"]+\.js)['"]/g)) {
+    if (!erreicht.has(m[1])) { erreicht.add(m[1]); offen.push(m[1]); }
+  }
+}
 const verwaist = readdirSync(FRONTEND)
   .filter((f) => /\.(js|css)$/.test(f))
   .filter((f) => !AUSNAHMEN.has(f))
-  .filter((f) => !eingebunden.includes(f) && !stylesheets.includes(f));
+  .filter((f) => !erreicht.has(f));
 pruefe('keine verwaiste Datei im Frontend', verwaist.length === 0,
   'bindet niemand ein: ' + verwaist.join(', '));
 

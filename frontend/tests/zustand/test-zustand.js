@@ -163,11 +163,12 @@ function attrappe() {
   B.setShadows = (a) => { B.lighting.schatten = a; };
   B.viewer = { scene: { globe: { translucency: { enabled: false, frontFaceAlpha: 1 } } } };
   B.setGlobeTransparency = (a) => { const t = B.viewer.scene.globe.translucency; t.enabled = a < 1; t.frontFaceAlpha = a; };
-  B.osmBuildings = { enabled: false }; B.googleTiles = { enabled: false };
-  B.toggleOSMBuildings = async (a) => { B.osmBuildings.enabled = a; };
+  B.googleTiles = { enabled: false };
+  // Wie core.js: der alte OSM-Schalter bedient seit 2026-10 LoD2 Deutschland
+  B.toggleOSMBuildings = async (a) => { if (a) await LM.enableTileset('lod2-de'); else LM.disableTileset('lod2-de'); };
   B.toggleGoogle3DTiles = async () => { B.googleTiles.enabled = !B.googleTiles.enabled; };
-  const LM = { aktiveKarte: 'bing-aerial', aktivesGelaende: 'ellipsoid',
-    tilesetLayers: [{ id: 'rlp', active: false }, { id: 'osm3d', active: true }],
+  const LM = { aktiveKarte: 'luftbild', aktivesGelaende: 'ellipsoid',
+    tilesetLayers: [{ id: 'lod2-de', active: false }, { id: 'rlp', active: false }, { id: 'osm3d', active: true }],
     async switchBasemap(id) { this.aktiveKarte = id; }, async switchTerrain(id) { this.aktivesGelaende = id; },
     async enableTileset(id) { this.tilesetLayers.find((t) => t.id === id).active = true; },
     disableTileset(id) { this.tilesetLayers.find((t) => t.id === id).active = false; } };
@@ -398,9 +399,17 @@ console.log('\nRegistry');
   pruefe('eine unbekannte Ebene wirft nicht', true);
 
   // Welt, Sonne
-  await Z.anwenden({ welt: { karte: 'osm', gelaende: 'world', osm: true, google: true, globusTransparenz: 0.5, ebenen: { rlp: true, osm3d: false } } });
+  await Z.anwenden({ welt: { karte: 'osm', gelaende: 'gelaende', google: true, globusTransparenz: 0.5, ebenen: { 'lod2-de': true, rlp: true, osm3d: false } } });
   const wz = Z.lesen(['welt']).welt;
-  pruefe('Welt: Karte, Gelände, Kulissen, Ebenen, Globus', wz.karte === 'osm' && wz.gelaende === 'world' && wz.osm && wz.google && wz.globusTransparenz === 0.5 && wz.ebenen.rlp === true && wz.ebenen.osm3d === false);
+  pruefe('Welt: Karte, Gelände, Kulissen, Ebenen, Globus', wz.karte === 'osm' && wz.gelaende === 'gelaende' && wz.google && wz.globusTransparenz === 0.5 && wz.ebenen['lod2-de'] === true && wz.ebenen.rlp === true && wz.ebenen.osm3d === false);
+  pruefe('… „osm" steht nicht mehr im Zustand (OSM Buildings kamen von ion)', !('osm' in wz));
+  // Ein Zustand aus der ion-Zeit: osm: true schaltet LoD2 Deutschland, solange die Ebenen es nicht selbst sagen
+  await Z.anwenden({ welt: { ebenen: { 'lod2-de': false } } });
+  await Z.anwenden({ welt: { osm: true } });
+  pruefe('… ein alter Zustand mit osm: true schaltet LoD2 Deutschland ein', Z.lesen(['welt']).welt.ebenen['lod2-de'] === true);
+  await Z.anwenden({ welt: { osm: true, ebenen: { 'lod2-de': false } } });
+  pruefe('… sagen die Ebenen etwas anderes, gewinnen sie', Z.lesen(['welt']).welt.ebenen['lod2-de'] === false);
+  await Z.anwenden({ welt: { ebenen: { 'lod2-de': true } } });
   await Z.anwenden(JSON.parse(json({ welt: wz })));
   pruefe('Google 3D Tiles ist ein UMSCHALTER — zweimal anwenden schaltet es nicht wieder aus', Z.lesen(['welt']).welt.google === true);
   await Z.anwenden({ sonne: { stunde: 15.5, schatten: false } });

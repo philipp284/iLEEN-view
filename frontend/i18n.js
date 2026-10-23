@@ -211,7 +211,18 @@ const ILeenI18n = (() => {
       'models.ionReady': '{n} Assets im Konto — Name wählen oder ID eintippen',
       'models.ionFailed': 'Ion-Konto nicht erreichbar — Asset-ID trotzdem eintippbar',
       'models.ionInvalid': 'Keine gültige Ion-Asset-ID erkannt',
+      'models.ionLazy': 'Eigene Modelle aus dem ion-Konto — die Vorschläge kommen beim ersten Klick ins Feld',
+      'models.ionNoToken': 'Kein ion-Token — unter Einstellungen › Kartendienste eintragen',
       'models.glb': 'Lokale GLB-Modelle',
+
+      // ── Kartendienste ohne Cesium ion (2026-10) ────────────────────────
+      'group.mapServices': 'Kartendienste',
+      'settings.googleKey': 'Google-Schlüssel (Map Tiles API, Geocoding API)',
+      'settings.googleHint': 'Für Google-Luftbild, Google 3D Tiles und die Google-Suche. Ohne Schlüssel kommen Karte, Gelände, Gebäude und Suche aus amtlichen und freien Quellen.',
+      'settings.ionToken': 'Cesium-ion-Token (eigene ion-Modelle, Google-Luftbild und -3D)',
+      'settings.ionHint': 'Nur für Modelle, die noch im eigenen ion-Konto liegen. Karte, Gelände und Gebäude kommen nicht mehr von dort.',
+      'settings.keySet': 'gesetzt',
+      'settings.keyUnset': 'nicht gesetzt',
 
       // ── Revit-Filter ───────────────────────────────────────────────────
       'revit.hint': 'Revit-Kategorien gibt es nur bei Modellen aus Cesium Ion: die .rvt-Datei zuerst dort hochladen und tilen lassen (ion.cesium.com), dann oben unter „Modelle → Cesium Ion" per Name oder Asset-ID laden. Diese Liste färbt und filtert danach automatisch nach Revit-Kategorie.',
@@ -258,6 +269,12 @@ const ILeenI18n = (() => {
       'pc.dynamicHint': 'Kacheln weit von der Kamera zusätzlich vergröbern. Bei großen Wolken der wirksamste Einzelschalter.',
       'pc.auto': 'Bildrate halten',
       'pc.autoHint': 'Zieht die Detailstufe selbsttätig hoch, wenn die Szene unter 30 Bilder je Sekunde fällt, und wieder zurück, sobald Luft ist.',
+      'pc.splats': 'Gaussian Splats',
+      'pc.splatDetail': 'Detail',
+      'pc.splatDetailHint': 'Gröbster zulässiger Bildschirmfehler in Pixeln. Kleiner heißt feinere Kacheln in der Tiefe, aber mehr Last. Mit „Bildrate halten“ ist das die Obergrenze der Automatik, ohne sie der feste Wert.',
+      'pc.splatAutoHint': 'Wird die Szene unter 60 Bilder je Sekunde langsam, vergröbert die Automatik die Splats bis zur Detail-Grenze und senkt danach die Auflösung. Aus: fester Wert, volle Auflösung.',
+      'pc.splatRes': 'Mindest-Auflösung',
+      'pc.splatResHint': 'Weiter als bis hierhin senkt die Automatik die Render-Auflösung nicht. 100 % heißt: nie unschärfer, dafür gegebenenfalls weniger Bilder je Sekunde.',
       'pc.heightFrom': 'Untergrenze des Bandes (m über Ellipsoid, 0,1 mm genau)',
       'pc.heightTo': 'Obergrenze des Bandes (m über Ellipsoid, 0,1 mm genau)',
       'pc.heightAuto': 'Spanne aus der Wolke übernehmen',
@@ -610,7 +627,18 @@ const ILeenI18n = (() => {
       'models.ionReady': '{n} assets in the account — pick a name or type an ID',
       'models.ionFailed': 'Ion account unreachable — you can still type an asset ID',
       'models.ionInvalid': 'No valid Ion asset ID recognised',
+      'models.ionLazy': 'Your own models from the ion account — suggestions load on first click into the field',
+      'models.ionNoToken': 'No ion token — enter one under Settings › Map services',
       'models.glb': 'Local GLB models',
+
+      // ── Map services without Cesium ion (2026-10) ──────────────────────
+      'group.mapServices': 'Map services',
+      'settings.googleKey': 'Google key (Map Tiles API, Geocoding API)',
+      'settings.googleHint': 'For Google imagery, Google 3D Tiles and Google search. Without a key, map, terrain, buildings and search come from official and open sources.',
+      'settings.ionToken': 'Cesium ion token (own ion models, Google satellite and 3D)',
+      'settings.ionHint': 'Only for models that still live in your own ion account. Map, terrain and buildings no longer come from there.',
+      'settings.keySet': 'set',
+      'settings.keyUnset': 'not set',
 
       // ── Revit filter ───────────────────────────────────────────────────
       'revit.hint': 'Revit categories only appear on models loaded from Cesium Ion: upload and tile the .rvt file there first (ion.cesium.com), then load it above under "Models → Cesium Ion" by name or asset ID. This list then colors and filters by Revit category automatically.',
@@ -657,6 +685,12 @@ const ILeenI18n = (() => {
       'pc.dynamicHint': 'Additionally coarsen tiles far from the camera. The single most effective switch for large clouds.',
       'pc.auto': 'Hold frame rate',
       'pc.autoHint': 'Raises the detail level automatically when the scene drops below 30 frames per second, and lowers it again once there is headroom.',
+      'pc.splats': 'Gaussian splats',
+      'pc.splatDetail': 'Detail',
+      'pc.splatDetailHint': 'Coarsest allowed screen-space error in pixels. Smaller means finer tiles in the distance, but more load. With "Hold frame rate" this is the upper limit of the automation, without it the fixed value.',
+      'pc.splatAutoHint': 'If the scene falls below 60 frames per second, the automation coarsens the splats up to the detail limit and then lowers the resolution. Off: fixed value, full resolution.',
+      'pc.splatRes': 'Min. resolution',
+      'pc.splatResHint': 'The automation never lowers the render resolution beyond this. 100 % means never blurrier, at the cost of possibly fewer frames per second.',
       'pc.heightFrom': 'Lower bound of the band (m above ellipsoid, 0.1 mm resolution)',
       'pc.heightTo': 'Upper bound of the band (m above ellipsoid, 0.1 mm resolution)',
       'pc.heightAuto': 'Take the range from the cloud',

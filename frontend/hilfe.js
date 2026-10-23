@@ -116,9 +116,11 @@ const ILeenHilfe = (() => {
         {
           titel: 'Cesium ion',
           wo: 'Links › Modelle › Cesium ion',
-          text: `<p>Kachelsätze aus dem eigenen ion-Konto: Photogrammetrie, Punktwolken,
-            3D-Tiles. Der Zugangsschlüssel steht in <code>config.js</code> unter
-            <code>ionToken</code>.</p>`
+          text: `<p>Kachelsätze, die noch im eigenen ion-Konto liegen: Photogrammetrie,
+            Punktwolken, 3D-Tiles. Die Vorschläge holt iLEEN erst beim ersten Klick ins
+            Feld — ohne ion-Modell geht keine Anfrage an Cesium ion. Der Token steht unter
+            Einstellungen › Kartendienste oder in <code>config.js</code>
+            (<code>ionToken</code>).</p>`
         },
         {
           titel: 'Geladene Modelle',
@@ -132,10 +134,18 @@ const ILeenHilfe = (() => {
         {
           titel: 'Karten, Gelände, Gebäudekulisse',
           wo: 'Links › Modelle › Ebenen',
-          text: `<p>Hintergrundkarten, Geländemodell und die amtliche Gebäudekulisse.
-            basemap.de steht zusätzlich als Vektorkarte zur Verfügung, die sich auf das Gelände
-            legt. Die Geoid-Korrektur rückt Höhen über Normalnull und ellipsoidische Höhen
-            zusammen.</p>`
+          text: `<p>Hintergrundkarten, Geländemodell und die amtliche Gebäudekulisse — alles
+            ohne Cesium ion. <strong>Luftbild:</strong> die amtlichen Orthophotos (DOP20) von
+            Rheinland-Pfalz, Hessen, NRW, Bayern und dem Saarland, sonst Sentinel-2.
+            <strong>Gelände:</strong> das DGM5 der Länder (basemap.de) in Deutschland, sonst
+            Terrain Tiles. <strong>Gebäude:</strong> LoD2 Deutschland (basemap.de 3D).
+            Beide liefern Höhen über NHN; iLEEN rechnet sie über das EGM96-Geoid auf den
+            Ellipsoid um, auf den sich auch die Modelle beziehen.</p>
+            <p>Google-Karte und Google-Suche kommen direkt von Google und brauchen einen eigenen
+            Schlüssel (Einstellungen › Kartendienste). Google-Luftbild und Google 3D Tiles gibt
+            Google an Projekte im EWR seit Juli 2025 nicht mehr ab; iLEEN fragt erst direkt und
+            holt sie sonst über Cesium ion — dafür braucht es den ion-Token. basemap.de steht
+            zusätzlich als Vektorkarte zur Verfügung, die sich auf das Gelände legt.</p>`
         },
       ]
     },
@@ -153,6 +163,22 @@ const ILeenHilfe = (() => {
             <kbd>⇧F</kbd> geht stattdessen zu Fuß — mit Augenhöhe und Kollision.</p>
             <p><kbd>N</kbd> richtet die Kamera nach Norden aus. Das Navigations-HUD unten zeigt
             Modus, Kompass und Höhe.</p>`
+        },
+        {
+          titel: 'In der Brille (VR)',
+          wo: 'Navigations-HUD › 🥽 VR',
+          text: `<p>Öffnet iLEEN im Browser der Brille (etwa Meta Quest 3), startet der Schalter VR gleich
+            in einer Ebene über dem Viewer: das zuletzt geladene Backend-Modell, 1:1 begehbar. Das
+            Fenster schließt mit ✕ oder <kbd>Esc</kbd>. Am Mac zeigt dieselbe Ebene eine Vorschau.</p>
+            <p><b>1:1:</b> linker Stick gehen, rechter Stick drehen und schweben, Abzug auf den Boden
+            springt, Abzug oder Griff auf ein Bauteil zeigt seine Daten. <b>Tischmodell:</b> das Gebäude
+            verkleinert vor dir, der Raum bleibt sichtbar; mit dem Griff greifen und drehen.</p>
+            <p><b>Verbinden ohne Entwicklermodus</b> (Hochschulbrillen): am Mac einmal
+            <code>frontend/tools/quest-dienst.sh install</code>. Danach läuft der Server von selbst
+            und passt sich Netzwechseln an. In der Brille <code>https://&lt;Mac-Adresse&gt;:5443</code>
+            öffnen (<code>quest-dienst.sh status</code> zeigt sie) und die Zertifikatswarnung einmal
+            über „Erweitert → Weiter“ bestätigen. Mac und Brille müssen im selben Netz sein.
+            Splats zeigt die Brille noch nicht.</p>`
         },
         {
           titel: 'Gespeicherte Ansichten',

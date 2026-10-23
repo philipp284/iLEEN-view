@@ -318,7 +318,22 @@ node tests/praesentation/test-browser.mjs
 
 # 6 · Derselbe Start ohne Vite, wie gaeco ihn ausliefert (Container)
 VIEWER_URL=http://localhost:5194/ node tests/start/test-start.mjs
+
+# 7 · Die Brille (vr.html) mit nachgebildeter Quest 3 — braucht Backend + Internet
+node tests/vr/test-vr-rechnen.mjs
+VIEWER_URL=http://localhost:5194/ node tests/vr/test-vr.mjs
+VIEWER_URL=http://localhost:5194/ node tests/vr/test-vr-tablet.mjs   # Tablet, Ebenen, Welt, Karte, Werkzeuge
 ```
+
+**`vr.html` ist ein zweiter Einstieg neben `index.html`** — VR in der Brille
+(Meta Quest 3), mit three.js und `3d-tiles-renderer` vom CDN, ohne Build. Der
+Zuschnitt-Prüfstein zählt deshalb auch, was weitere Seiten laden und was deren
+Module relativ importieren (seit 2026-10-21 auch das Tablet mit Ebenen, Welt
+und Minikarte: `vr-tablet.js`, `vr-seiten.js`, `vr-ebenen.js`, `vr-welt.js`). Herleitung und Fallen: CLAUDE.md der Vollfassung,
+Abschnitt „VR in der Brille". In die Brille ohne Entwicklermodus:
+`frontend/tools/quest-wlan.sh` (HTTPS im WLAN, Port 5443). Mit
+Entwicklermodus per USB: `frontend/tools/quest.sh` (`ILEEN_PORT=5190` für den
+Vite-Server dieser Fassung).
 
 `tests/trennung/test-trennung.mjs` liest nur Dateinamen und `index.html`: liegt
 hier eine Datei, die nicht hierhergehört? Bindet `index.html` eine ein? Kennt

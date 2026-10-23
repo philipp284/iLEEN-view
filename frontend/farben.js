@@ -334,7 +334,8 @@
     var ziele = traegerModelle();
     var B = window.BimViewer;
     if (!B) return ziele;
-    if (B.osmBuildings && B.osmBuildings.tileset) ziele.push(B.osmBuildings.tileset);
+    var LM = window.LayerManager;
+    (LM && LM.tilesetLayers || []).forEach(function (e) { if (e.tileset) ziele.push(e.tileset); });
     if (B.googleTiles && B.googleTiles.tileset) ziele.push(B.googleTiles.tileset);
     return ziele;
   }

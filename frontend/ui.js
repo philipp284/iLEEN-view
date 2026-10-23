@@ -41,14 +41,8 @@ const VALID_ASSET_IDS = new Set([
   3390684,  // 3D_FBX_Oberstein_OPTIMIERT_reduced
   1415196,  // Aerometrex San Francisco High Resolution 3D Model
   69380,    // Melbourne Photogrammetry
-  // Infrastruktur (immer verfügbar)
-  2275207,  // Google Photorealistic 3D Tiles
-  96188,    // Cesium OSM Buildings
-  // Imagery
-  3830186, 3830185, 3830184, 3830183, 3830182,  // Google Maps 2D
-  3827, 4, 3, 2,                                  // Bing Maps
-  // Terrain
-  1         // Cesium World Terrain
+  // Keine Basisdienste mehr (Weltgelände, Bing, OSM Buildings, Google über
+  // ion): Karte, Gelände und Gebäude kommen ohne ion — kartenquellen.js.
 ]);
 
 function uiEsc(text) {
@@ -405,7 +399,7 @@ const BimViewerUI = {
 
         // Dasselbe gilt für die Vorschlagsliste der Ion-Assets: sie steht im
         // Markup nur als leere `<datalist>`. Neu abgefragt wird nichts — die
-        // Namen liegen seit dem Start in `_ionAssetNames`.
+        // Namen liegen seit dem ersten Antippen des Feldes in `_ionAssetNames`.
         this.fillIonSuggestions();
         if (window.LayerManager && LayerManager.viewer) LayerManager.populateUI();
         window.Vektorkacheln?.panelZeichnen();
@@ -702,7 +696,7 @@ const BimViewerUI = {
           </div>
           <datalist id="ionAssetOptions"></datalist>
         </div>
-        <div id="ionAssetsStatus" class="hint">${t('state.loading')}</div>
+        <div id="ionAssetsStatus" class="hint">${t('models.ionLazy')}</div>
       </div>
     `;
   },
@@ -894,13 +888,6 @@ const BimViewerUI = {
       <div class="section">
         <div class="section__label">${t('layer.tiles3d')}</div>
         <div class="row">
-          <span class="row__label">OSM Buildings</span>
-          <label class="switch">
-            <input type="checkbox" id="toggleOSMBuildings">
-            <span class="switch__track"></span>
-          </label>
-        </div>
-        <div class="row">
           <span class="row__label">Google 3D Tiles</span>
           <label class="switch">
             <input type="checkbox" id="toggleGoogle3DTiles">
@@ -949,10 +936,43 @@ const BimViewerUI = {
       dynamicError: true,
       autoLeistung: true,
       heightWindow: null,
-      heightOutside: 'klemmen'
+      heightOutside: 'klemmen',
+      splatDetail: 16,
+      splatAuto: true,
+      splatAufloesungMin: 0.5
     };
 
     return `
+      <div class="section">
+        <div class="section__label">✨ ${t('pc.splats')}</div>
+        <div class="slider-row" title="${t('pc.splatDetailHint')}">
+          <span class="slider-row__label">${t('pc.splatDetail')}</span>
+          <input type="range" id="splatDetailSlider" class="slider" min="1" max="64" step="1"
+                 value="${s.splatDetail}"
+                 oninput="document.getElementById('splatDetailValue').textContent = this.value + ' px'"
+                 onchange="BimViewer.setSplatDetail(this.value)">
+          <span id="splatDetailValue" class="slider-row__value">${s.splatDetail} px</span>
+        </div>
+        <div class="row" title="${t('pc.splatAutoHint')}">
+          <span class="row__label">${t('pc.auto')}</span>
+          <label class="switch">
+            <input type="checkbox" id="toggleSplatAuto" ${s.splatAuto ? 'checked' : ''}
+                   onchange="BimViewer.setSplatAuto(this.checked)">
+            <span class="switch__track"></span>
+          </label>
+        </div>
+        <div id="splatAufloesungGroup" class="slider-row ${s.splatAuto ? '' : 'disabled'}" title="${t('pc.splatResHint')}">
+          <span class="slider-row__label">${t('pc.splatRes')}</span>
+          <input type="range" id="splatAufloesungSlider" class="slider" min="0.25" max="1" step="0.05"
+                 value="${s.splatAufloesungMin}"
+                 oninput="document.getElementById('splatAufloesungValue').textContent = Math.round(this.value * 100) + ' %'"
+                 onchange="BimViewer.setSplatAufloesungMin(this.value)"
+                 ${s.splatAuto ? '' : 'disabled'}>
+          <span id="splatAufloesungValue" class="slider-row__value">${Math.round(s.splatAufloesungMin * 100)} %</span>
+        </div>
+        <div class="row"><span class="row__label" id="splatAutoWert"></span></div>
+      </div>
+
       <div class="section">
         <div class="section__label">${t('pc.presets')}</div>
         <div class="btn-group">
@@ -1745,6 +1765,7 @@ const BimViewerUI = {
   getSettingsContent() {
     const language = window.ILeenI18n ? ILeenI18n.getLanguage() : 'de';
     const hatToken = !!(window.BimViewer && BimViewer.getIonToken && BimViewer.getIonToken());
+    const hatGoogle = !!(window.ILeenKarten && ILeenKarten.googleKey());
 
     return `
       <div class="section">
@@ -1779,17 +1800,30 @@ const BimViewerUI = {
         ${this.getFarbenContent()}
       </div>
 
+      <!--
+        Kartendienste: Karte, Gelände, Gebäude und Suche laufen ohne Schlüssel
+        (kartenquellen.js, gelaende.js). Google ist eine Wahl, keine Voraussetzung.
+      -->
       <div class="section">
-        <div class="section__label">Cesium ion</div>
+        <div class="section__label">${t('group.mapServices')}</div>
         <div class="field">
-          <label class="field__label" for="ionTokenInput">Zugriffsschlüssel</label>
+          <label class="field__label" for="googleKeyInput">${t('settings.googleKey')}</label>
           <div class="input-row">
-            <input id="ionTokenInput" type="password" class="input" autocomplete="off"
-                   placeholder="${hatToken ? 'gesetzt' : 'nicht gesetzt'}">
-            <button id="ionTokenSave" class="btn btn--icon" title="Speichern">✓</button>
+            <input id="googleKeyInput" type="password" class="input" autocomplete="off"
+                   placeholder="${hatGoogle ? t('settings.keySet') : t('settings.keyUnset')}">
+            <button id="googleKeySave" class="btn btn--icon" title="${t('action.save')}">✓</button>
           </div>
         </div>
-        <p class="hint">Gilt nach dem Neuladen der Seite für Gelände, Luftbild und ion-Assets.</p>
+        <p class="hint">${t('settings.googleHint')}</p>
+        <div class="field">
+          <label class="field__label" for="ionTokenInput">${t('settings.ionToken')}</label>
+          <div class="input-row">
+            <input id="ionTokenInput" type="password" class="input" autocomplete="off"
+                   placeholder="${hatToken ? t('settings.keySet') : t('settings.keyUnset')}">
+            <button id="ionTokenSave" class="btn btn--icon" title="${t('action.save')}">✓</button>
+          </div>
+        </div>
+        <p class="hint">${t('settings.ionHint')}</p>
       </div>
 
       <!-- Verborgene Anker für nav-hud.js / core.js (Walk- und Flugmodus) -->
@@ -2024,6 +2058,9 @@ const BimViewerUI = {
       input.value = '';
     };
     an('loadIonAsset', 'click', loadIonAsset);
+    // Das Konto wird erst gefragt, wenn jemand ins Feld will — nicht beim
+    // Start. So geht ohne ion-Modell keine einzige Anfrage an Cesium ion.
+    an('ionAssetInput', 'focus', () => this.autoLoadIonAssets());
     an('ionAssetInput', 'keydown', (e) => {
       if (e.key === 'Enter') loadIonAsset();
     });
@@ -2081,9 +2118,6 @@ const BimViewerUI = {
     an('toggleDurchblick', 'change', (e) => BimViewer.Untergrund?.durchblickSetzen(e.target.checked));
 
     // ── Weltkulisse ───────────────────────────────────────────────────
-    const osm = an('toggleOSMBuildings', 'change', (e) => BimViewer.toggleOSMBuildings(e.target.checked));
-    if (osm && window.BimViewer) osm.checked = !!BimViewer.osmBuildings.enabled;
-
     const google = an('toggleGoogle3DTiles', 'change', async (e) => {
       await BimViewer.toggleGoogle3DTiles();
 
@@ -2097,7 +2131,7 @@ const BimViewerUI = {
     });
     if (google && window.BimViewer) google.checked = !!BimViewer.googleTiles.enabled;
 
-    // Amtliche Gebäudeebenen (RLP LoD2 …) — Schalter, wie die beiden Zeilen
+    // Amtliche Gebäudeebenen (LoD2 Deutschland …) — Schalter, wie die Zeile
     // darüber. `change` und nicht `click`: bei einem Kontrollkästchen ist der
     // Zustand erst im change-Ereignis gültig.
     an('tilesetLayersList', 'change', (e) => {
@@ -2205,8 +2239,18 @@ const BimViewerUI = {
     an('ionTokenSave', 'click', () => {
       const feld = document.getElementById('ionTokenInput');
       const gesetzt = BimViewer.setIonToken(feld ? feld.value : '');
-      if (feld) { feld.value = ''; feld.placeholder = gesetzt ? 'gesetzt' : 'nicht gesetzt'; }
-      BimViewer.updateStatus(gesetzt ? 'ion-Token gespeichert — Seite neu laden' : 'ion-Token entfernt', 'success');
+      if (feld) { feld.value = ''; feld.placeholder = gesetzt ? t('settings.keySet') : t('settings.keyUnset'); }
+      // Die Vorschlagsliste gehört zum alten Konto
+      this._ionAssetNames = null;
+      this._ionAbruf = null;
+      BimViewer.updateStatus(gesetzt ? 'ion-Token gespeichert' : 'ion-Token entfernt', 'success');
+    });
+    an('googleKeySave', 'click', () => {
+      const feld = document.getElementById('googleKeyInput');
+      const gesetzt = window.ILeenKarten ? ILeenKarten.setGoogleKey(feld ? feld.value : '') : '';
+      if (feld) { feld.value = ''; feld.placeholder = gesetzt ? t('settings.keySet') : t('settings.keyUnset'); }
+      if (window.LayerManager && LayerManager.viewer) LayerManager.updateBasemapUI();
+      BimViewer.updateStatus(gesetzt ? 'Google-Schlüssel gespeichert' : 'Google-Schlüssel entfernt', 'success');
     });
 
     // ── Darstellung ───────────────────────────────────────────────────
@@ -2609,22 +2653,22 @@ const BimViewerUI = {
    */
   async autoLoadIonAssets() {
     const statusEl = document.getElementById('ionAssetsStatus');
-    const listEl = document.getElementById('ionAssetOptions');
-
-    if (!listEl) {
-      // Das Panel wird von createModernToolbar() gebaut; beim Start kann der
-      // Aufruf davor liegen.
-      setTimeout(() => this.autoLoadIonAssets(), 1000);
-      return;
-    }
 
     if (!BimViewer.getIonToken()) {
-      if (statusEl) statusEl.textContent = 'Kein ion-Token — unter Einstellungen eintragen';
+      if (statusEl) statusEl.textContent = t('models.ionNoToken');
       return;
     }
+    // Einmal je Konto; ein Sprachwechsel füllt über fillIonSuggestions() nach
+    if (this._ionAbruf) return this._ionAbruf;
 
     this._ionAssetNames = this._ionAssetNames || new Map();
+    if (statusEl) statusEl.textContent = t('state.loading');
 
+    this._ionAbruf = this._ionKontoLesen();
+    return this._ionAbruf;
+  },
+
+  async _ionKontoLesen() {
     try {
       const allAssets = await BimViewer.fetchAvailableAssets();
       allAssets
@@ -2632,10 +2676,11 @@ const BimViewerUI = {
         .forEach(a => this._ionAssetNames.set(a.id, a.name));
       this.fillIonSuggestions();
       console.log(`${this._ionAssetNames.size} Ion-Assets in der Vorschlagsliste`);
-
     } catch (error) {
       console.error('Failed to load Ion assets:', error);
-      if (statusEl) statusEl.textContent = t('models.ionFailed');
+      this._ionAbruf = null;   // beim nächsten Antippen erneut versuchen
+      const el = document.getElementById('ionAssetsStatus');
+      if (el) el.textContent = t('models.ionFailed');
     }
   },
 

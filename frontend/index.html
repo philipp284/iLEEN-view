@@ -153,7 +153,10 @@
   <!-- Die im Flyout gesetzte Lage als Platzierung ins Backend schreiben (📍) -->
   <script src="lage-backend.js"></script>
 
-  <!-- 3. Karte, Gelände, amtliche Gebäudekulisse -->
+  <!-- 3. Karte, Gelände, amtliche Gebäudekulisse — ohne Cesium ion.
+       gelaende.js und kartenquellen.js braucht core.js schon in init(). -->
+  <script src="gelaende.js"></script>
+  <script src="kartenquellen.js"></script>
   <script src="layerManager.js"></script>
   <!-- Vektorkarte: basemap.de als Vektorkacheln auf dem Gelände -->
   <script src="vektorkacheln.js"></script>
@@ -239,6 +242,7 @@
 
   <!-- Navigations-HUD — Walk/Fly/VR, Kompass, Höhe -->
   <script src="nav-hud.js"></script>
+  <script src="vr-fenster.js"></script>
 
   <!-- Explosionsansicht — ganz zum Schluss, weil das Modul Kern und
        Oberfläche kennen muss -->
@@ -313,10 +317,6 @@
 
       BimViewer.initFeatures();
       if (typeof BimViewer.initPointCloudSettings === 'function') BimViewer.initPointCloudSettings();
-
-      if (window.BimViewerUI && typeof BimViewerUI.autoLoadIonAssets === 'function') {
-        BimViewerUI.autoLoadIonAssets();
-      }
 
       // Notizen aus IndexedDB/localStorage
       if (typeof Tags !== 'undefined' && typeof Tags.init === 'function') {
