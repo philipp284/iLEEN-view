@@ -184,7 +184,15 @@ const ILeenHilfe = (() => {
             Zertifikatsvertrauenseinstellungen einschalten. Bedient wird mit Blick und Kneifen: hinsehen und
             kurz kneifen springt oder zeigt das Bauteil, lange kneifen zeigt immer die Info. Das Tablet schwebt
             vor dir, auf ihm tippt Kneifen, Kneifen und Ziehen rollt; Drehen und „Zum Start“ stehen unter
-            Werkzeuge. Das Tischmodell bietet Safari auf der Vision Pro nicht an.</p>`
+            Werkzeuge. Das Tischmodell bietet Safari auf der Vision Pro nicht an.</p>
+            <p><b>Mehrere Brillen gemeinsam:</b> Öffnen mehrere Brillen iLEEN über denselben Mac, sehen sie sich
+            gegenseitig (Kopf, Controller, Name, Zeigestrahl), und wer dazukommt, bekommt das Modell der anderen.
+            Damit die Figuren dort stehen, wo die Menschen stehen, misst jede Brille einmal je Sitzung zwei Marken
+            im Raum (2–4 m auseinander, alle in derselben Reihenfolge): Tablet › Gruppe › Kalibrieren, dann die
+            Spitze des Controllers auf Marke 1 und 2 setzen und den Abzug halten. Mit <b>Mitgehen</b> nimmt jeder,
+            der geht, springt oder das Tischmodell greift, alle mit; ohne zeigt ein blasser Geist, wo die anderen
+            wirklich stehen. Ausgewählte Bauteile, Messungen und — schaltbar — Ebenen und Höhenschnitt sehen alle.
+            iLEEN am Mac schaut im Reiter Gruppe zu.</p>`
         },
         {
           titel: 'Gespeicherte Ansichten',
