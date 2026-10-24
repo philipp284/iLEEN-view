@@ -177,7 +177,10 @@ const ILeenHilfe = (() => {
             <code>frontend/tools/quest-dienst.sh install</code>. Danach läuft der Server von selbst
             und passt sich Netzwechseln an. In der Brille <code>https://&lt;Mac-Adresse&gt;:5443</code>
             öffnen (<code>quest-dienst.sh status</code> zeigt sie) und die Zertifikatswarnung einmal
-            über „Erweitert → Weiter“ bestätigen. Mac und Brille müssen im selben Netz sein.</p>
+            über „Erweitert → Weiter“ bestätigen. Mac und Brille müssen im selben Netz sein.
+            <b>Feste Adresse:</b> iPhone-Hotspot einschalten, Mac und Brille in das WLAN des iPhones —
+            dann ist der Mac immer <code>https://172.20.10.14:5443</code>, an jedem Ort (einmal einrichten:
+            <code>quest-festip.sh install</code>, fragt nach dem Passwort).</p>
             <p><b>Apple Vision Pro</b> (Safari, ab visionOS 2): Safari nimmt keine Zertifikatswarnung hin.
             Einmal <code>http://&lt;Mac-Adresse&gt;:5443/einrichten</code> öffnen, das Profil laden, unter
             Einstellungen › Allgemein › VPN &amp; Geräteverwaltung installieren und unter Allgemein › Info ›
@@ -189,7 +192,8 @@ const ILeenHilfe = (() => {
             gegenseitig (Kopf, Controller, Name, Zeigestrahl), und wer dazukommt, bekommt das Modell der anderen.
             Damit die Figuren dort stehen, wo die Menschen stehen, misst jede Brille einmal je Sitzung zwei Marken
             im Raum (2–4 m auseinander, alle in derselben Reihenfolge): Tablet › Gruppe › Kalibrieren, dann die
-            Spitze des Controllers auf Marke 1 und 2 setzen und den Abzug halten. Mit <b>Mitgehen</b> nimmt jeder,
+            Spitze des Controllers auf Marke 1 und 2 setzen und den Abzug halten — mit der Vision Pro Daumen und
+            Zeigefinger auf der Marke zusammendrücken und halten, bis sie steht. Mit <b>Mitgehen</b> nimmt jeder,
             der geht, springt oder das Tischmodell greift, alle mit; ohne zeigt ein blasser Geist, wo die anderen
             wirklich stehen. Ausgewählte Bauteile, Messungen und — schaltbar — Ebenen und Höhenschnitt sehen alle.
             iLEEN am Mac schaut im Reiter Gruppe zu.</p>`

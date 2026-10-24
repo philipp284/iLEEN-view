@@ -69,15 +69,26 @@ try {
         Object.assign(s, { url: String(url), readyState: 0, protocol: '', send() {}, close() {} });
         return s;
       }
-      return protokoll === undefined ? new Echt(url) : new Echt(url, protokoll);
+      const ws = protokoll === undefined ? new Echt(url) : new Echt(url, protokoll);
+      // Gruppe (vr-gemeinsam.js): die gesendeten Posen mitlesen — sieht man den Kneif-Strahl?
+      if (/vr-raum/.test(String(url))) {
+        const senden = ws.send.bind(ws);
+        window.__posen = [];
+        ws.send = d => {
+          try { const n = JSON.parse(d); if (n.t === 'pose') { __posen.push(n); if (__posen.length > 40) __posen.shift(); } } catch { /* kein JSON */ }
+          return senden(d);
+        };
+      }
+      return ws;
     };
     Still.prototype = Echt.prototype;
     Object.assign(Still, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
     window.WebSocket = Still;
   });
 
-  // Ohne Welt: schneller, und der Rasterboden ist der Landeplatz
-  await seite.goto(`${SEITE}vr.html?job=${encodeURIComponent(job)}&welt=0`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  // Ohne Welt: schneller, und der Rasterboden ist der Landeplatz. Eigener Raum
+  // der Gruppe — gegen den laufenden Dienst merkt der Raum „labor" nichts.
+  await seite.goto(`${SEITE}vr.html?job=${encodeURIComponent(job)}&welt=0&raum=pruef-blick-${Date.now().toString(36)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await seite.waitForFunction(() => window.ILeenVR && ILeenVR.zustand.ausgerichtet, { timeout: 90000 });
   await seite.waitForFunction(() => ILeenVR.app.ladestand() >= 1, { timeout: 90000 }).catch(() => {});
 
@@ -382,6 +393,88 @@ try {
   await bilder(6);
   const t2 = await seite.evaluate(() => ({ schwebt: ILeenVR.tabletMesh.parent === ILeenVR.nutzer, sichtbar: ILeenVR.tabletMesh.visible }));
   pruefe('Controller wieder weg: Tablet schwebt wieder', t2.schwebt && t2.sichtbar, JSON.stringify(t2));
+
+  // ── Kalibrieren mit Kneifen (Gruppe, vr-gemeinsam.js) ─────────
+  // Gemessen wird am Kneifpunkt (gripSpace: wo Daumen und Zeigefinger sich
+  // treffen), nicht am Strahl — der beginnt bei der Vision Pro am Auge.
+  const marke = async (p, { frueh = false } = {}) => {
+    await seite.evaluate(p => {
+      const V = ILeenVR;
+      const T = V.THREE;
+      __vp.blick = __vp.quelle('right', 'transient-pointer');
+      __vp.blick.gripSpace[__iwer.P_SPACE].offsetMatrix.set(new T.Matrix4().makeTranslation(...p).elements);
+      V.nutzer.updateWorldMatrix(true, false);
+      __vp.zielen(__vp.blick, V.nutzer.localToWorld(new T.Vector3(...p)));
+      __vp.wechsel([__vp.blick], []);
+    }, p);
+    await seite.evaluate(() => __vp.ereignis('selectstart', __vp.blick));
+    await bilder(2);
+    const waehrend = await seite.evaluate(() => {
+      const g = ILeenVR.gemeinsam.zustand;
+      const h = ILeenVR.haende.find(x => x.quelle === __vp.blick);
+      const kugel = o => o.children.some(c => c.isMesh && c.visible && c.geometry.type === 'SphereGeometry');
+      return {
+        probe: !!(g.messen && g.messen.probe), art: g.messen && g.messen.probe ? g.messen.probe.art : null,
+        gefangen: !!(h && h.gefangen), zielt: !!(h && h.zielt),
+        kneifPunkt: !!h && kugel(h.griff), augenPunkt: !!h && kugel(h.strahl),
+      };
+    });
+    if (!frueh) await seite.waitForFunction(() => !(ILeenVR.gemeinsam.zustand.messen || {}).probe, { timeout: 30000, polling: 200 }).catch(() => {});
+    await seite.evaluate(() => __vp.ereignis('selectend', __vp.blick));
+    await seite.evaluate(() => __vp.wechsel([], [__vp.blick]));
+    await bilder(3);
+    const nachher = await seite.evaluate(() => {
+      const g = ILeenVR.gemeinsam.zustand;
+      return { punkte: g.messen ? g.messen.punkte : null, meldung: g.messen ? g.messen.meldung : '', kalib: g.kalib ? { abstand: g.kalib.abstand } : null };
+    });
+    return { waehrend, nachher };
+  };
+  await seite.evaluate(() => { ILeenVR.app.aktionen.seite('gemeinsam'); ILeenVR.app.aktionen.gmKalibrieren(); });
+  await bilder(2);
+  pruefe('Gruppe › Kalibrieren läuft', await seite.evaluate(() => !!ILeenVR.gemeinsam.zustand.messen));
+  const P1 = [0.4, 0.02, -0.9];
+  const P2 = [2.4, 0.02, -0.9];
+  const m0 = await marke(P1, { frueh: true });
+  pruefe('Kneifen auf der Marke misst (Art „kneifen") statt zu zielen', m0.waehrend.probe && m0.waehrend.art === 'kneifen' && m0.waehrend.gefangen && !m0.waehrend.zielt, JSON.stringify(m0.waehrend));
+  pruefe('… der weiße Punkt sitzt am Kneifpunkt, nicht am Auge', m0.waehrend.kneifPunkt && !m0.waehrend.augenPunkt, JSON.stringify(m0.waehrend));
+  pruefe('zu früh losgelassen: keine Marke, Hinweis im Tablet', m0.nachher.punkte && m0.nachher.punkte.length === 0 && /zu früh/i.test(m0.nachher.meldung), JSON.stringify(m0.nachher));
+  const m1 = await marke(P1);
+  const d1 = m1.nachher.punkte && m1.nachher.punkte[0] ? Math.hypot(...m1.nachher.punkte[0].map((x, i) => x - P1[i])) : null;
+  pruefe('gehalten: Marke 1 liegt am Kneifpunkt', d1 !== null && d1 < 1e-3, `Abstand ${d1} · ${JSON.stringify(m1.nachher)}`);
+  const m2 = await marke(P2);
+  pruefe('Marke 2: kalibriert, Marken 2,00 m auseinander', !!m2.nachher.kalib && Math.abs(m2.nachher.kalib.abstand - 2) < 0.01, JSON.stringify(m2.nachher));
+
+  // ── Die anderen sehen, wohin sie kneift ───────────────────────
+  // Der Strahl geht als z[rechts] mit, vom Auge zum Ziel (im Modellrahmen)
+  if (await seite.evaluate(() => Array.isArray(window.__posen) && __posen.length > 0)) {
+    await seite.evaluate(() => {
+      const V = ILeenVR;
+      const T = V.THREE;
+      __vp.blick = __vp.quelle('right', 'transient-pointer');
+      __vp.blick.gripSpace[__iwer.P_SPACE].offsetMatrix.set(new T.Matrix4().makeTranslation(0.25, 1.1, -0.35).elements);
+      V.nutzer.updateWorldMatrix(true, false);
+      __vp.zielen(__vp.blick, V.nutzer.localToWorld(new T.Vector3(0.5, 0, -2.5)));
+      __vp.wechsel([__vp.blick], []);
+      __posen.length = 0;
+    });
+    await seite.evaluate(() => __vp.ereignis('selectstart', __vp.blick));
+    await bilder(5);
+    const strahl = await seite.evaluate(() => {
+      const V = ILeenVR;
+      const T = V.THREE;
+      const p = [...__posen].reverse().find(n => n.z && n.z[1]);
+      V.modell.updateWorldMatrix(true, false);
+      const auge = V.modell.worldToLocal(V.kamera.getWorldPosition(new T.Vector3()));
+      return p ? { z: p.z[1], h: !!(p.h && p.h[1]), vomAuge: Math.hypot(p.z[1][0] - auge.x, p.z[1][1] - auge.y, p.z[1][2] - auge.z) } : null;
+    });
+    // Ohne selectend: nicht springen, nur loslassen
+    await seite.evaluate(() => __vp.wechsel([], [__vp.blick]));
+    await bilder(3);
+    pruefe('Kneifen: Strahl geht an die anderen (rechte Seite)', !!strahl, JSON.stringify(strahl));
+    pruefe('… er beginnt am Auge', !!strahl && strahl.vomAuge < 0.05, JSON.stringify(strahl));
+  } else {
+    console.log('  (Hinweis: keine Verbindung zum Relais — Strahl an die anderen nicht geprüft; mit VIEWER_URL=https://127.0.0.1:5443/)');
+  }
 
   // ── Ende ──────────────────────────────────────────────────────
   await seite.evaluate(() => ILeenVR.renderer.xr.getSession().end());

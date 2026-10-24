@@ -36,6 +36,11 @@
 : "${TLS:=${ILEEN_QUEST_TLS:-$HOME/.ileen/quest-tls}}"
 : "${FEST:=${ILEEN_QUEST_NAME:-ileen}.local}"
 : "${name:=$(scutil --get LocalHostName 2>/dev/null || hostname -s).local}"
+# Die festen Adressen — im iPhone-WLAN (quest-festip.sh) und im eigenen WLAN
+# des Macs (Internetfreigabe): stehen immer im Zertifikat, damit der Wechsel
+# dorthin kein neues auslöst
+: "${HOTSPOT_IP:=${ILEEN_QUEST_HOTSPOT_IP:-172.20.10.14}}"
+: "${FEST_IP:=${ILEEN_QUEST_FEST_IP:-192.168.2.1}}"
 
 CA_TAGE=3650
 BLATT_TAGE=397          # unter Apples 825 und unter den 398 der Browser
@@ -136,11 +141,11 @@ zertifikat() {
   ca_sicherstellen && neu=0
   [ -f "$TLS/ca.pem" ] || return 1
   touch "$TLS/adressen.txt"
-  if declare -F adressen >/dev/null; then
-    for ip in $(adressen); do
-      grep -qx "$ip" "$TLS/adressen.txt" || { echo "$ip" >> "$TLS/adressen.txt"; neu=0; }
-    done
-  fi
+  local gesehen=""
+  declare -F adressen >/dev/null && gesehen="$(adressen)"
+  for ip in $HOTSPOT_IP $FEST_IP $gesehen; do
+    grep -qx "$ip" "$TLS/adressen.txt" || { echo "$ip" >> "$TLS/adressen.txt"; neu=0; }
+  done
   local z="$TLS/zertifikat.pem"
   if [ "$neu" = 1 ]; then
     if [ ! -f "$z" ] || [ ! -f "$TLS/schluessel.pem" ]; then neu=0

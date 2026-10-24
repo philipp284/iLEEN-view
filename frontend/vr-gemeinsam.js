@@ -6,7 +6,8 @@
 // Wer joint, sieht die anderen: Kopf, beide Controller, Namen, und solange
 // jemand den Abzug hält, seinen Zeigestrahl. Damit Avatar und Mensch an
 // derselben Stelle stehen, messen alle Brillen im Raum dieselben zwei Marken
-// (Klebeband am Boden, zwei Tischecken) mit der Spitze des Controllers. Daraus
+// (Klebeband am Boden, zwei Tischecken) mit der Spitze des Controllers — die
+// Vision Pro mit dem Kneifpunkt, wo Daumen und Zeigefinger sich treffen. Daraus
 // entsteht ein gemeinsamer Raumrahmen (vr-gemeinsam-rechnen.js erklärt die
 // drei Rahmen und rechnet). Danach gilt:
 //
@@ -307,6 +308,16 @@ export function gemeinsamAnlegen(v) {
     s.visible = false;
     stumm(s);
     h.strahl.add(s);
+    return s;
+  });
+  // Vision Pro: gemessen wird am Kneifpunkt (gripSpace), nicht am Strahl — der beginnt am Auge
+  const kneifSpitzen = v.haende.map(h => {
+    const s = new THREE.Mesh(geo.kugel, spitzenStoff);
+    s.scale.setScalar(0.008);
+    s.renderOrder = 22;
+    s.visible = false;
+    stumm(s);
+    h.griff.add(s);
     return s;
   });
 
@@ -624,17 +635,19 @@ export function gemeinsamAnlegen(v) {
     g.messen = null;
     for (const m of marken) m.visible = false;
     for (const s of spitzen) s.visible = false;
+    for (const s of kneifSpitzen) s.visible = false;
     v.ui.schmutzig = true;
   }
 
   /**
-   * Der Abzug misst, solange kalibriert wird. Nur ein Controller: seine Spitze
-   * ist ein fester Punkt (eine Hand oder der Blick der Vision Pro sind keiner).
-   * Aufs Tablet tippt er weiter — das prüft vr.js vorher, sonst gäbe es kein Abbrechen.
+   * Der Abzug misst, solange kalibriert wird — mit einem festen Punkt an der
+   * Hand (`messart`). Aufs Tablet tippt er weiter — das prüft vr.js vorher,
+   * sonst gäbe es kein Abbrechen.
    */
   function abzugFangen(hand) {
-    if (!g.messen || g.messen.probe || !v.renderer.xr.isPresenting || !istController(hand)) return false;
-    g.messen.probe = { hand, start: performance.now(), proben: [] };
+    const art = messart(hand);
+    if (!g.messen || g.messen.probe || !v.renderer.xr.isPresenting || !art) return false;
+    g.messen.probe = { hand, art, start: performance.now(), proben: [] };
     g.messen.meldung = '';
     hand.gefangen = true;
     v.ui.schmutzig = true;
@@ -643,30 +656,44 @@ export function gemeinsamAnlegen(v) {
 
   function messenBild(jetzt) {
     const m = g.messen;
-    for (const s of spitzen) s.visible = !!m;
+    // Die weißen Punkte nur dort, wo gemessen wird: an der Controllerspitze,
+    // bei der Vision Pro am Kneifpunkt (ihr Strahl beginnt am Auge)
+    v.haende.forEach((h, i) => {
+      const art = m ? messart(h) : null;
+      spitzen[i].visible = art === 'spitze';
+      kneifSpitzen[i].visible = art === 'kneifen' && h.griff.visible;
+    });
     if (!m && markenBis && jetzt > markenBis) {
       for (const mk of marken) mk.visible = false;
       markenBis = 0;
     }
     if (!m || !m.probe) return;
     const p = m.probe;
-    if (!p.hand.quelle) { m.probe = null; m.meldung = 'Controller verloren — noch einmal'; v.ui.schmutzig = true; return; }
-    p.proben.push(p.hand.strahl.position.toArray());
+    const kneifen = p.art === 'kneifen';
+    if (!p.hand.quelle) {
+      m.probe = null;
+      m.meldung = kneifen ? 'Zu früh losgelassen — gekniffen halten, bis die Marke steht' : 'Controller verloren — noch einmal';
+      v.ui.schmutzig = true;
+      return;
+    }
+    // Ein Bild ohne Lage des Kneifpunkts zählt nicht (der Griff behielte die alte)
+    if (!kneifen || p.hand.griff.visible) p.proben.push((kneifen ? p.hand.griff : p.hand.strahl).position.toArray());
     const dauer = jetzt - p.start;
     const i = v.haende.indexOf(p.hand);
-    if (spitzen[i]) spitzen[i].scale.setScalar(0.008 + 0.01 * Math.min(1, dauer / KALIBRIER.dauer));
+    const punkt = (kneifen ? kneifSpitzen : spitzen)[i];
+    if (punkt) punkt.scale.setScalar(0.008 + 0.01 * Math.min(1, dauer / KALIBRIER.dauer));
     // Fertig, sobald die Zeit um ist und genug Proben da sind. In der Brille
     // sind das 36 Bilder in 0,5 s; ein langsames Gerät darf bis 8 s sammeln.
     if ((dauer < KALIBRIER.dauer || p.proben.length < KALIBRIER.mindestProben) && dauer < 8000) return;
     m.probe = null;
-    if (spitzen[i]) spitzen[i].scale.setScalar(0.008);
+    if (punkt) punkt.scale.setScalar(0.008);
     v.ui.schmutzig = true;
     const s = stichprobe(p.proben);
     const fehlerArt = stichprobeFehler(s);
     if (fehlerArt) {
       m.meldung = fehlerArt === 'unruhig'
-        ? `Zu unruhig (${Math.round(s.unruhe * 1000)} mm) — die Spitze auf der Marke still halten`
-        : 'Zu kurz gemessen — Abzug drücken und einen Moment halten';
+        ? `Zu unruhig (${Math.round(s.unruhe * 1000)} mm) — ${kneifen ? 'die Finger' : 'die Spitze'} auf der Marke still halten`
+        : (kneifen ? 'Zu kurz gemessen — gekniffen halten, bis die Marke steht' : 'Zu kurz gemessen — Abzug drücken und einen Moment halten');
       return;
     }
     m.punkte.push(s.mitte);
@@ -802,11 +829,28 @@ export function gemeinsamAnlegen(v) {
     return !!hand.quelle && hand.quelle.targetRayMode === 'tracked-pointer' && !!hand.quelle.gamepad;
   }
 
+  /**
+   * Womit kalibriert wird: die Strahlspitze eines Controllers — oder bei der
+   * Vision Pro der Kneifpunkt, also wo Daumen und Zeigefinger sich treffen
+   * (`gripSpace` des transient-pointer, laut WebKit die Lage der kneifenden
+   * Finger). Eine Hand ohne Kneifen und der Blick allein sind kein fester Punkt.
+   */
+  function messart(hand) {
+    if (istController(hand)) return 'spitze';
+    const q = hand.quelle;
+    return q && q.targetRayMode === 'transient-pointer' && q.gripSpace ? 'kneifen' : null;
+  }
+
+  /** Linke Seite 0, rechte 1 — für Controller, Hände und das Kneifen gleich. */
+  function seite(hand) {
+    const q = hand.quelle;
+    if (!q) return -1;
+    return q.handedness === 'left' ? 0 : q.handedness === 'right' ? 1 : -1;
+  }
+
   /** Linke Hand 0, rechte 1. Ein Kneifen mit Blick (transient-pointer) ist keine Hand am Avatar. */
   function handIndex(hand) {
-    const q = hand.quelle;
-    if (!q || q.targetRayMode !== 'tracked-pointer') return -1;
-    return q.handedness === 'left' ? 0 : q.handedness === 'right' ? 1 : -1;
+    return hand.quelle && hand.quelle.targetRayMode === 'tracked-pointer' ? seite(hand) : -1;
   }
 
   function sichtbar() {
@@ -830,15 +874,26 @@ export function gemeinsamAnlegen(v) {
       const raumH = [null, null];
       for (const hand of v.haende) {
         const i = handIndex(hand);
-        if (i < 0) continue;
-        paket.h[i] = nachModell(hand.griff);
-        if (g.kalib) raumH[i] = nachRaum(hand.griff);
-        if (hand.zielt && !hand.aufTablet) {
+        if (i >= 0) {
+          paket.h[i] = nachModell(hand.griff);
+          if (g.kalib) raumH[i] = nachRaum(hand.griff);
+        }
+        // Der Strahl auch beim Kneifen der Vision Pro: er beginnt am Auge — die
+        // anderen sehen, wohin sie schaut
+        const s = i >= 0 ? i : (hand.transient ? seite(hand) : -1);
+        if (s >= 0 && hand.zielt && !hand.aufTablet) {
           const von = hand.strahl.getWorldPosition(new THREE.Vector3());
           const bis = hand.treffer ? hand.treffer.punkt.clone()
             : von.clone().add(new THREE.Vector3(0, 0, -1).applyQuaternion(hand.strahl.getWorldQuaternion(_q)).multiplyScalar(3));
-          paket.z[i] = [...punktNachModell(von), ...punktNachModell(bis)];
+          paket.z[s] = [...punktNachModell(von), ...punktNachModell(bis)];
         }
+      }
+      // Ohne Handerkennung (nicht erlaubt) zeigt das Kneifen wenigstens, wo die Hand ist
+      for (const hand of v.haende) {
+        const s = hand.transient ? seite(hand) : -1;
+        if (s < 0 || paket.h[s] || !hand.quelle || !hand.quelle.gripSpace || !hand.griff.visible) continue;
+        paket.h[s] = nachModell(hand.griff);
+        if (g.kalib) raumH[s] = nachRaum(hand.griff);
       }
       paket.f = runden(_p2.setFromMatrixPosition(v.nutzer.matrixWorld).applyMatrix4(_modellInv).y, 3);
       if (g.kalib) paket.r = { k: nachRaum(v.kamera), h: raumH };
@@ -1337,7 +1392,7 @@ export function gemeinsamAnlegen(v) {
         brille: ich.geraet === 'brille',
         xr,
         kalib: g.kalib ? { abstand: g.kalib.abstand, vergleich: vergleich() } : null,
-        messen: m ? { schritt: m.schritt, laeuft: !!m.probe, meldung: m.meldung } : null,
+        messen: m ? { schritt: m.schritt, laeuft: !!m.probe, meldung: m.meldung, controller: v.haende.some(istController) } : null,
         mitgehen: g.mitgehen,
         ansichtTeilen: g.ansichtTeilen,
         gekoppelt: gekoppelt(),
@@ -1355,7 +1410,7 @@ export function gemeinsamAnlegen(v) {
     /** Für die Nachführung des Reiters: ändert sich, wenn er neu gezeichnet werden muss. */
     merkmal() {
       const m = g.messen;
-      return `${g.verbindung}|${m ? `${m.schritt}${m.probe ? 'p' : ''}${m.meldung}` : ''}|${!!g.kalib}|` +
+      return `${g.verbindung}|${m ? `${m.schritt}${m.probe ? 'p' : ''}${m.meldung}${v.haende.some(istController) ? 'c' : ''}` : ''}|${!!g.kalib}|` +
         [...g.teilnehmer.values()].map(t => `${t.id}:${t.info.modus}:${t.info.kalibriert}:${t.sichtbar ? Math.round((t.abstand || 0) * 2) : '-'}`).join(',');
     },
 

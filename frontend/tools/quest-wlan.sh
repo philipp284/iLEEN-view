@@ -29,7 +29,18 @@
 # Einmal http://<Adresse>:5443/einrichten öffnen — die Weiche liefert die
 # Anleitung und das Profil. Danach gilt jede Adresse ohne Warnung.
 #
-# Fest ist der Port (5443), nicht die Adresse: die vergibt jedes Netz neu. Damit
+# Feste Adresse — zwei Wege, beide ein eigenes Netz, also ohne eduroam-Abschottung:
+#   · iPhone-WLAN (Persönlicher Hotspot): Mac und Brille treten bei, der Mac
+#     bekommt dort zusätzlich 172.20.10.14 (HOTSPOT_IP; der root-Dienst
+#     tools/quest-festip.sh hängt sie an) → https://172.20.10.14:5443.
+#     Der Weg, wenn das WLAN des Macs zugleich sein Internetzugang ist.
+#   · eigenes WLAN des Macs (Internetfreigabe, „An Geräte über WLAN"): dort ist
+#     er 192.168.2.1 (FEST_IP). Braucht Internet per Kabel oder iPhone-USB.
+# Beide Adressen stehen von vornherein im Zertifikat. Solange eine davon gilt,
+# lösen neue Adressen sonst (DHCP im iPhone-Netz, Kabel) kein neues Zertifikat
+# aus — die Brille braucht sie nicht, und die Quest soll nicht neu warnen.
+#
+# Ohne eigenes WLAN ist nur der Port (5443) fest, die Adresse vergibt jedes Netz neu. Damit
 # man sie nicht im Terminal suchen muss, schreibt der Aufseher den Stand nach
 # $TLS/stand.json; die Weiche gibt ihn unter http://localhost:5443/ileen-quest.json
 # heraus, und die VR-Ebene in iLEEN zeigt ihn beim Klick auf 🥽 am Mac an
@@ -52,6 +63,10 @@ export ILEEN_QUEST_PORT="$PORT" ILEEN_QUEST_INNEN="$INNEN" ILEEN_QUEST_TLS="$TLS
 
 name="$(scutil --get LocalHostName 2>/dev/null || hostname -s).local"
 FEST="${ILEEN_QUEST_NAME:-ileen}.local"
+# Die Adresse des Macs in seinem eigenen WLAN (macOS-Internetfreigabe, bridge100)
+FEST_IP="${ILEEN_QUEST_FEST_IP:-192.168.2.1}"
+# Die feste Adresse im iPhone-WLAN — dieselbe Zahl wie FEST in tools/quest-festip.sh
+HOTSPOT_IP="${ILEEN_QUEST_HOTSPOT_IP:-172.20.10.14}"
 mkdir -p "$TLS"
 
 # Adressen, unter denen die Brille den Mac erreichen kann: keine Loopback-
@@ -61,10 +76,32 @@ adressen() { ifconfig | awk '/inet / && $2 !~ /^127\./ && $2 !~ /^169\.254\./ { 
 adressen_mit_schnittstelle() {
   ifconfig | awk '/^[a-z0-9]+:/ { s = $1; sub(":", "", s) } /inet / && $2 !~ /^127\./ && $2 !~ /^169\.254\./ { print s, $2 }'
 }
-# Die Adresse der Schnittstelle mit der Standardroute — die, über die der Mac
-# im aktuellen Netz hängt. Ist das ein VPN (utun), die erste en-Schnittstelle.
+# Läuft das eigene WLAN? Erkannt an der festen Adresse auf einer Brücke (bridge100):
+# so meldet macOS die Internetfreigabe. Ein fremdes Netz vergibt einem Gerät nicht die .1.
+freigabe_aktiv() {
+  adressen_mit_schnittstelle | awk -v ip="$FEST_IP" '$1 ~ /^bridge/ && $2 == ip { f = 1 } END { exit !f }'
+}
+# Die feste Adresse, wenn sie gerade gilt — im iPhone-WLAN 172.20.10.14, im
+# eigenen WLAN des Macs 192.168.2.1 —, sonst nichts.
+feste_adresse() {
+  if adressen | grep -qx "$HOTSPOT_IP"; then echo "$HOTSPOT_IP"
+  elif freigabe_aktiv; then echo "$FEST_IP"
+  fi
+}
+# Im iPhone-Netz, und der Dienst für die feste Adresse ist eingerichtet? Dann
+# kommt 172.20.10.14 in wenigen Sekunden — bis dahin kein neues Zertifikat für
+# die Adresse, die das iPhone vergeben hat (die Quest würde sonst neu warnen).
+feste_adresse_kommt() {
+  [ -f /Library/LaunchDaemons/de.ileen.quest-festip.plist ] &&
+    [ "$(route -n get default 2>/dev/null | awk '/gateway:/ { print $2 }')" = "${HOTSPOT_IP%.*}.1" ]
+}
+# Die Adresse, unter der die Brille den Mac findet: die feste, wenn sie gilt,
+# sonst die der Schnittstelle mit der Standardroute — die, über die der Mac im
+# aktuellen Netz hängt. Ist das ein VPN (utun), die erste en-Schnittstelle.
 hauptadresse() {
-  local s ip
+  local s ip f
+  f="$(feste_adresse)"
+  if [ -n "$f" ]; then echo "$f"; return; fi
   s="$(route -n get default 2>/dev/null | awk '/interface:/ { print $2 }')"
   case "$s" in en*|bridge*) ip="$(ipconfig getifaddr "$s" 2>/dev/null)" ;; esac
   [ -n "${ip:-}" ] || ip="$(adressen_mit_schnittstelle | awk '$1 ~ /^en/ { print $2; exit }')"
@@ -103,10 +140,13 @@ fest_melden() {
 }
 # Der Stand für die VR-Ebene in iLEEN (über die Weiche: /ileen-quest.json)
 stand() {
-  local haupt; haupt="$(hauptadresse)"
+  local haupt f art=""; haupt="$(hauptadresse)"; f="$(feste_adresse)"
+  case "$f" in "$HOTSPOT_IP") art=iphone ;; "$FEST_IP") art=mac-wlan ;; esac
   {
-    printf '{"port":%s,"haupt":"%s","fest":"%s","name":"%s","zeit":"%s","ca":"%s","adressen":[' \
-      "$PORT" "$haupt" "$FEST" "$name" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(ca_fingerabdruck)"
+    # festIp: die geltende feste Adresse, sonst die des iPhone-WLANs (der übliche Weg)
+    printf '{"port":%s,"haupt":"%s","fest":"%s","festIp":"%s","freigabe":%s,"festArt":"%s","name":"%s","zeit":"%s","ca":"%s","adressen":[' \
+      "$PORT" "$haupt" "$FEST" "${f:-$HOTSPOT_IP}" "$([ -n "$f" ] && echo true || echo false)" "$art" "$name" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(ca_fingerabdruck)"
     adressen_mit_schnittstelle | awk 'BEGIN { n = 0 } { if (n++) printf ","; printf "{\"schnittstelle\":\"%s\",\"ip\":\"%s\"}", $1, $2 }'
     printf ']}\n'
   } > "$TLS/stand.json.neu" && mv "$TLS/stand.json.neu" "$TLS/stand.json"
@@ -127,6 +167,12 @@ zeige() {
   stand
   fest_melden
   echo
+  case "$(feste_adresse)" in
+    "$HOTSPOT_IP") echo "  Feste Adresse — Brille ins iPhone-WLAN, dann immer:  https://$HOTSPOT_IP:$PORT" ;;
+    "$FEST_IP")    echo "  Feste Adresse — Brille ins WLAN des Macs, dann immer:  https://$FEST_IP:$PORT" ;;
+    *) echo "  Feste Adresse https://$HOTSPOT_IP:$PORT: iPhone-Hotspot an, Mac und Brille in sein WLAN"
+       echo "  (einmal einrichten: tools/quest-festip.sh install)." ;;
+  esac
   echo "  In der Brille öffnen (iLEEN, dort der Schalter 🥽 VR):"
   [ -n "$haupt" ] && echo "      https://$haupt:$PORT      ← dieses Netz"
   for ip in $(adressen); do [ "$ip" = "$haupt" ] || echo "      https://$ip:$PORT"; done
@@ -150,7 +196,8 @@ while kill -0 "$VITE" 2>/dev/null && kill -0 "$WEICHE" 2>/dev/null && kill -0 "$
   jetzt="$(adressen | tr '\n' ' ')"
   if [ "$jetzt" != "$bekannt" ]; then
     bekannt="$jetzt"
-    if zertifikat; then starte_vite; echo "(Neues Netz — die Quest warnt für die neue Adresse einmal; Geräte mit Profil nicht.)"; fi
+    # Gilt eine feste Adresse, braucht die Brille nur sie (steht schon im Zertifikat)
+    if [ -z "$(feste_adresse)" ] && ! feste_adresse_kommt && zertifikat; then starte_vite; echo "(Neues Netz — die Quest warnt für die neue Adresse einmal; Geräte mit Profil nicht.)"; fi
     zeige
   elif [ $((runden % 360)) = 0 ] && zertifikat; then
     starte_vite

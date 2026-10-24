@@ -572,9 +572,14 @@ function kalibrierKarte(ui, gm, ak, y, breite) {
   }
   const m = gm.messen;
   if (m) {
+    // Ohne Controller (Vision Pro) misst der Kneifpunkt: wo Daumen und Zeigefinger sich treffen
     const anleitung = m.schritt === 1
-      ? 'Spitze des Controllers (weißer Punkt) auf die erste Marke setzen, Abzug drücken und einen Moment still halten.'
-      : 'Jetzt die zweite Marke — dieselbe Reihenfolge wie die anderen Brillen.';
+      ? (m.controller
+        ? 'Spitze des Controllers (weißer Punkt) auf die erste Marke setzen, Abzug drücken und einen Moment still halten.'
+        : 'Daumen und Zeigefinger auf der ersten Marke zusammendrücken (kneifen, nicht aufs Tablet schauen) und halten, bis die Marke steht.')
+      : (m.controller
+        ? 'Jetzt die zweite Marke — dieselbe Reihenfolge wie die anderen Brillen.'
+        : 'Jetzt auf der zweiten Marke kneifen und halten — dieselbe Reihenfolge wie die anderen Brillen.');
     // Erst messen, dann zeichnen: die Karte ist so hoch wie ihr Text
     const zeilen = ui.umbrechen(anleitung, breite - 260, { groesse: 23, zeilenMax: 4 }).length
       + (m.meldung ? ui.umbrechen(m.meldung, breite - 260, { groesse: 23, zeilenMax: 2 }).length : 0);

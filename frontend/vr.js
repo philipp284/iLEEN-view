@@ -1741,7 +1741,10 @@ async function verbindenZeigen() {
     teile.push(p);
   } else {
     const port = stand.port || QUEST_PORT;
-    teile.push(knoten('p', '', 'Im Browser der Brille eintippen:'));
+    // Feste Adresse: im iPhone-WLAN (tools/quest-festip.sh) oder im eigenen WLAN des Macs
+    const eigenesWlan = !!stand.freigabe;
+    const wlanName = stand.festArt === 'mac-wlan' ? 'WLAN des Macs' : 'iPhone-WLAN';
+    teile.push(knoten('p', '', eigenesWlan ? `Brille ins ${wlanName}, dann immer:` : 'Im Browser der Brille eintippen:'));
     teile.push(knoten('span', 'vr-verbinden__adresse', `${stand.haupt}:${port}`));
     const fest = knoten('p');
     fest.append('oder fest, in jedem Netz: ', knoten('b', '', `${stand.fest || 'ileen.local'}:${port}`),
@@ -1754,13 +1757,24 @@ async function verbindenZeigen() {
     teile.push(apple);
     const haupt = (stand.adressen || []).find(a => a.ip === stand.haupt);
     const weitere = (stand.adressen || []).filter(a => a.ip !== stand.haupt).map(a => `${a.ip} (${a.schnittstelle})`);
-    teile.push(knoten('p', '', `Mac im Netz ${netzVon(stand.haupt)}${haupt ? ` über ${haupt.schnittstelle}` : ''}` +
-      `${weitere.length ? ` · weitere Adressen: ${weitere.join(', ')}` : ''}. Der Port bleibt 5443, die Adresse vergibt jedes Netz neu.`));
+    if (eigenesWlan) {
+      teile.push(knoten('p', '', `${stand.festArt === 'mac-wlan' ? 'Eigenes WLAN des Macs (Internetfreigabe)' : 'Im WLAN des iPhones (Persönlicher Hotspot)'} — ` +
+        `diese Adresse bleibt an jedem Ort gleich.${weitere.length ? ` Weitere Adressen: ${weitere.join(', ')}.` : ''}`));
+    } else {
+      teile.push(knoten('p', '', `Mac im Netz ${netzVon(stand.haupt)}${haupt ? ` über ${haupt.schnittstelle}` : ''}` +
+        `${weitere.length ? ` · weitere Adressen: ${weitere.join(', ')}` : ''}. Der Port bleibt 5443, die Adresse vergibt jedes Netz neu.`));
+      const festIp = knoten('p');
+      festIp.append(`Feste Adresse ${stand.festIp || '172.20.10.14'}:${port}: iPhone-Hotspot einschalten, Mac und Brille in sein WLAN — einmal einrichten mit `,
+        knoten('code', '', 'frontend/tools/quest-festip.sh install'), '.');
+      teile.push(festIp);
+    }
     const da = (stand.besucher || [])[0];
     if (da) {
       const wer = da.geraet === 'apple' ? 'Ein Apple-Gerät' : da.geraet === 'quest' ? 'Eine Quest' : 'Ein Gerät';
       teile.push(knoten('p', 'vr-verbinden__da',
         `✓ ${wer} aus ${netzVon(da.ip)} ist angekommen: ${da.ip}, vor ${da.vorSekunden < 90 ? `${da.vorSekunden} s` : `${Math.round(da.vorSekunden / 60)} min`}.`));
+    } else if (eigenesWlan) {
+      teile.push(knoten('p', '', `Noch keine Brille angekommen — die Brille ins ${wlanName} bringen.`));
     } else {
       teile.push(knoten('p', '', `Noch keine Brille angekommen. Brille und Mac müssen im selben Netz sein (hier ${netzVon(stand.haupt)}) — ` +
         'Gast-WLAN und eduroam trennen Geräte. Steht die Brille in einem anderen (etwa 192.168.2.x): sie ins WLAN des Macs, ' +
