@@ -580,9 +580,19 @@ const BimViewer = {
       // Ohne erhaltenen Zeichenpuffer liefert `canvas.toDataURL()` ein leeres
       // Bild — BCF-Schnappschüsse, Berichte und die Browser-Prüfsteine lesen
       // die Pixel aus.
+      // powerPreference: Cesium fordert sonst 'high-performance'; Safari auf der
+      // Vision Pro verliert solche Kontexte (webgl-test.html). Erst probieren.
       contextOptions: {
         webgl: {
-          preserveDrawingBuffer: true
+          preserveDrawingBuffer: true,
+          powerPreference: (() => {
+            try {
+              const g = document.createElement('canvas').getContext('webgl2', { powerPreference: 'high-performance' });
+              const ok = !!g && !g.isContextLost() && !!g.getShaderPrecisionFormat(g.VERTEX_SHADER, g.HIGH_FLOAT);
+              if (g) { const x = g.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); }
+              return ok ? 'high-performance' : 'default';
+            } catch (e) { return 'default'; }
+          })()
         }
       }
     });
@@ -961,7 +971,11 @@ const BimViewer = {
     return { tileset, isSplatTileset, isPointCloudPre };
   },
 
-  async loadBackendAsset(jobId, assetName = null) {
+  // `optionen.vorFlug(assetData)` läuft nach dem Geländeabgleich und vor dem
+  // Kameraflug, `optionen.ohneFlug` lässt den Flug weg — für Ansichten, die ihr
+  // Modell erst an die Stelle rücken, zu der die Kamera dann fliegen soll
+  // (sortiert.js). Ohne Angabe verhält sich die Funktion wie immer.
+  async loadBackendAsset(jobId, assetName = null, optionen = {}) {
     const baseUrl = this.getBackendUrl();
     if (!baseUrl) {
       this.updateStatus('❌ Backend-URL nicht konfiguriert (config.js → backendUrl)', 'error');
@@ -1024,7 +1038,8 @@ const BimViewer = {
       if (window.ILeenTerrainAlign) await ILeenTerrainAlign.alignAsset(assetData);
 
       this._nachDemLaden(assetKey, assetData);
-      await this.cinematicFlyToTileset(tileset, 5.0);
+      if (optionen && typeof optionen.vorFlug === 'function') await optionen.vorFlug(assetData);
+      if (!optionen || !optionen.ohneFlug) await this.cinematicFlyToTileset(tileset, 5.0);
 
       this.updateStatus(`✅ Backend asset loaded: ${assetData.name}`, 'success');
     } catch (error) {

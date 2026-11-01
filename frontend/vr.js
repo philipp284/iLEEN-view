@@ -45,7 +45,7 @@ import { RoomEnvironment } from 'https://cdn.jsdelivr.net/npm/three@0.186.1/exam
 import { DRACOLoader } from 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/libs/meshopt_decoder.module.js';
-import { TilesRenderer } from 'https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.5.3/build/index.js';
+import { TilesRenderer, Scheduler, PriorityQueue, unifiedPriorityCallback } from 'https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.5.3/build/index.js';
 import { GLTFExtensionsPlugin } from 'https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.5.3/build/index.plugins.js';
 import { splatErweiterungen, splatEntsorgen, sichtbareSplats, fehlerNachfuehren } from './vr-splat.js';
 import { weltAnlegen, kartenKachel, SOHLE } from './vr-welt.js';
@@ -57,8 +57,13 @@ import { filterAusDaten, filterAlsDaten } from './vr-gemeinsam-rechnen.js';
 import {
   VR_FAEHIG, backendBasis, startAbstand, tischMassstab, begehbar, punktBegehbar,
   totzone, schrittDrehung, schwebeFolgen, bauteilZeilen, filterLeer, eigenschaftsGruppen, wertText,
-  messung, meterText, STUFE, bodenNachfuehren, fussRechteck, imFuss, inDeutschland, meterProPixel,
+  messung, meterText, STUFE, bodenNachfuehren, flugSchritt, fussRechteck, imFuss, inDeutschland, meterProPixel,
 } from './vr-rechnen.js';
+import {
+  Messung, budgetMs, leistungZeilen, xrTakt, TexturRegister, kachelStand,
+  GueteRegler, DruckRegler, PufferRegler, ParseTor, Einblender, aktualisierenSoll,
+} from './vr-leistung.js';
+import { texturErweiterung, geteiltPlugin } from './vr-texturen.js';
 
 // ─────────────────────────────────────────────────────────────────
 // EINSTELLUNGEN
@@ -82,8 +87,46 @@ const SPLAT_FEHLER_MIN = 0.25;
 // nur einen Teil; darüber hinaus wirft er den Tab weg. Das ist der Speicher
 // des Modells (DEFAULT_LRU_CACHE der Bibliothek); die Welt hat einen eigenen
 // mit eigenen Warteschlangen (vr-welt.js), zusammen unter 900 MB.
-const CACHE_MIN = 300 * 2 ** 20;
-const CACHE_MAX = 600 * 2 ** 20;
+// Die untere Grenze führt der PufferRegler: nahe an der oberen, damit Gesehenes
+// (hinter dem Kopf, Punktwolken, Bauteile) stehen bleibt; bei Bildratenlag sinkt
+// sie, dann geht das am längsten Ungesehene, also Entfernteste, zuerst.
+// `?cache=<MB>` stellt die obere Grenze zum Ausprobieren auf der Quest um.
+const CACHE_MAX = (() => {
+  const mb = Number(new URLSearchParams(location.search).get('cache'));
+  return (mb >= 150 && mb <= 2000 ? mb : 600) * 2 ** 20;
+})();
+const CACHE_MIN = Math.round(CACHE_MAX * 0.9);
+
+// Längste Kante eingebetteter JPEG-Texturen. Die Kacheln der IFC-Modelle bringen
+// 512²-Bilder mit, die sich teilen lassen (vr-texturen.js) und darunter bleiben;
+// die Grenze greift bei Fotos eines Netzes, wo jede Kachel ein eigenes 4096²-Bild
+// trägt (64 MB dekodiert, je Bild).
+const TEXTUR_KANTE = { vorschau: 2048, brille: 1024 };
+const texturRegister = new TexturRegister();
+// `?texturen=0` schaltet das Teilen aus (Vergleich mit dem Weg der Bibliothek)
+const TEXTUREN_TEILEN = new URLSearchParams(location.search).get('texturen') !== '0';
+
+// Leistung (vr-leistung.js). Jeder Teil lässt sich in der Adresse abschalten
+// (`?guete=0&druck=0&takt=0&parse=0&einblenden=0`), um Vorher und Nachher zu messen.
+const SCHALTER = Object.fromEntries(['guete', 'druck', 'takt', 'parse', 'einblenden']
+  .map(n => [n, new URLSearchParams(location.search).get(n) !== '0']));
+
+// Entpacken: höchstens so viele Kacheln zugleich, und eine neue je Bild (ParseTor)
+const PARSE_PARALLEL = 3;
+
+// Die Regler geben Detail schneller zurück als ihre Vorgaben: sonst blieb das Modell
+// minutenlang gröber, nachdem der Engpass längst vorbei war.
+const guete = new GueteRegler({ ruhig: 2 });  // Fehlerfaktor nach der Bildzeit (nur in der Brille)
+const druck = new DruckRegler({ entspannMs: 4000, rueckfallMs: 15000, maxEntspannMs: 20000 });  // nach dem Speicher (überall)
+const puffer = new PufferRegler();     // untere Grenze des Kachelspeichers
+const parseTor = new ParseTor({ reserveMs: 3, hungerMs: 100 });
+const einblender = new Einblender({ proBild: 1, hungerMs: 50 });
+let fehlerFaktor = 1;                  // Faktor, der gerade im Fehlerziel des Modells steckt
+let weltFaktoren = new WeakMap();      // dasselbe je Baum der Welt
+let bildNr = 0;
+let letzterAbstand = null;             // ms zum vorigen Bild
+let letzteSchleife = 0;                // ms Rechenzeit der Schleife im vorigen Bild
+let druckPruefung = 0;
 
 const SPRINT = 4;           // Faktor bei gedrücktem linken Stick
 const HEBEN = 1.5;          // m/s, rechter Stick hoch/runter
@@ -183,6 +226,7 @@ const werkzeug = {
   bodenFolgen: gespeichert.bodenFolgen ?? true,
   tempo: gespeichert.tempo ?? 1.4,          // m/s
   drehschritt: gespeichert.drehschritt ?? 30,
+  flugweite: [2, 6, 15].includes(gespeichert.flugweite) ? gespeichert.flugweite : 6,   // Weg je Handweg beim Ziehen in der Luft
   tabletHand: ['left', 'right', 'schweben'].includes(gespeichert.tabletHand) ? gespeichert.tabletHand : 'left',
 };
 
@@ -205,7 +249,7 @@ function speichern() {
   try {
     localStorage.setItem(SPEICHER, JSON.stringify({
       raster: zustand.rasterAuto ? undefined : zustand.raster, bodenFolgen: werkzeug.bodenFolgen, tempo: werkzeug.tempo,
-      drehschritt: werkzeug.drehschritt, tabletHand: werkzeug.tabletHand, seite: tablet.seite,
+      drehschritt: werkzeug.drehschritt, flugweite: werkzeug.flugweite, tabletHand: werkzeug.tabletHand, seite: tablet.seite,
       karteZoom: tablet.karteZoom, karteArt: tablet.karteArt,
       welt: (({ an, karte, relief, gebaeudeAn }) => ({ an, karte, relief, gebaeudeAn }))(welt.zustand),
     }));
@@ -216,7 +260,18 @@ function speichern() {
 // SZENE
 // ─────────────────────────────────────────────────────────────────
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+// Safari auf der Vision Pro verliert Kontexte, die 'high-performance' verlangen
+// (getShaderPrecisionFormat liefert dann null). Erst probieren, sonst Vorgabe.
+function gpuWahl() {
+  try {
+    const c = document.createElement('canvas');
+    const g = c.getContext('webgl2', { powerPreference: 'high-performance' });
+    const ok = !!g && !g.isContextLost() && !!g.getShaderPrecisionFormat(g.VERTEX_SHADER, g.HIGH_FLOAT);
+    if (g) { const x = g.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); }
+    return ok ? 'high-performance' : 'default';
+  } catch (e) { return 'default'; }
+}
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: gpuWahl() });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.localClippingEnabled = true;   // Höhenschnitt, nur an Modellmaterialien
@@ -414,19 +469,44 @@ function ladeModell(job, name, { inSitzung = false, vonGruppe = false } = {}) {
   tiles = new TilesRenderer(`${backend}/tiles/${encodeURIComponent(job)}/tileset.json`);
   tiles.registerPlugin(new GLTFExtensionsPlugin({
     dracoLoader: draco, ktxLoader: ktx2, meshoptDecoder: MeshoptDecoder, autoDispose: false,
-    plugins: splatErweiterungen({ renderer, szene }),
+    plugins: [
+      ...splatErweiterungen({ renderer, szene }),
+      ...(TEXTUREN_TEILEN ? [texturErweiterung({
+        THREE, register: texturRegister,
+        kante: () => (renderer.xr.isPresenting ? TEXTUR_KANTE.brille : TEXTUR_KANTE.vorschau),
+      })] : []),
+    ],
   }));
-  tiles.errorTarget = FEHLER_ZIEL.vorschau;
+  if (TEXTUREN_TEILEN) tiles.registerPlugin(geteiltPlugin());
+  // Auch mitten in einer Sitzung (Modellwechsel der Gruppe): dort gilt das Ziel der Brille
+  tiles.errorTarget = renderer.xr.isPresenting ? FEHLER_ZIEL.brille : FEHLER_ZIEL.vorschau;
   tiles.lruCache.minBytesSize = CACHE_MIN;
   tiles.lruCache.maxBytesSize = CACHE_MAX;
+  puffer.zuruecksetzen();
+  faktorenZuruecksetzen();
+  einblender.alleFreigeben();
+  if (SCHALTER.parse) {
+    // Eigene Warteschlange zum Entpacken, die die Schleife selbst antreibt
+    // (parseTreiben): eine neue Kachel je Bild und nur mit Budget. Die der
+    // Bibliothek startet bis zu fünf zugleich, und die kommen auch zugleich an.
+    const q = new PriorityQueue();
+    q.maxJobs = PARSE_PARALLEL;
+    q.autoUpdate = false;
+    q.priorityCallback = unifiedPriorityCallback;
+    tiles.parseQueue = q;
+  }
   tiles.addEventListener('load-root-tileset', ausrichten);
-  tiles.addEventListener('load-model', ({ scene }) => {
+  tiles.addEventListener('load-model', ({ scene, tile }) => {
     vorbereiten(scene);
     ebenen.kachelGeladen(scene);
     gemeinsam.kachelGeladen(scene);
+    // In der Brille nacheinander zum ersten Mal zeichnen (Einblender). Nur additive
+    // Verfeinerung: eine Kachel, die ihre Eltern ersetzt, hinterließe ein Loch.
+    if (SCHALTER.einblenden && renderer.xr.isPresenting && tile && tile.refine === 'ADD') einblender.ankunft(scene);
     ui.schmutzig = true;
   });
   tiles.addEventListener('dispose-model', ({ scene }) => {
+    einblender.entfernen(scene);
     splatEntsorgen(scene);
     ebenen.kachelEntladen(scene);
     scene.traverse(o => { if (o.isPoints) punktStoffe.delete(o.material); });
@@ -566,11 +646,38 @@ function alleKacheln() {
   return tiles ? [tiles, ...welt.renderer()] : welt.renderer();
 }
 
+/**
+ * Das Fehlerziel eines Baums um den Faktor `soll` gegenüber dem zuletzt
+ * angewandten verschieben. Verhältnis statt Zuweisung: das Ziel hat noch andere
+ * Schreiber (Splat-Haushalt, Welt), und die dürfen ihren Stand behalten.
+ */
+function faktorAnwenden(t, soll, alt) {
+  if (soll !== alt) t.errorTarget *= soll / alt;
+  return soll;
+}
+
+function faktorenZuruecksetzen() {
+  guete.zuruecksetzen();
+  druck.zuruecksetzen();
+  fehlerFaktor = 1;
+  weltFaktoren = new WeakMap();
+}
+
+function fehlerFaktorenAnwenden() {
+  const bildzeit = renderer.xr.isPresenting && SCHALTER.guete ? guete.faktor : 1;
+  if (tiles) fehlerFaktor = faktorAnwenden(tiles, Math.max(bildzeit, SCHALTER.druck ? druck.faktor : 1), fehlerFaktor);
+  for (const t of welt.renderer()) weltFaktoren.set(t, faktorAnwenden(t, bildzeit, weltFaktoren.get(t) || 1));
+}
+
 function kachelnAktualisieren() {
   const xr = renderer.xr;
   const xrKamera = xr.getCamera();
   welt.bild();
-  for (const t of alleKacheln()) {
+  fehlerFaktorenAnwenden();
+  const baeume = alleKacheln();
+  let durchlauf = 0;         // ms für die Durchläufe der Kachelbäume in diesem Bild (ohne Kamera, Rahmen …)
+  for (let i = 0; i < baeume.length; i++) {
+    const t = baeume[i];
     if (xr.isPresenting) {
       const auge = xrKamera.cameras[0];
       // Im ersten Bild hat die XR-Kamera noch keine Projektion.
@@ -584,8 +691,14 @@ function kachelnAktualisieren() {
       t.setResolutionFromRenderer(kamera, renderer);
       kamera.updateMatrixWorld();
     }
-    t.update();
+    // In der Brille wechseln sich die Bäume ab (aktualisierenSoll); was zu sehen war, bleibt stehen
+    if (!SCHALTER.takt || aktualisierenSoll(bildNr, i, baeume.length, xr.isPresenting)) {
+      const t0 = performance.now();
+      t.update();
+      durchlauf += performance.now() - t0;
+    }
   }
+  leistungsMessung.durchlaufZeit(durchlauf);
   if (tiles) splatHaushalt();
 }
 
@@ -599,7 +712,7 @@ function splatHaushalt() {
   const sichtbar = sichtbareSplats(tiles);
   tiles.errorTarget = sichtbar
     ? fehlerNachfuehren(tiles.errorTarget, SPLAT_FEHLER_MIN, sichtbar, haushalt, !(tiles.loadProgress < 1))
-    : (renderer.xr.isPresenting ? FEHLER_ZIEL.brille : FEHLER_ZIEL.vorschau);
+    : (renderer.xr.isPresenting ? FEHLER_ZIEL.brille : FEHLER_ZIEL.vorschau) * fehlerFaktor;
 }
 
 function ladestand() {
@@ -893,7 +1006,8 @@ function tabletZuege() {
 
 /** Kneift diese Hand ohne Controller (Blick der Vision Pro oder Hand der Quest)? */
 function kneift(hand) {
-  return !!hand.quelle && !hand.quelle.gamepad;
+  // Ein transient-pointer ist immer ein Kneifen — auch wenn Safari ihm ein Gamepad mitgibt
+  return !!hand.quelle && (hand.transient || !hand.quelle.gamepad);
 }
 
 function langGekniffen(hand) {
@@ -905,7 +1019,7 @@ function tabletAktualisieren(jetzt) {
   // Bewegliches nachziehen: Ladestand in der Fußzeile, Lage auf der Karte
   if (jetzt - tabletGezeichnet > 400) {
     const merk = `${Math.round(ladestand() * 100)}|${tablet.seite === 'karte' ? kartenMerkmal() : ''}|${welt.gelaendeMitte()?.toFixed(2)}` +
-      `|${tablet.seite === 'gemeinsam' ? gemeinsam.merkmal() : ''}`;
+      `|${tablet.seite === 'gemeinsam' ? gemeinsam.merkmal() : ''}|${bodenFolge.freiflug}|${tablet.seite === 'werkzeuge' ? flugDiagText().join() : ''}`;
     if (merk !== tabletAktualisieren.merk) { tabletAktualisieren.merk = merk; ui.schmutzig = true; }
   }
   if (!ui.schmutzig || jetzt - tabletGezeichnet < 33) return;
@@ -1045,6 +1159,7 @@ for (let i = 0; i < STEUERUNGEN; i++) {
     zeigt: false,       // hat einen sichtbaren Strahl und darf aufs Tablet zeigen
     seit: 0,            // Beginn des Kneifens (langes Kneifen = Info)
     tabletZug: null,    // Kneifen auf dem Tablet: { start, letzt, gerollt }
+    flug: null,         // Kneifen in der Luft: { start, letzt, zug, aktiv } — Ziehen greift die Welt
   };
   haende.push(hand);
 
@@ -1069,6 +1184,7 @@ for (let i = 0; i < STEUERUNGEN; i++) {
     hand.haelt = null;
     hand.aufTablet = null;
     hand.tabletZug = null;
+    hand.flug = null;
     hand.transient = false;
     hand.zeigt = false;
     linie.visible = false;
@@ -1095,6 +1211,14 @@ for (let i = 0; i < STEUERUNGEN; i++) {
     }
     // Beim Kalibrieren misst der Abzug eine Marke, statt zu springen (vr-gemeinsam.js)
     if (gemeinsam.abzugFangen(hand)) return;
+    // Ohne Controller gibt es keinen Stick: wer kneift und die Hand bewegt, zieht sich durch die
+    // Luft (fliegen). Ein Kneifen ohne Bewegung bleibt, was es war: springen oder Info.
+    flugDiag.kneifen++;
+    flugDiag.art = hand.quelle.targetRayMode;
+    flugDiag.gamepad = hand.quelle.gamepad ? 'ja' : 'nein';
+    flugDiag.zieht = false;
+    flugDiag.wegG = flugDiag.wegS = 0;
+    if (kneift(hand) && zustand.modus === 'vr') hand.flug = { start: null, letzt: null, zug: { h: 0, v: 0 }, aktiv: false };
     hand.zielt = true;
   });
   strahl.addEventListener('selectend', () => {
@@ -1105,6 +1229,11 @@ for (let i = 0; i < STEUERUNGEN; i++) {
       if (!z.gerollt) ui.klick(...z.start);
       ui.zeiger(null);
       return;
+    }
+    if (hand.flug) {
+      const geflogen = hand.flug.aktiv;
+      hand.flug = null;
+      if (geflogen) return;   // gezogen, nicht getippt: kein Sprung, keine Info
     }
     if (hand.tippte) { hand.tippte = false; return; }
     abzugLos(hand);
@@ -1259,10 +1388,80 @@ function zielen() {
   if (landeplatz) ziel.position.copy(landeplatz).add(_v2.set(0, 0.02, 0));
 }
 
+const FLUG_SCHWELLE = 0.06;   // m Handweg, ab dem aus einem Kneifen ein Ziehen wird
+const KNEIF_ABSTAND = 0.7;    // m — Ersatzpunkt auf dem Strahl, wenn die Brille keine Fingerlage liefert
+const _kl = new THREE.Vector3();
+
+/**
+ * Beide Quellen der Fingerlage nebeneinander (m, Rahmen des Nutzers): `g` = der
+ * gripSpace des Kneifens, `s` = ein Punkt auf dem Strahl. Was die Brille wirklich
+ * liefert, weiß man erst dort — die Vision Pro kann beides, nur eines oder bei
+ * einem davon eine stehende Lage melden. Gezogen wird mit der, die sich bewegt.
+ */
+function kneifLagen(hand) {
+  const g = hand.quelle && hand.quelle.gripSpace && hand.griff.visible ? hand.griff.position.toArray() : null;
+  const s = hand.strahl.visible
+    ? _kl.set(0, 0, -KNEIF_ABSTAND).applyQuaternion(hand.strahl.quaternion).add(hand.strahl.position).toArray()
+    : null;
+  return { g, s };
+}
+const wegZwischen = (a, b) => (a && b ? Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) : 0);
+
+// Was die Brille beim Kneifen liefert — steht auf dem Tablet (Werkzeuge), damit man es ablesen kann
+const flugDiag = { kneifen: 0, art: '–', gamepad: '–', grip: '–', strahl: '–', wegG: 0, wegS: 0, quelle: '–', zieht: false, bilder: 0 };
+function flugDiagText() {
+  const cm = m => `${Math.round(m * 100)} cm`;
+  return [
+    `Kneifen ${flugDiag.kneifen}× · ${flugDiag.art} · Gamepad ${flugDiag.gamepad}`,
+    `Finger-Lage ${flugDiag.grip} (${cm(flugDiag.wegG)}) · Strahl ${flugDiag.strahl} (${cm(flugDiag.wegS)})`,
+    flugDiag.zieht ? `zieht mit: ${flugDiag.quelle === 'g' ? 'Finger-Lage' : 'Strahl'}` : `zieht nicht (Schwelle ${cm(FLUG_SCHWELLE)})`,
+  ];
+}
+
+/** Kneifen und die Hand bewegen: die Welt greifen und sich durch die Luft ziehen. */
+function fliegen(hand) {
+  const f = hand.flug;
+  if (!f) return;
+  if (!hand.quelle || zustand.modus !== 'vr') { hand.flug = null; return; }
+  const { g, s } = kneifLagen(hand);
+  flugDiag.bilder++;
+  flugDiag.grip = g ? 'ja' : 'fehlt';
+  flugDiag.strahl = s ? 'ja' : 'fehlt';
+  if (!g && !s) return;
+  // Die Lage steht erst im Bild nach dem Kneifen: dort beginnt der Weg
+  if (!f.start) { f.start = { g, s }; f.letzt = null; return; }
+  flugDiag.wegG = wegZwischen(g, f.start.g);
+  flugDiag.wegS = wegZwischen(s, f.start.s);
+  if (!f.aktiv) {
+    // Die Finger-Lage geht vor; der Strahl braucht mehr Weg (eine Kopfdrehung bewegt ihn auch)
+    const quelle = flugDiag.wegG >= FLUG_SCHWELLE ? 'g' : (flugDiag.wegS >= FLUG_SCHWELLE * 1.5 ? 's' : null);
+    if (!quelle) return;
+    f.quelle = quelle;
+    flugDiag.quelle = quelle;
+    flugDiag.zieht = true;
+    f.aktiv = true;
+    hand.zielt = false;        // kein Landeplatz mehr: gezogen wird, nicht gesprungen
+    ziel.visible = false;
+    hand.treffer = null;
+    hand.linie.scale.z = 3;
+    f.letzt = f.quelle === 'g' ? g : s;
+    return;
+  }
+  const jetzt = f.quelle === 'g' ? g : s;
+  if (!jetzt || !f.letzt) return;
+  const r = flugSchritt(f.zug, f.letzt, jetzt, { weite: werkzeug.flugweite, frei: bodenFolge.freiflug, bodenFolgen: werkzeug.bodenFolgen });
+  f.letzt = jetzt;
+  f.zug = r.zug;
+  nutzer.position.add(_v1.fromArray(r.schritt).applyQuaternion(nutzer.quaternion));
+  if (r.schwebt) { bodenFolge.freiflug = true; bodenFolge.ziel = null; }
+  else bodenFolge.bewegt = true;
+}
+
 function steuern(dt) {
   for (const hand of haende) {
     const gp = hand.quelle && hand.quelle.gamepad;
     if (hand.haelt) halten(hand);
+    if (hand.flug) fliegen(hand);
     if (!gp) continue;
     const x = totzone(gp.axes[2]);
     const y = totzone(gp.axes[3]);
@@ -1572,6 +1771,18 @@ const aktionen = {
   bodenFolgen(an) { werkzeug.bodenFolgen = an; speichern(); },
   tempo(v) { werkzeug.tempo = v; speichern(); },
   drehschritt(v) { werkzeug.drehschritt = v; speichern(); },
+  flugweite(v) { werkzeug.flugweite = v; speichern(); },
+  /** Aus der Luft auf den Boden unter einem zurück (das Schweben endet, der Boden folgt wieder). */
+  landen() {
+    if (zustand.modus !== 'vr') return;
+    const kopf = kopfPosition(new THREE.Vector3());
+    const von = nutzer.position.y + STUFE;
+    const y = bodenUnter(kopf.x, kopf.z, von) ?? bodenUnter(kopf.x, kopf.z, von, true);
+    if (y === null) { status('Unter dir ist kein Boden'); return; }
+    bodenFolge.freiflug = false;
+    bodenFolge.ziel = y;   // bodenPruefen lässt die Füße weich dorthin sinken
+    ui.schmutzig = true;
+  },
   tabletHand(h) {
     werkzeug.tabletHand = h;
     tabletAnhaengen();
@@ -1604,6 +1815,8 @@ const app = {
   get tablet() { return tablet; },
   get auswahl() { return auswahl; },
   get werkzeug() { return werkzeug; },
+  get schwebt() { return bodenFolge.freiflug; },
+  get flugDiag() { return flugDiagText(); },
   get gemeinsam() { return gemeinsam.anzeige; },
   /** 'controller' (Quest mit Controllern) · 'hand' (Vision Pro, Hände) · 'maus' (Bildschirm) */
   get steuerung() {
@@ -1612,6 +1825,7 @@ const app = {
   },
   aktionen,
   ladestand,
+  leistung: () => leistungZeilen(leistung()),
   ebenen: {
     get filterLeer() { return filterLeer(ebenen.filter); },
     get isoliert() { return !!ebenen.filter.nur; },
@@ -1828,11 +2042,25 @@ async function betreten(modus, job) {
     status(`Die Brille hat abgelehnt: ${e.message}`, 'fehler');
     return;
   }
+  // Die Warteschlangen der Kachel-Bibliothek takten sich über requestAnimationFrame.
+  // In einer immersiven Sitzung bekommt das Fenster keine Bilder mehr — ohne diese
+  // Zeile blieben Download, Entpacken und Knoten-Aufbereitung stehen, und das
+  // Modell bliebe unvollständig, so lange man auch wartet. Sofort nach dem
+  // Anfordern, vor allem anderen: was bis hierher im Fenster angemeldet war,
+  // wird dabei abgearbeitet.
+  xrTakt(Scheduler, session);
   zustand.vorschauPose = { position: kamera.position.clone(), quaternion: kamera.quaternion.clone(), ziel: orbit.target.clone() };
   orbit.enabled = false;
   zustand.modus = modus;
   modusEinrichten();
-  await renderer.xr.setSession(session);
+  try {
+    await renderer.xr.setSession(session);
+  } catch (e) {
+    xrTakt(Scheduler, null);
+    status(`Die Brille hat abgelehnt: ${e.message}`, 'fehler');
+    verlassen();
+    return;
+  }
   knoepfeAktualisieren();
   status(modus === 'tisch' ? 'Tischmodell in der Brille' : '1:1 in der Brille');
 }
@@ -1850,6 +2078,7 @@ function modusEinrichten() {
   else if (tisch) zustand.tischPlatzieren = 2;
   else startPose();
   if (tiles) tiles.errorTarget = FEHLER_ZIEL.brille;
+  faktorenZuruecksetzen();
   const g = kastenGroesse();
   welt.modus(zustand.modus, Math.max(15, 0.75 * Math.max(g[0], g[2])));
   sichtSetzen();
@@ -1860,6 +2089,7 @@ function modusEinrichten() {
 }
 
 function verlassen() {
+  xrTakt(Scheduler, null);        // zurück auf das Fenster-rAF der Bibliothek
   zustand.modus = 'vorschau';
   bodenSichtbarkeit();
   modell.position.set(0, 0, 0);
@@ -1882,6 +2112,8 @@ function verlassen() {
   kamera.zoom = 1;
   orbit.enabled = true;
   if (tiles) tiles.errorTarget = FEHLER_ZIEL.vorschau;
+  faktorenZuruecksetzen();
+  einblender.alleFreigeben();
   welt.modus('vorschau');
   sichtSetzen();
   messungZeichnen();
@@ -1904,10 +2136,103 @@ const uhr = new THREE.Timer();
 let letzteGroesse = 1;
 let letzterStatus = 0;
 
+// ─────────────────────────────────────────────────────────────────
+// MESSUNG — fps, Bildabstände, Kachelstand (vr-leistung.js)
+// ─────────────────────────────────────────────────────────────────
+//
+// In der Brille gibt es keine Konsole und kein DOM: gezeigt wird der Stand im
+// Tablet (Seite „Leistung"). Am Bildschirm hängt `?messung=1` ein Feld oben
+// links ein; für Prüfsteine und die Konsole gibt `ILeenVR.leistung()` dasselbe
+// als Objekt.
+
+const leistungsMessung = new Messung();
+
+/** Zielzeit je Bild: in der Brille die Bildrate der Sitzung (sonst 72 Hz, Quest), am Bildschirm 60 Hz. */
+function bildBudget() {
+  const sitzung = renderer.xr.isPresenting && renderer.xr.getSession && renderer.xr.getSession();
+  if (!sitzung) return budgetMs(60);
+  return budgetMs(sitzung.frameRate ? sitzung.frameRate : 72);
+}
+
+function leistung() {
+  const info = renderer.info;
+  return leistungsMessung.stand({
+    budget: bildBudget(),
+    zeichnen: {
+      aufrufe: info.render.calls, dreiecke: info.render.triangles,
+      geometrien: info.memory.geometries, texturen: info.memory.textures,
+    },
+    baeume: alleKacheln().map((t, i) => ({ name: i === 0 && t === tiles ? 'Modell' : (t === welt.gelaende ? 'Gelände' : 'Gebäude'), t })),
+    extras: {
+      modus: zustand.modus, xr: renderer.xr.isPresenting,
+      texturen: { treffer: texturRegister.treffer, neu: texturRegister.neu, lebende: texturRegister.lebende() },
+      regler: {
+        guete: guete.faktor, druck: druck.faktor, angehoben: druck.angehoben,
+        zurueckgehalten: einblender.warte.length, freigegeben: einblender.freigegeben,
+        parseGestartet: parseTor.gestartet, parseErzwungen: parseTor.erzwungen,
+        schalter: { ...SCHALTER },
+      },
+      extra: `Texturen geteilt: ${texturRegister.treffer} mitgenutzt · ${texturRegister.neu} neu dekodiert · ${texturRegister.lebende()} im Vorrat\n`
+        + `Fehlerfaktor Bildzeit ×${guete.faktor.toFixed(2)} · Speicher ×${druck.faktor.toFixed(2)} (${druck.angehoben}× angehoben) · Puffer ab ${Math.round(puffer.anteil * 100)} % · `
+        + `Einblender ${einblender.warte.length} wartet, ${einblender.freigegeben} frei · Entpacken ${parseTor.gestartet} gestartet (${parseTor.erzwungen} erzwungen)`,
+    },
+  });
+}
+
+// Lange Aufgaben des Browsers: was den Hauptfaden über 50 ms am Stück belegt
+try {
+  new PerformanceObserver(liste => { for (const e of liste.getEntries()) leistungsMessung.langeAufgabe(e.duration); })
+    .observe({ type: 'longtask', buffered: false });
+} catch { /* Browser ohne longtask */ }
+
+// Feld am Bildschirm
+/** Frisch geladene Kacheln nacheinander freigeben, solange die Bilder ihr Budget halten. */
+function einblenden(jetzt) {
+  if (!SCHALTER.einblenden || !einblender.warte.length) return;
+  const budget = bildBudget();
+  const erlaubt = (letzterAbstand === null || letzterAbstand <= budget * 1.2) && letzteSchleife <= budget - 3;
+  einblender.bild(erlaubt, jetzt, letzterAbstand !== null && letzterAbstand <= budget * 0.85 && letzteSchleife <= budget * 0.6);
+}
+
+/**
+ * Nach dem Zeichnen entscheiden, ob eine weitere Kachel anfangen darf zu
+ * entpacken: höchstens eine je Bild, nur wenn vom Budget noch etwas übrig ist,
+ * und nie mehr als PARSE_PARALLEL zugleich.
+ */
+function parseTreiben(bildStart) {
+  const q = tiles && tiles.parseQueue;
+  if (!SCHALTER.parse || !q || q.autoUpdate || !q.items.length || q.currJobs >= PARSE_PARALLEL) return;
+  const jetzt = performance.now();
+  if (!parseTor.erlaubt(bildBudget() - (jetzt - bildStart), jetzt)) return;
+  q.maxJobs = q.currJobs + 1;
+  q.tryRunJobs();
+}
+
+const messFeld = (() => {
+  if (!PARAMETER.has('messung')) return null;
+  const p = document.createElement('pre');
+  p.id = 'vrMessung';
+  p.style.cssText = 'position:fixed;left:8px;top:8px;z-index:50;margin:0;padding:8px 10px;max-width:70vw;' +
+    'font:12px/1.4 ui-monospace,Menlo,monospace;color:#d8f0a0;background:rgba(0,0,0,.72);border-radius:6px;' +
+    'pointer-events:none;white-space:pre-wrap';
+  document.body.appendChild(p);
+  return p;
+})();
+
 renderer.setAnimationLoop(zeit => {
   uhr.update(zeit);
   const dt = Math.min(uhr.getDelta(), 0.1);
   const jetzt = performance.now();
+  letzterAbstand = leistungsMessung.bild(zeit);
+  bildNr++;
+  if (letzterAbstand !== null && renderer.xr.isPresenting && SCHALTER.guete) guete.bild(letzterAbstand, bildBudget(), jetzt);
+  if (tiles && jetzt - druckPruefung > 250) {
+    druckPruefung = jetzt;
+    druck.bild(kachelStand(tiles), jetzt);
+    // Lag = der GueteRegler hat gerade die Detailstufe senken müssen
+    const anteil = puffer.bild(renderer.xr.isPresenting && SCHALTER.guete && guete.faktor > 1, jetzt);
+    tiles.lruCache.minBytesSize = Math.round(CACHE_MAX * anteil);
+  }
   if (renderer.xr.isPresenting) {
     if (zustand.tischPlatzieren > 0 && --zustand.tischPlatzieren === 0) tischPlatzieren();
     tabletSchweben(dt);
@@ -1932,12 +2257,20 @@ renderer.setAnimationLoop(zeit => {
     modell.updateMatrixWorld();
     schnittEbene.setFromNormalAndCoplanarPoint(UNTEN, modell.localToWorld(new THREE.Vector3(0, werkzeug.schnitt.hoehe, 0)));
   }
+  const kachelStart = performance.now();
   kachelnAktualisieren();
+  leistungsMessung.kachelZeit(performance.now() - kachelStart);
   tabletAktualisieren(jetzt);
+  einblenden(jetzt);
   renderer.render(szene, kamera);
+  parseTreiben(jetzt);
+  letzteSchleife = performance.now() - jetzt;
+  leistungsMessung.schleifeZeit(letzteSchleife);
 
   if (jetzt - letzterStatus > 400) {
     letzterStatus = jetzt;
+    if (messFeld) messFeld.textContent = leistungZeilen(leistung()).join('\n');
+    if (tablet.seite === 'leistung') ui.schmutzig = true;
     const p = ladestand();
     el.fortschritt.style.width = `${Math.round(p * 100)}%`;
     el.fortschritt.parentElement.classList.toggle('fertig', !(p < 1));
@@ -2064,6 +2397,7 @@ window.ILeenVR = {
   THREE, renderer, szene, nutzer, modell, kamera, orbit, haende, backend,
   welt, ebenen, ui, app, werkzeug, tablet, tabletMesh, schwebe, schnittEbenen,
   ladeModell, betreten, pruefeXR, tabletDruecken, hinspringen, lokalZuGrad, gradZuLokal, gemeinsam,
+  leistung, leistungsMessung, texturRegister, guete, druck, puffer, einblender, parseTor,
 };
 
 const start = PARAMETER.get('job');

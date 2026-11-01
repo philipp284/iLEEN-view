@@ -323,7 +323,10 @@
 
     B.loadedAssets.forEach(function (asset) {
       var ts = asset.tileset;
-      if (ts && !ts._isGaussianSplat && !asset.isPointCloud) ziele.push(ts);
+      // Ein Mesh aus Fotos (World Labs splats2Mesh) trägt gemessene Farben in der Textur:
+      // das Backend schreibt es als `extras.ileen_quelle` ins Tileset.
+      var foto = !!(ts && ts.extras && ts.extras.ileen_quelle === 'photogrammetrie');
+      if (ts && !ts._isGaussianSplat && !asset.isPointCloud && !foto) ziele.push(ts);
       else if (asset.isGLB && asset.model) ziele.push(asset.model);
     });
     return ziele;

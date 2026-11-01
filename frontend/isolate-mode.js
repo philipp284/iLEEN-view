@@ -1,7 +1,7 @@
 /**
  * iLEEN — Isolate Mode
  * Click any IFC element to isolate it — everything else in the same tileset
- * is hidden temporarily. Click again (or press Escape / I) to restore all.
+ * is hidden temporarily. Click again (or press Escape / ⇧I) to restore all.
  *
  * Distinct from hideFeatures.js (which hides individual clicked elements).
  * Isolate Mode shows ONLY the clicked element and hides all others.
@@ -65,9 +65,10 @@
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // ESC or I to exit
+    // Esc beendet; ⇧I schaltet über den globalen Hörer unten um. I allein
+    // gehört seit 2026-10-19 den IFC-Modellen (tastenkuerzel.js).
     document.addEventListener('keydown', this._isolateModeKeyHandler = function (e) {
-      if (e.key === 'Escape' || e.key === 'i' || e.key === 'I') {
+      if (e.key === 'Escape') {
         self.exitIsolateMode();
       }
     });
@@ -152,18 +153,21 @@
     let name = 'element';
     try { name = targetFeature.getProperty('Name') || targetFeature.getProperty('className') || 'element'; } catch (_) {}
 
-    this.updateStatus(`Isolated: ${name} — ${hidden.length} elements hidden. Press I or ESC to restore.`, 'success');
+    this.updateStatus(`Isolated: ${name} — ${hidden.length} elements hidden. Press ⇧I or ESC to restore.`, 'success');
     console.log(`🔍 Isolated "${name}", hid ${hidden.length} elements`);
   };
 
-  // ── Keyboard shortcut I ───────────────────────────────────────────────────
+  // ── Tastenkürzel ⇧I ───────────────────────────────────────────────────────
+  // Seit 2026-10-19 mit Umschalt: I allein blendet die IFC-Modelle ein und aus
+  // (tastenkuerzel.js). `code`, weil ⇧I je nach Tastatur kein großes I liefert.
   document.addEventListener('keydown', function (e) {
     // Only when not typing in an input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    if ((e.key === 'i' || e.key === 'I') && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    if (e.code === 'KeyI' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
       BimViewer.toggleIsolateMode();
     }
   });
 
-  console.log('🔍 Isolate Mode module loaded — Press I to toggle');
+  console.log('🔍 Isolate Mode module loaded — Press ⇧I to toggle');
 })();

@@ -212,6 +212,78 @@ function hoeheIn(daten, k, lon, lat) {
   const k0 = await provider.requestTileGeometry(0, 0, 0);
   pruefe('Ebene 0 (halbe Erde) baut ein Netz mit Horizontpunkt', !!k0 && !!k0._horizonOcclusionPoint);
 
+  // ── 5b · basemap.de hängt (2026-10-31: Server nahm keine Verbindung an) ──
+  // Ein hängender Abruf wirft nicht — ohne Frist blieb die Kachel ewig offen
+  // und der Globus unter ~500 m auf Ebene 10 stehen.
+
+  const h = attrappen();
+  const pHaengt = await G.erzeugen(Object.assign({}, h, { frist: 40 }));
+  let dgmAbrufe = 0;
+  pHaengt._holen = (url, request) => {
+    if (url.includes('dgm5_4326_mesh')) { dgmAbrufe++; return new Promise(() => {}); }
+    return h.holen(url, request);
+  };
+  const anfrage = new Cesium.Request({ throttle: false });
+  let abgebrochen = false;
+  anfrage.cancel = () => { abgebrochen = true; };
+  const t0 = Date.now();
+  const dHaengt = await pHaengt.requestTileGeometry(mainz.x, mainz.y, mainz.level, anfrage);
+  pruefe('Hängende DGM5-Kachel: nach der Frist kommt Terrain Tiles (140 + 48)',
+         !!dHaengt && nahe(hoeheIn(dHaengt, mainz, 8.2765, 50.0005), 188, 0.5) && Date.now() - t0 < 1000,
+         dHaengt && hoeheIn(dHaengt, mainz, 8.2765, 50.0005).toFixed(2));
+  pruefe('Hängende DGM5-Kachel: Cesiums Abrufplatz wird freigegeben (request.cancel)', abgebrochen);
+  for (let i = 0; i < 2; i++) await pHaengt.requestTileGeometry(mainz.x + 1 + i, mainz.y, mainz.level);
+  pruefe('Drei Fehlschläge am Stück: basemap.de gilt als ausgefallen', pHaengt.dgmStand().aus === true);
+  const vorher = dgmAbrufe;
+  const dAus = await pHaengt.requestTileGeometry(mainz.x + 5, mainz.y, mainz.level);
+  pruefe('Ausgefallen: kein weiterer basemap.de-Abruf, sofort Terrain Tiles', !!dAus && dgmAbrufe === vorher);
+  pHaengt._ausBis = Date.now() - 1;
+  pHaengt._holen = h.holen;
+  const dWieder = await pHaengt.requestTileGeometry(mainz.x, mainz.y, mainz.level);
+  pruefe('Nach der Pause: basemap.de wird wieder gefragt', nahe(hoeheIn(dWieder, mainz, 8.2765, 50.0005), 148, 0.05));
+
+  // ── 5c · DGM1 RLP aus dem eigenen Backend ─────────────────────────────────
+  // Zuerst DGM1, Lücken (NaN) aus DGM5 bzw. Terrain Tiles; in RLP bis Ebene 18.
+
+  const q = attrappen();
+  const dgm1Urls = [];
+  const holenMitDgm1 = (url, request) => {
+    if (url.startsWith('http://backend/gelaende/dgm1/')) {
+      dgm1Urls.push(url);
+      const h = new Float32Array(65 * 65).fill(120);
+      for (let i = 0; i < 65; i++) h[i] = NaN;          // Südrand ohne DGM1
+      return Promise.resolve(h.buffer);
+    }
+    return q.holen(url, request);
+  };
+  const pDgm1 = await G.erzeugen(Object.assign({}, q, { holen: holenMitDgm1,
+    dgm1: { basis: 'http://backend/gelaende/dgm1', grenzen: [6.1, 48.9, 8.6, 50.95] } }));
+  pruefe('DGM1: als Quelle gemeldet', pDgm1.quellen.dgm1 === true);
+  const dMitDgm1 = await pDgm1.requestTileGeometry(mainz.x, mainz.y, mainz.level);
+  const nordDgm1 = Cesium.Math.toDegrees(mainz.rechteck.north) - 1e-6;
+  const suedDgm1 = Cesium.Math.toDegrees(mainz.rechteck.south) + 1e-7;
+  const westDgm1 = Cesium.Math.toDegrees(mainz.rechteck.west) + 1e-6;
+  pruefe('DGM1: 120 m NHN + 48 m Undulation = 168 m', nahe(hoeheIn(dMitDgm1, mainz, westDgm1, nordDgm1), 168, 0.05),
+         hoeheIn(dMitDgm1, mainz, westDgm1, nordDgm1).toFixed(2));
+  pruefe('DGM1: Lücke am Südrand aus DGM5 (100 + 48)', nahe(hoeheIn(dMitDgm1, mainz, westDgm1, suedDgm1), 148, 0.5),
+         hoeheIn(dMitDgm1, mainz, westDgm1, suedDgm1).toFixed(2));
+  pruefe('DGM1: Abruf in Cesiums Kachelzählung (y von Norden)',
+         dgm1Urls.includes(`http://backend/gelaende/dgm1/16/${mainz.x}/${mainz.y}`));
+  pruefe('DGM1: beide Vermerke an der Kachel', dMitDgm1.credits.some((c) => /LVermGeoRP/.test(c.html)) &&
+         dMitDgm1.credits.some((c) => /BKG/.test(c.html)));
+  const k18 = kachelBei(8.2765, 50.0005, 18);
+  const k18aussen = kachelBei(13.4, 52.5, 18);
+  pruefe('DGM1: Ebene 18 in RLP verfügbar, in Berlin nicht',
+         pDgm1.getTileDataAvailable(k18.x, k18.y, 18) === true && pDgm1.getTileDataAvailable(k18aussen.x, k18aussen.y, 18) === false);
+  pruefe('DGM1: Verfügbarkeit reicht in RLP bis 18',
+         pDgm1.availability.computeMaximumLevelAtPosition(Cesium.Cartographic.fromDegrees(8.27, 50)) === 18 &&
+         pDgm1.availability.computeMaximumLevelAtPosition(Cesium.Cartographic.fromDegrees(13.4, 52.5)) === 16);
+  const pDgm1Leer = await G.erzeugen(Object.assign({}, q, {
+    holen: (url, r) => url.includes('/gelaende/dgm1/') ? Promise.resolve(undefined) : q.holen(url, r),
+    dgm1: { basis: 'http://backend/gelaende/dgm1', grenzen: [6.1, 48.9, 8.6, 50.95] } }));
+  const dLeer = await pDgm1Leer.requestTileGeometry(mainz.x, mainz.y, mainz.level);
+  pruefe('DGM1: leere Antwort (204) → DGM5 wie bisher', nahe(hoeheIn(dLeer, mainz, 8.2765, 50.0005), 148, 0.05));
+
   // ── 6 · Ohne basemap.de, ohne Geoid ───────────────────────────────────────
 
   const d = attrappen({ ohneBasemap: true });

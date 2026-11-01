@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import cesium from 'vite-plugin-cesium';
 import { sessionApiPlugin } from '../server/session-api.js';
+import { leereKachelnPlugin } from '../server/leere-kacheln.js';
 
 const TLS = process.env.ILEEN_QUEST_TLS;
 // Vite hört nur intern; davor steht tools/quest-weiche.mjs auf dem Port, den man eintippt.
@@ -61,5 +62,5 @@ export default defineConfig({
   // iLEEN selbst und die VR-Seite: der Quest-Browser öffnet iLEEN, der Schalter
   // 🥽 startet VR in einer Ebene darüber (vr-fenster.js). Dieselben Plugins wie
   // vite.config.js.
-  plugins: [cesium(), sessionApiPlugin()],
+  plugins: [cesium(), sessionApiPlugin(), leereKachelnPlugin()],
 });

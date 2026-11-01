@@ -1,7 +1,7 @@
 // © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 //
-// Die Seiten des Tablets: Info · Ebenen · Welt · Karte · Werkzeuge · Gruppe · Hilfe.
+// Die Seiten des Tablets: Info · Ebenen · Welt · Karte · Werkzeuge · Gruppe · Leistung · Hilfe.
 //
 // Jede Seite zeichnet sich bei jedem Neuzeichnen ganz (vr-tablet.js) und
 // liest dafür nur aus `app` (vr.js): Zustand, Auswahl, Ebenen, Welt und die
@@ -28,6 +28,7 @@ export const SEITEN = [
   ['karte', 'Karte'],
   ['werkzeuge', 'Werkzeuge'],
   ['gemeinsam', 'Gruppe'],
+  ['leistung', 'Leistung'],
   ['hilfe', 'Hilfe'],
 ];
 
@@ -41,6 +42,7 @@ export function tabletZeichnen(ui, app) {
   else if (seite === 'karte') karte(ui, app);
   else if (seite === 'werkzeuge') werkzeuge(ui, app);
   else if (seite === 'gemeinsam') gemeinsam(ui, app);
+  else if (seite === 'leistung') leistung(ui, app);
   else hilfe(ui, app);
   fusszeile(ui, app);
 }
@@ -49,8 +51,8 @@ function reiter(ui, app) {
   const n = SEITEN.length;
   const luecke = 8;
   const b = (W - 2 * RAND - (n - 1) * luecke) / n;
-  // Sieben Reiter: etwas kleiner, sonst würde „Werkzeuge" gekürzt
-  const groesse = n > 6 ? 21 : 25;
+  // Acht Reiter: kleiner, sonst würde „Werkzeuge" gekürzt
+  const groesse = n > 7 ? 19 : n > 6 ? 21 : 25;
   SEITEN.forEach(([id, text], i) => {
     ui.knopf(`reiter:${id}`, RAND + i * (b + luecke), RAND, b, 72, text,
       () => app.aktionen.seite(id), { an: app.tablet.seite === id, groesse });
@@ -76,6 +78,29 @@ function absatz(ui, text, y, { groesse = 26, farbe = FARBE.text2, zeilenMax = 6,
   const zeilen = ui.umbrechen(text, breite, { groesse, zeilenMax });
   zeilen.forEach((z, i) => ui.text(z, RAND + 8, y + i * (groesse + 10), { groesse, farbe }));
   return zeilen.length * (groesse + 10);
+}
+
+// ── Leistung ──────────────────────────────────────────────────────
+
+/** Bildrate, Hänger und Kachelstand — die Zahlen aus vr-leistung.js, Zeile für Zeile. */
+function leistung(ui, app) {
+  titel(ui, 'Leistung', OBEN + 4);
+  const zeilen = app.leistung();
+  ui.bereich('leistung', RAND, OBEN + 52, W - 2 * RAND, UNTEN - (OBEN + 52), oben => {
+    let y = oben;
+    const breite = W - 2 * RAND - 30;
+    zeilen.forEach((zeile, i) => {
+      const kopf = i === 0;
+      const eingerueckt = zeile.startsWith('   ');
+      const teile = ui.umbrechen(zeile.trim(), breite - (eingerueckt ? 24 : 0), { groesse: kopf ? 26 : 21, zeilenMax: 3 });
+      teile.forEach(t => {
+        ui.text(t, RAND + 8 + (eingerueckt ? 24 : 0), y, { groesse: kopf ? 26 : 21, gewicht: kopf ? 600 : 400, farbe: kopf ? FARBE.text : FARBE.text2 });
+        y += (kopf ? 26 : 21) + 8;
+      });
+      y += kopf ? 10 : 4;
+    });
+    return y - oben + 12;
+  });
 }
 
 // ── Info ──────────────────────────────────────────────────────────
@@ -411,6 +436,11 @@ function werkzeuge(ui, app) {
         ui.knopf('wz:start', RAND, y, breite, 64, 'Modell wieder vor mich stellen', ak.zumStart);
       }
       y += 78;
+      // Wer durch die Luft gezogen hat, schwebt — hier geht es zurück auf den Boden
+      if (app.zustand.modus === 'vr') {
+        ui.knopf('wz:landen', RAND, y, breite, 64, app.schwebt ? 'Landen — auf den Boden zurück' : 'Landen (du stehst auf dem Boden)', ak.landen, { gesperrt: !app.schwebt });
+        y += 78;
+      }
     }
     ui.schalter('wz:messen', RAND, y, breite, 72, 'Messen', wz.messen, ak.messenUmschalten, {
       unter: wz.messen ? (wz.punkte === 1 ? 'Punkt A gesetzt — jetzt Punkt B' : 'Abzug setzt Punkt A, dann B') : 'Abstand zwischen zwei Punkten',
@@ -446,6 +476,20 @@ function werkzeuge(ui, app) {
       { wert: 0.8, text: 'langsam' }, { wert: 1.4, text: 'normal' }, { wert: 2.6, text: 'schnell' },
     ], wz.tempo, ak.tempo);
     y += 74;
+    // Ohne Sticks bewegt man sich durch Kneifen und Ziehen: wie weit trägt eine Handbewegung?
+    if (brille && app.zustand.modus === 'vr' && app.steuerung === 'hand') {
+      ui.text('Ziehen in der Luft (Weg je Handweg)', RAND + 8, y, { groesse: 23, farbe: FARBE.text2 });
+      y += 34;
+      ui.segment('wz:flug', RAND, y, breite, 60, [
+        { wert: 2, text: 'fein ×2' }, { wert: 6, text: 'normal ×6' }, { wert: 15, text: 'weit ×15' },
+      ], wz.flugweite, ak.flugweite);
+      y += 74;
+      // Was die Brille beim Kneifen liefert (bleibt nach dem Loslassen stehen)
+      ui.text('Zuletzt gekniffen:', RAND + 8, y, { groesse: 21, farbe: FARBE.text2 });
+      y += 28;
+      for (const z of app.flugDiag) { ui.text(z, RAND + 8, y, { groesse: 21, farbe: FARBE.text2, max: breite - 16 }); y += 28; }
+      y += 12;
+    }
     ui.text('Drehen in Schritten', RAND + 8, y, { groesse: 23, farbe: FARBE.text2 });
     y += 34;
     ui.segment('wz:dreh', RAND, y, breite, 60, [
@@ -636,10 +680,11 @@ const HILFE = {
   vrHand: [
     ['Hinsehen, kneifen', 'Boden: hinspringen · Bauteil: Info'],
     ['Lange kneifen', 'Info, auch zu Decken und Böden'],
+    ['Kneifen, ziehen', 'Welt greifen · senkrecht ziehen: fliegen'],
+    ['Landen', 'Werkzeuge: Landen · oder hinspringen'],
     ['Auf dem Tablet', 'kneifen tippt · kneifen und ziehen rollt'],
     ['Drehen, Start', 'Werkzeuge: ◀ 30° · 30° ▶ · Zum Start'],
     ['Tablet', 'schwebt links unten, folgt beim Wegdrehen'],
-    ['Gehen', 'hinspringen — oder ein paar echte Schritte'],
   ],
   tischHand: [
     ['Kneifen', 'Info zum Bauteil'],

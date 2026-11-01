@@ -205,7 +205,33 @@ const BimViewerUI = {
       this.createModernToolbar();
       this.initEventHandlers();
       if (aktiv) this.activateSection(aktiv);
+      this._nachNeuaufbauFuellen();
     });
+  },
+
+  /**
+   * Füllt nach jedem Neuaufbau der Leiste, was im Markup nur als leerer
+   * Behälter steht. Gilt für den Sprachwechsel UND für eine späte Anmeldung
+   * eines Bereichs: Die zweite ließ bis 2026-11-01 Karten-, Gelände- und
+   * Ebenenliste leer zurück — ein Modul, das sich nach dem Start anmeldete
+   * (Mainz-Zwilling), räumte damit das Layer-Panel aus.
+   */
+  _nachNeuaufbauFuellen() {
+    // Die Liste der geladenen Modelle steht im Markup nur als leerer
+    // Behälter. Die Einträge entstehen sonst nur beim Laden eines Modells,
+    // wären nach einem Neuaufbau also verschwunden, obwohl die Modelle in der
+    // Szene liegen.
+    this.closeAssetTransform();
+    BimViewer.loadedAssets?.forEach((_asset, assetId) => this.createAssetControls(assetId));
+
+    // Dasselbe gilt für die Vorschlagsliste der Ion-Assets: sie steht im
+    // Markup nur als leere `<datalist>`. Neu abgefragt wird nichts — die
+    // Namen liegen seit dem ersten Antippen des Feldes in `_ionAssetNames`.
+    this.fillIonSuggestions();
+    if (window.LayerManager && LayerManager.viewer) LayerManager.populateUI();
+    window.Vektorkacheln?.panelZeichnen();
+
+    if (window.ILeenUINormalize) ILeenUINormalize.run();
   },
 
   /** Bewertet `an` aller Aktionsknöpfe neu — nach einer Zustandsänderung von außen. */
@@ -335,7 +361,7 @@ const BimViewerUI = {
     const unten = document.createElement('div');
     unten.className = 'activity-btn activity-btn--collapse';
     unten.style.marginTop = 'auto';
-    unten.title = 'Seitenleiste einklappen (M)';
+    unten.title = 'Seitenleiste einklappen (B)';
     unten.innerHTML = '<span class="modern-section-icon">⇤</span>';
     unten.addEventListener('click', () => this.toggleSidebar());
     leiste.appendChild(unten);
@@ -389,22 +415,7 @@ const BimViewerUI = {
         this.createModernToolbar();
         this.initEventHandlers();
         if (active) this.activateSection(active);
-
-        // Die Liste der geladenen Modelle wird beim Neuaufbau geleert — sie
-        // steht im Markup nur als leerer Behälter. Die Einträge entstehen
-        // sonst nur beim Laden eines Modells, wären nach einem Sprachwechsel
-        // also verschwunden, obwohl die Modelle in der Szene liegen.
-        this.closeAssetTransform();
-        BimViewer.loadedAssets?.forEach((_asset, assetId) => this.createAssetControls(assetId));
-
-        // Dasselbe gilt für die Vorschlagsliste der Ion-Assets: sie steht im
-        // Markup nur als leere `<datalist>`. Neu abgefragt wird nichts — die
-        // Namen liegen seit dem ersten Antippen des Feldes in `_ionAssetNames`.
-        this.fillIonSuggestions();
-        if (window.LayerManager && LayerManager.viewer) LayerManager.populateUI();
-        window.Vektorkacheln?.panelZeichnen();
-
-        if (window.ILeenUINormalize) ILeenUINormalize.run();
+        this._nachNeuaufbauFuellen();
       });
     }
   },
@@ -560,7 +571,7 @@ const BimViewerUI = {
     catch (e) { console.error('[BimViewerUI] beimOeffnen "' + wo + '"', e); }
   },
 
-  /** Die ganze linke Leiste ein- oder ausfahren (Taste M). */
+  /** Die ganze linke Leiste ein- oder ausfahren (Taste B). */
   toggleSidebar(einklappen) {
     const toolbar = document.getElementById('toolbar');
     const toggle = document.getElementById('sidebarToggle');
@@ -847,7 +858,19 @@ const BimViewerUI = {
     } else if (!sichtbar.length) {
       listEl.innerHTML = '<div class="modern-empty-state">Kein Modell passt zu Filter und Suche</div>';
     } else {
-      listEl.innerHTML = sichtbar.map(asset => this.getBackendAssetHTML(asset)).join('');
+      // Zuletzt geladene oben (nutzung.js merkt sie sich, lokal und im
+      // Backend), höchstens acht — danach die Reihenfolge des Servers. Wer
+      // jeden Tag dieselben drei Modelle öffnet, soll sie nicht zwischen
+      // dreißig anderen suchen.
+      const N = BimViewer.Nutzung;
+      const wann = (a) => (N && a.job_id ? N.zuletztGeladen(a.job_id) : 0);
+      const oben = sichtbar.filter(wann).sort((a, b) => wann(b) - wann(a)).slice(0, 8);
+      const rest = sichtbar.filter(a => !oben.includes(a));
+      const trenner = (text) => `<div class="asset-liste__trenner">${text}</div>`;
+      listEl.innerHTML = oben.length
+        ? trenner('Zuletzt geladen') + oben.map(asset => this.getBackendAssetHTML(asset)).join('') +
+          (rest.length ? trenner('Alle') + rest.map(asset => this.getBackendAssetHTML(asset)).join('') : '')
+        : sichtbar.map(asset => this.getBackendAssetHTML(asset)).join('');
     }
   },
 
@@ -2028,8 +2051,9 @@ const BimViewerUI = {
 
       document.getElementById('sidebarToggle')?.addEventListener('click', () => this.toggleSidebar(false));
 
+      // B, nicht mehr M: M ist seit 2026-10-19 Messen (tastenkuerzel.js).
       document.addEventListener('keydown', (e) => {
-        if (e.key !== 'm' && e.key !== 'M') return;
+        if (e.key !== 'b' && e.key !== 'B') return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         const ziel = e.target;
         if (ziel && (ziel.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ziel.tagName))) return;

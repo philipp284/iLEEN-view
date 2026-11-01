@@ -1,0 +1,704 @@
+/* ==========================================================================
+   iLEEN — Raumkonzept (room-concept.js)
+   ==========================================================================
+
+   Nur das, was das Design-System nicht schon hergibt: die Nutzungslegende
+   mit ihrem Anforderungsprofil, die Kennzahlenleiste und die Liste der
+   ungeklärten Räume. Schaltflächen, Zeilen und Felder kommen aus
+   design-system.css (.btn, .row, .field) und werden hier nicht neu erfunden.
+   ========================================================================== */
+
+.rk-intro {
+  font-size: var(--ds-text-sm, 10.5px);
+  line-height: 1.5;
+  color: var(--text-secondary, #888);
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-actions {
+  display: flex;
+  gap: var(--ds-space-2, 8px);
+  flex-wrap: wrap;
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-status {
+  font-size: var(--ds-text-sm, 10.5px);
+  line-height: 1.5;
+  color: var(--text-secondary, #888);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border-left: 2px solid var(--ds-border-strong, rgba(255, 255, 255, 0.2));
+  padding: var(--ds-space-2, 8px) var(--ds-space-3, 12px);
+  border-radius: 0 var(--ds-radius-sm, 4px) var(--ds-radius-sm, 4px) 0;
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-status-knopf { margin-top: var(--ds-space-2, 8px); }
+.rk-status--fehler {
+  border-left-color: var(--ds-warning, #e0a33e);
+  color: var(--text-primary, #e8e8e8);
+}
+
+/* --- Kennzahlen ----------------------------------------------------------- */
+
+.rk-kennzahlen {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--ds-space-1, 4px);
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-kennzahlen > div {
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border-radius: var(--ds-radius-sm, 4px);
+  padding: var(--ds-space-2, 8px) var(--ds-space-1, 4px);
+  text-align: center;
+}
+
+.rk-kennzahlen b {
+  display: block;
+  font-size: var(--ds-text-lg, 13.5px);
+  color: var(--text-primary, #e8e8e8);
+  font-variant-numeric: tabular-nums;
+}
+
+.rk-kennzahlen span {
+  font-size: 9.5px;
+  color: var(--text-muted, #666);
+}
+
+/* --- Ansicht umschalten --------------------------------------------------- */
+/* Zwei Ansichten derselben Räume — an ihrer Stelle im Bau oder im gerechneten
+   Raster. Als Segmentleiste und nicht als Auswahlfeld: es sind genau zwei
+   Zustände, und welcher gilt, muss man ohne Aufklappen sehen. */
+
+.rk-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-layout-btn {
+  height: var(--ds-control-height-sm, 24px);
+  border: 0;
+  border-radius: calc(var(--ds-radius-sm, 4px) - 1px);
+  background: transparent;
+  color: var(--text-secondary, #888);
+  font-size: var(--ds-text-sm, 10.5px);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.rk-layout-btn:hover { color: var(--text-primary, #e8e8e8); }
+
+.rk-layout-btn--an {
+  background: var(--ds-surface-hover, rgba(255, 255, 255, 0.11));
+  color: var(--text-primary, #e8e8e8);
+}
+
+.rk-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2, 8px);
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-zeile label {
+  font-size: var(--ds-text-sm, 10.5px);
+  color: var(--text-secondary, #888);
+  min-width: 60px;
+}
+
+.rk-zeile select,
+.rk-offen-zeile select {
+  flex: 1;
+  height: var(--ds-control-height-sm, 24px);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  color: var(--text-primary, #e8e8e8);
+  font-size: var(--ds-text-sm, 10.5px);
+  padding: 0 var(--ds-space-1, 4px);
+}
+
+/* --- Nutzungslegende ------------------------------------------------------ */
+/* Jede Zeile ist zugleich Legende, Zähler, Anforderungsprofil und Filter —
+   ein Klick nimmt die Nutzung aus der Darstellung. */
+
+.rk-legende {
+  border-top: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  margin-bottom: var(--ds-space-1, 4px);
+}
+
+.rk-klasse {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: var(--ds-space-2, 8px);
+  align-items: center;
+  padding: var(--ds-space-2, 8px) var(--ds-space-1, 4px);
+  border-bottom: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  cursor: pointer;
+  transition: background var(--ds-transition, 140ms);
+}
+
+.rk-klasse:hover { background: var(--ds-surface-hover, rgba(255, 255, 255, 0.085)); }
+.rk-klasse--aus  { opacity: 0.35; }
+
+.rk-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.rk-klasse-name {
+  font-size: var(--ds-text, 12px);
+  color: var(--text-primary, #e8e8e8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rk-klasse-zahl {
+  font-size: var(--ds-text-sm, 10.5px);
+  color: var(--text-secondary, #888);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Das Anforderungsprofil läuft über die volle Breite unter dem Namen — bei den
+   Nutzungen, auf die gerade gefiltert ist. Bei allen übrigen steht es im
+   Tooltip: sechzehn Profile untereinander schöben die Raumliste aus dem Bild,
+   und je Raum steht es ohnehin im Steckbrief. */
+.rk-anf {
+  grid-column: 2 / -1;
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--text-muted, #666);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Ungeklärte Räume ----------------------------------------------------- */
+
+.rk-offen {
+  border: 1px solid var(--ds-warning, #e0a33e);
+  border-radius: var(--ds-radius-sm, 4px);
+  padding: var(--ds-space-2, 8px);
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-offen > summary {
+  font-size: var(--ds-text-sm, 10.5px);
+  color: var(--text-primary, #e8e8e8);
+  cursor: pointer;
+}
+
+.rk-offen-hinweis {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--text-muted, #666);
+  margin: var(--ds-space-2, 8px) 0;
+}
+
+.rk-offen-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2, 8px);
+  padding: 3px 0;
+}
+
+.rk-offen-name {
+  flex: 1;
+  font-size: var(--ds-text-sm, 10.5px);
+  color: var(--text-secondary, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Export --------------------------------------------------------------- */
+
+.rk-export {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2, 8px);
+  border-top: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  padding-top: var(--ds-space-3, 12px);
+}
+
+.rk-export-hinweis {
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--text-muted, #666);
+}
+
+.rk-export-hinweis code,
+.rk-intro code {
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 9.5px;
+}
+
+/* ==========================================================================
+   Raumansicht (seit 2026-10): Geschossleiste, Kriterium, Legende mit Anteil,
+   Raumliste, Kennwerte je Geschoss, Steckbrief in der Eigenschaftsanzeige
+   ========================================================================== */
+
+.rk-abschnitt {
+  margin-bottom: var(--ds-space-3, 12px);
+}
+
+.rk-abschnitt-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2, 8px);
+  margin-bottom: var(--ds-space-2, 8px);
+  color: var(--text-secondary, #888);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+details > summary.rk-abschnitt-kopf {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0;
+  padding: var(--ds-space-2, 8px) 0;
+}
+details > summary.rk-abschnitt-kopf::-webkit-details-marker { display: none; }
+details > summary.rk-abschnitt-kopf::before {
+  content: '›';
+  color: var(--text-muted, #666);
+  font-size: 13px;
+  transition: transform var(--ds-transition, 140ms);
+}
+details[open] > summary.rk-abschnitt-kopf::before { transform: rotate(90deg); }
+details > summary.rk-abschnitt-kopf > span:first-child { flex: 1; }
+
+.rk-abschnitt-zahl {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted, #666);
+  font-variant-numeric: tabular-nums;
+}
+
+.rk-werkzeuge { display: flex; gap: 2px; }
+
+.rk-icon {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  background: transparent;
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--ds-transition, 140ms), color var(--ds-transition, 140ms);
+}
+.rk-icon:hover { background: var(--ds-surface-hover, rgba(255, 255, 255, 0.085)); color: var(--text-primary, #e8e8e8); }
+.rk-icon--an {
+  border-color: rgba(var(--ds-accent-rgb, 151, 191, 13), 0.6);
+  color: var(--ds-accent, #97BF0D);
+}
+
+/* --- Chips: Geschosse und Nutzungen ------------------------------------- */
+
+.rk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rk-chips--nutzung { margin-bottom: var(--ds-space-2, 8px); }
+
+.rk-chips-titel {
+  align-self: center;
+  margin-right: 2px;
+  color: var(--text-muted, #666);
+  font-size: var(--ds-text-sm, 10.5px);
+}
+
+.rk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: 12px;
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  color: var(--text-secondary, #888);
+  font-size: var(--ds-text-sm, 10.5px);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--ds-transition, 140ms), color var(--ds-transition, 140ms),
+              border-color var(--ds-transition, 140ms);
+}
+.rk-chip:hover { color: var(--text-primary, #e8e8e8); background: var(--ds-surface-hover, rgba(255, 255, 255, 0.085)); }
+.rk-chip small { color: var(--text-muted, #666); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.rk-chip i { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.rk-chip--an {
+  border-color: rgba(var(--ds-accent-rgb, 151, 191, 13), 0.7);
+  background: rgba(var(--ds-accent-rgb, 151, 191, 13), 0.14);
+  color: var(--text-primary, #e8e8e8);
+}
+
+/* --- Kriterium und Legende ---------------------------------------------- */
+
+.rk-kriterium {
+  width: 100%;
+  height: var(--ds-control-height, 30px);
+  margin-bottom: var(--ds-space-2, 8px);
+  padding: 0 var(--ds-space-2, 8px);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  color: var(--text-primary, #e8e8e8);
+  font-size: var(--ds-text, 12px);
+  font-family: inherit;
+}
+
+/* Der Balken zeigt den Flächenanteil — wie viel des Hauses eine Nutzung oder
+   eine Lastkategorie ausmacht, sieht man so ohne Zahlen zu lesen. */
+.rk-balken {
+  grid-column: 2 / -1;
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  overflow: hidden;
+}
+.rk-balken i { display: block; height: 100%; border-radius: 2px; opacity: 0.85; }
+
+.rk-legende-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: var(--ds-space-2, 8px);
+  color: var(--text-muted, #666);
+  font-size: 9.5px;
+}
+
+/* --- Raumliste ---------------------------------------------------------- */
+
+.rk-suche {
+  width: 100%;
+  height: var(--ds-control-height-sm, 24px);
+  margin-bottom: var(--ds-space-2, 8px);
+  padding: 0 var(--ds-space-2, 8px);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  color: var(--text-primary, #e8e8e8);
+  font-size: var(--ds-text-sm, 10.5px);
+  font-family: inherit;
+}
+
+.rk-liste {
+  max-height: 46vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+}
+
+.rk-gs { border-bottom: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11)); }
+
+.rk-gs > summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-2, 8px);
+  padding: 6px var(--ds-space-1, 4px);
+  background: var(--bg-surface, #1c1d20);
+  cursor: pointer;
+  list-style: none;
+}
+.rk-gs > summary::-webkit-details-marker { display: none; }
+.rk-gs > summary::before {
+  content: '›';
+  color: var(--text-muted, #666);
+  transition: transform var(--ds-transition, 140ms);
+}
+.rk-gs[open] > summary::before { transform: rotate(90deg); }
+
+.rk-gs-name { flex: 1; color: var(--text-primary, #e8e8e8); font-size: var(--ds-text, 12px); font-weight: 600; }
+.rk-gs-zahl { color: var(--text-muted, #666); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+
+.rk-raum {
+  display: grid;
+  grid-template-columns: 8px minmax(34px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--ds-space-1, 4px) 3px 14px;
+  border-left: 2px solid transparent;
+  font-size: var(--ds-text-sm, 10.5px);
+  cursor: pointer;
+}
+.rk-raum:hover { background: var(--ds-surface-hover, rgba(255, 255, 255, 0.085)); }
+.rk-raum--an {
+  border-left-color: var(--ds-accent, #97BF0D);
+  background: rgba(var(--ds-accent-rgb, 151, 191, 13), 0.12);
+}
+.rk-raum .rk-dot { width: 8px; height: 8px; }
+.rk-raum-nr { color: var(--text-secondary, #888); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rk-raum-name { color: var(--text-primary, #e8e8e8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-raum-wert {
+  max-width: 110px;
+  overflow: hidden;
+  color: var(--text-secondary, #888);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rk-leer {
+  padding: var(--ds-space-3, 12px);
+  color: var(--text-muted, #666);
+  font-size: var(--ds-text-sm, 10.5px);
+  text-align: center;
+}
+
+.rk-offen-name { cursor: pointer; }
+.rk-offen-name:hover { color: var(--text-primary, #e8e8e8); }
+
+/* --- Kennwerte je Geschoss ---------------------------------------------- */
+
+.rk-kennwerte {
+  border-top: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+}
+
+.rk-tabelle {
+  width: 100%;
+  margin: var(--ds-space-1, 4px) 0 var(--ds-space-2, 8px);
+  border-collapse: collapse;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.rk-tabelle th, .rk-tabelle td {
+  padding: 3px 4px;
+  text-align: right;
+  white-space: nowrap;
+}
+.rk-tabelle thead th {
+  color: var(--text-muted, #666);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+}
+.rk-tabelle td { color: var(--text-primary, #e8e8e8); }
+.rk-tabelle tbody tr:nth-child(even) td { background: var(--ds-surface, rgba(255, 255, 255, 0.045)); }
+.rk-tabelle tfoot th {
+  color: var(--text-primary, #e8e8e8);
+  border-top: 1px solid var(--ds-border-strong, rgba(255, 255, 255, 0.2));
+}
+.rk-tabelle .rk-t-name { text-align: left; }
+.rk-t-name small { margin-left: 4px; color: var(--text-muted, #666); font-weight: 400; }
+
+.rk-export > summary { color: var(--text-secondary, #888); }
+
+/* --- Prüfungen ---------------------------------------------------------- */
+/* Je Prüfung eine Ampel, die Grundlage in einer Zeile und die Räume mit Befund
+   als anklickbare Liste — ein Klick fliegt hin und öffnet den Steckbrief. */
+
+.rk-pruefung { margin-bottom: var(--ds-space-3, 12px); }
+.rk-pruefung-kopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ds-text-sm, 10.5px);
+  color: var(--text-secondary, #888);
+}
+.rk-pruefung-kopf b { color: var(--text-primary, #e8e8e8); font-weight: 600; }
+.rk-pruefung-kopf span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
+.rk-pruefung-grundlage {
+  margin: 2px 0 4px 14px;
+  color: var(--text-muted, #666);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+.rk-ampel { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-muted, #666); }
+.rk-ampel--ok      { background: var(--ds-success, #5fb878); }
+.rk-ampel--hinweis { background: var(--ds-warning, #e0a33e); }
+.rk-ampel--warnung { background: var(--ds-danger, #e05a4f); }
+.rk-befund {
+  display: grid;
+  grid-template-columns: minmax(34px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--ds-space-1, 4px) 3px 12px;
+  border-left: 2px solid var(--ds-warning, #e0a33e);
+  font-size: var(--ds-text-sm, 10.5px);
+  cursor: pointer;
+}
+.rk-befund--warnung { border-left-color: var(--ds-danger, #e05a4f); }
+.rk-befund:hover { background: var(--ds-surface-hover, rgba(255, 255, 255, 0.085)); }
+
+/* --- Ins IFC schreiben -------------------------------------------------- */
+
+.rk-haken {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: var(--ds-space-2, 8px) 0;
+  color: var(--text-secondary, #888);
+  font-size: var(--ds-text-sm, 10.5px);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.rk-haken input { margin-top: 1px; }
+
+/* --- Schild am Zeiger --------------------------------------------------- */
+
+.rk-tip {
+  position: fixed;
+  z-index: 1200;
+  display: none;
+  max-width: 280px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.2));
+  border-radius: var(--ds-radius-sm, 4px);
+  background: rgba(20, 22, 26, 0.92);
+  color: var(--text-primary, #e8e8e8);
+  font-size: 11px;
+  line-height: 1.45;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.rk-tip b { display: block; font-weight: 600; }
+.rk-tip span { display: flex; align-items: center; gap: 5px; color: var(--text-secondary, #aaa); }
+.rk-tip i { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+
+/* --- Steckbrief in der Eigenschaftsanzeige ------------------------------ */
+
+/* Isolieren und Plansatz wirken auf ein angeklicktes Bauteil; bei einem Raum
+   täten sie nichts oder das Falsche. Der Schließknopf bleibt. `!important`,
+   weil design-system.css `.floating-panel-btn` mit `display: inline-flex
+   !important` belegt — ohne es bliebe die Regel wirkungslos. */
+#infoBoxPanel:has(.rk-karte) .isolate-btn,
+#infoBoxPanel:has(.rk-karte) [onclick*="PlanBauteil"] { display: none !important; }
+
+.rk-karte-kopf {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-2, 8px);
+  margin-bottom: var(--ds-space-2, 8px);
+}
+.rk-dot--gross { width: 14px; height: 14px; margin-top: 2px; border-radius: 3px; flex: 0 0 auto; }
+.rk-karte-titel { color: var(--text-primary, #e8e8e8); font-size: var(--ds-text-lg, 13.5px); line-height: 1.35; min-width: 0; }
+.rk-karte-titel b { font-variant-numeric: tabular-nums; }
+.rk-karte-titel small { display: block; color: var(--text-muted, #666); font-size: var(--ds-text-sm, 10.5px); }
+
+.rk-karte-wert {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--ds-space-2, 8px);
+  padding: 6px var(--ds-space-2, 8px);
+  border-radius: var(--ds-radius-sm, 4px);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  font-size: var(--ds-text-sm, 10.5px);
+}
+.rk-karte-wert span { color: var(--text-muted, #666); }
+.rk-karte-wert b { color: var(--text-primary, #e8e8e8); font-size: var(--ds-text, 12px); }
+
+.rk-karte-hinweis {
+  margin-bottom: var(--ds-space-2, 8px);
+  padding: 6px var(--ds-space-2, 8px);
+  border-left: 2px solid var(--ds-warning, #e0a33e);
+  background: rgba(224, 163, 62, 0.08);
+  color: var(--text-primary, #e8e8e8);
+  font-size: var(--ds-text-sm, 10.5px);
+  line-height: 1.45;
+}
+
+.rk-karte-hinweis--warnung {
+  border-left-color: var(--ds-danger, #e05a4f);
+  background: rgba(224, 90, 79, 0.09);
+}
+
+/* Nutzlast für die Statik: ein Eingriff am System, kein Wert der Ansicht. */
+.rk-karte-nutzlast { margin-bottom: var(--ds-space-2, 8px); }
+.rk-karte-nutzlast label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-muted, #666);
+  font-size: 9.5px;
+}
+.rk-karte-nutzlast select {
+  width: 100%;
+  height: var(--ds-control-height-sm, 24px);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  color: var(--text-primary, #e8e8e8);
+  font-size: var(--ds-text-sm, 10.5px);
+  font-family: inherit;
+}
+
+.rk-karte-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: var(--ds-space-2, 8px);
+}
+.rk-karte-klasse {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: var(--ds-control-height-sm, 24px);
+  background: var(--ds-surface, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  color: var(--text-primary, #e8e8e8);
+  font-size: var(--ds-text-sm, 10.5px);
+  font-family: inherit;
+}
+
+/* Die Quelle steht an der Zahl. Ein Richtwert aus dem Katalog darf nicht
+   aussehen wie eine Angabe aus der Planung. */
+.rk-kzeile .props-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.rk-q {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.2px;
+  cursor: help;
+}
+.rk-q--ifc        { background: rgba(151, 191, 13, 0.18); color: #b7d94a; }
+.rk-q--statik     { background: rgba(78, 163, 255, 0.18); color: #8cc2ff; }
+.rk-q--katalog    { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary, #9aa0a6); }
+.rk-q--abgeleitet { background: rgba(197, 95, 214, 0.16); color: #d79be3; }
+.rk-q--modell     { background: rgba(43, 179, 168, 0.16); color: #6fd3ca; }
+.rk-q--hand       { background: rgba(224, 163, 62, 0.18); color: #f0c27a; }
+.rk-q--regel      { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary, #9aa0a6); }
+
+.rk-karte-fuss {
+  margin-top: var(--ds-space-2, 8px);
+  color: var(--text-muted, #666);
+  font-size: 9.5px;
+  line-height: 1.8;
+}
+
+.rk-pset { margin-left: var(--ds-space-2, 8px); }

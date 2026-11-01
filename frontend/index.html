@@ -55,6 +55,8 @@
   <link rel="stylesheet" href="hinweise.css">
   <link rel="stylesheet" href="hilfe.css">
   <link rel="stylesheet" href="sensor-panel.css">
+  <!-- Raumansicht: Räume als Körper, Steckbrief, Geschossfilter, Einfärben -->
+  <link rel="stylesheet" href="room-concept.css">
 </head>
 
 <body>
@@ -166,7 +168,14 @@
   <script src="ifc-filter-pro.js"></script>
   <!-- Rollenbasierte Bauteileigenschaften — vor ui.js -->
   <script src="ifc-role-properties.js"></script>
+  <!-- Raumansicht — raum-merkmale.js (rein, ohne Cesium) vor room-concept.js, dieses vor
+       room-concept-panel.js, das RoomConcept.getPanelHTML() ruft. Die Messwerte je Raum
+       (raum-sensorik.js) gibt es nur in der Vollfassung; ohne sie fehlen die Kriterien „… · live". -->
+  <script src="raum-merkmale.js"></script>
+  <script src="room-concept.js"></script>
   <script src="ui.js"></script>
+  <!-- meldet sich über BimViewerUI.gruppeAnmelden('ifc', …) ein, also nach ui.js -->
+  <script src="room-concept-panel.js"></script>
 
   <!-- Vereinheitlichung der Bedienelemente — nach ui.js, damit der
        Beobachter die Panel-Container schon vorfindet -->
@@ -273,6 +282,8 @@
   <script src="fps.js"></script>
   <!-- Bildrate halten, solange Gaussian Splats in der Szene liegen (#8) -->
   <script src="splat-leistung.js"></script>
+  <!-- in Bewegung gröber zeichnen, im Stand scharf (IFC, Punktwolken) -->
+  <script src="bewegungsguete.js"></script>
   <!-- Splat-Farbe linearisieren, solange HDR an ist (sonst doppelt aufgehellt) -->
   <script src="splat-farbe.js"></script>
 

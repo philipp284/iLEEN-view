@@ -46,10 +46,10 @@ const VERBOTENE_DATEIEN = [
   'einsturz-panel.js', 'einsturz.js', 'einsturz.css',
   'issue-manager.js', 'issue-manager.css',
   // linke Seite — Gruppen und eigene Bereiche
-  'ifclash-panel.js', 'room-concept-panel.js', 'bauplaner-panel.js',
+  'ifclash-panel.js', 'bauplaner-panel.js',
   'konzept-panel.js', 'ifc-4d-panel.js', 'plan-panel.js',
   // Rechenkerne dahinter
-  'solar.js', 'ifclash.js', 'room-concept.js', 'flight-tracker.js',
+  'solar.js', 'ifclash.js', 'flight-tracker.js',
   'tragwerk-ergebnisse.js', 'tragwerk-eingriffe.js', 'volumen.js', 'plan-2d.js',
   'plan-bauteil.js', 'fe-browser.js', 'geg-huelle.js', 'sequencing.js',
   'aufmass-rdf.js', 'aufmass-mengen.js',

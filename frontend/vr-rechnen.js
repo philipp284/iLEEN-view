@@ -326,6 +326,32 @@ export function bodenNachfuehren(fussY, bodenY, dt, fallTempo = 8) {
 }
 
 /**
+ * Durch die Luft ziehen (Brille ohne Sticks): die kneifende Hand greift die
+ * Welt. Zieht sie sich etwas zu, geht man selbst in die Gegenrichtung — ein
+ * Stück Hand ist `weite` Stücke Weg. `von`, `nach` sind die Lagen der Finger
+ * im Rahmen des Nutzers (m), `zug` = { h, v } der bisher gezogene Weg.
+ *
+ * Waagerecht ziehen heißt gehen: die Höhe bleibt dem Boden überlassen. Wer
+ * überwiegend senkrecht zieht (mehr als `senkrechtAb` m und mehr hoch als
+ * quer), will fliegen — von da an gilt die volle Richtung, bis er landet.
+ * Ein Tracking-Sprung (> `sprung` m in einem Bild) wird nicht mitgezogen.
+ *
+ * Rückgabe: `schritt` (im Rahmen des Nutzers), neuer `zug`, `schwebt`.
+ */
+export function flugSchritt(zug, von, nach, { weite = 6, frei = false, bodenFolgen = true, sprung = 0.4, senkrechtAb = 0.3 } = {}) {
+  const d = [von[0] - nach[0], von[1] - nach[1], von[2] - nach[2]];
+  if (Math.hypot(d[0], d[1], d[2]) > sprung) return { schritt: [0, 0, 0], zug, schwebt: frei };
+  const h = zug.h + Math.hypot(d[0], d[2]) * weite;
+  const v = zug.v + Math.abs(d[1]) * weite;
+  const schwebt = frei || !bodenFolgen || (v > h && v > senkrechtAb);
+  return {
+    schritt: [d[0] * weite, schwebt ? d[1] * weite : 0, d[2] * weite],
+    zug: { h, v },
+    schwebt: frei || (bodenFolgen && schwebt),
+  };
+}
+
+/**
  * Der Grundriss des Modells als gedrehtes Rechteck in x/z — aus den acht
  * Ecken seines Kastens und dessen Achsen (orientierte Box des Tilesets).
  * Gedreht, weil ein Gebäude schräg zur Nordrichtung sonst einen viel zu
@@ -448,6 +474,39 @@ export const LOD2 = {
   rechteck: [5.5, 47.0, 15.6, 55.2],
   credit: `3D-Gebäude: © GeoBasis-DE/BKG ${JAHR} (basemap.de 3D, verändert: Höhen auf das WGS84-Ellipsoid umgerechnet)`,
 };
+
+/**
+ * So weit um den Standort reichen die LoD2-Zellen, die der Durchlauf überhaupt besucht (Meter).
+ * Gebäude sind ab einigen Kilometern unter einer Handvoll Bildpunkten und im Dunst
+ * (SICHT.dunstVon 2,5 km); weiter draußen wäre es Rechenzeit für nichts.
+ */
+export const LOD2_UMKREIS_M = 15000;
+
+/**
+ * Aus den Kindern der Wurzel eines Tilesets die, deren Region (`boundingVolume.region`:
+ * West, Süd, Ost, Nord in Bogenmaß) im Umkreis von `radiusM` um den Punkt liegt. Zellen
+ * ohne Region bleiben — was sich nicht prüfen lässt, wird nicht verworfen.
+ *
+ * Der Grund: die Wurzel des LoD2-Tilesets der BKG hat 1347 Kinder (überlappende Zellen
+ * von wenigen Kilometern bis zu 8° Kantenlänge), und der Kachelbaum besucht sie bei
+ * jedem Durchlauf. Das kostet auf dem Mac 4–5 ms (p95 11–15 ms) je Bild, auf der Quest
+ * ein Vielfaches. Im Umkreis von 15 km um den Campus liegen davon 38.
+ *
+ * @param lat, lon  Bogenmaß
+ */
+export function zellenImUmkreis(kinder, lat, lon, radiusM) {
+  const R = 6371008.8;
+  return kinder.filter(k => {
+    const r = k && k.boundingVolume && k.boundingVolume.region;
+    if (!r) return true;
+    const [west, sued, ost, nord] = r;
+    const la = Math.min(Math.max(lat, sued), nord);
+    const lo = Math.min(Math.max(lon, west), ost);
+    const dx = (lon - lo) * Math.cos(lat) * R;
+    const dy = (lat - la) * R;
+    return Math.hypot(dx, dy) <= radiusM;
+  });
+}
 
 const MERC = 20037508.342789244;
 

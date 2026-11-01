@@ -43,7 +43,8 @@ import {
   TerrainRGBMeshPlugin, TerrariumMeshPlugin, XYZTilesOverlay,
 } from 'https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.5.3/build/index.plugins.js';
 import {
-  KARTEN, GELAENDE, LOD2, schichtPasst, schichtQuelle, kartenVermerke, inDeutschland, imFuss,
+  KARTEN, GELAENDE, LOD2, LOD2_UMKREIS_M, zellenImUmkreis, schichtPasst, schichtQuelle, kartenVermerke,
+  inDeutschland, imFuss,
 } from './vr-rechnen.js';
 
 // Zulässiger Bildschirmfehler in Pixeln. Gelände und Nachbarn dürfen gröber
@@ -62,7 +63,7 @@ const FEHLER = {
 // liegt auf der Grafikkarte aber nur einmal je Quellkachel.
 const speicher = new LRUCache();
 speicher.unloadPriorityCallback = DEFAULT_LRU_CACHE.unloadPriorityCallback;
-speicher.minBytesSize = 100 * 2 ** 20;
+speicher.minBytesSize = 230 * 2 ** 20;   // nahe an der oberen Grenze: Gesehenes bleibt stehen
 speicher.maxBytesSize = 280 * 2 ** 20;
 const laden = new DownloadPriorityQueue();
 laden.maxJobsPerOrigin = 10;
@@ -364,9 +365,33 @@ export function weltAnlegen({ modell, meldung = () => {} }) {
     });
     // Einzelne Unterkacheln fehlen beim BKG (404) — kein Grund zur Meldung.
     t.addEventListener('load-error', () => {});
+    // Die Wurzel hat 1347 Zellen; besucht wird jede bei jedem Durchlauf (4–5 ms auf dem Mac)
+    t.addEventListener('load-root-tileset', gebaeudeUmkreis);
     welt.gebaeude = t;
     gruppe.add(t.group);
     rahmenSetzen();
+  }
+
+  /**
+   * Nur die Zellen im Umkreis des Standorts durchlaufen lassen. Die ganze Liste bleibt an
+   * der Wurzel (`vrAlleKinder`): zieht die Seite zu einem Modell an anderem Ort um,
+   * wird neu gewählt und nichts ist verloren.
+   */
+  function gebaeudeUmkreis() {
+    const wurzel = welt.gebaeude && welt.gebaeude.root;
+    if (!wurzel || !welt.ort || !wurzel.children) return;
+    if (!wurzel.vrAlleKinder) wurzel.vrAlleKinder = wurzel.children.slice();
+    const neu = zellenImUmkreis(wurzel.vrAlleKinder, welt.ort.lat, welt.ort.lon, LOD2_UMKREIS_M);
+    // Die Bibliothek bereitet die Kinder eines Knotens gebündelt und lazy auf und
+    // erkennt „schon geschehen" allein am LETZTEN Kind (`children[n-1].traversal`).
+    // Eine Teilmenge, deren letztes Kind früher aufbereitet wurde, die davor aber
+    // nicht, bliebe sonst ohne `traversal` — und der nächste Durchlauf bricht mit
+    // „Cannot read properties of undefined (reading 'inFrustum')" ab, in jedem Bild.
+    for (const kind of neu) {
+      if (!kind.traversal) welt.gebaeude.preprocessNode(kind, wurzel.internal.basePath, wurzel);
+    }
+    welt.gebaeude.processNodeQueue.remove(wurzel);   // die Aufbereitung der alten Kinder wäre überflüssig
+    wurzel.children = neu;
   }
 
   function gebaeudeEntsorgen() {
@@ -436,6 +461,7 @@ export function weltAnlegen({ modell, meldung = () => {} }) {
       }
       if (welt.N === null) meldung('Geoid nicht geladen — Gelände ohne Undulation');
       if (!welt.gelaende && welt.an) gelaendeAnlegen();
+      gebaeudeUmkreis();
       rahmenSetzen();
       sichtbarkeit();
     },

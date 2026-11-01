@@ -325,6 +325,68 @@
       return this._hoehenspanne(tileset);
     },
 
+    /**
+     * Wo ein Geschoss eines Modells gerade steht — für alles, was mit dem
+     * Modell mitfliegen soll, ohne selbst zu den Kacheln zu gehören
+     * (Raumkörper in room-concept.js).
+     *
+     * `geschoss` ist der Name aus dem IFC, `hoehe` eine Höhe in
+     * Tile-Koordinaten (Meter über dem Tile-Ursprung, also schon um
+     * `hoehenspanne().unten` verschoben), die im Geschoss liegt — sie
+     * entscheidet, wo der Name nicht greift. Zurück kommt dieselbe Rechnung,
+     * die Shader und Klone anwenden:
+     *
+     *     z' = z − (z − basis) · flach + hub
+     *
+     * oder null, solange das Modell nicht explodiert ist. Eine zweite Rechnung
+     * an anderer Stelle liefe beim ersten Eingriff am Fugenmaß auseinander,
+     * und die Räume schwebten zwischen den Geschossen.
+     */
+    lageFuer: function (tileset, geschoss, hoehe) {
+      if (!this.aktiv || !tileset) return null;
+      var flach = this.flach * STAUCH_MAX;
+      var i, rang;
+
+      for (i = 0; i < this.klonZiele.length; i++) {
+        var kz = this.klonZiele[i];
+        if (kz.asset.tileset !== tileset) continue;
+        var versatz = kz.versatz || 0;
+        // Der Name zuerst: der Klon zeigt ein Bauteil dort, wo es laut Modell
+        // steht, und ein Raum soll mit seinem Geschoss fliegen, nicht mit dem,
+        // in das seine Höhe zufällig fällt.
+        rang = -1;
+        if (geschoss !== undefined && geschoss !== null && geschoss !== '') {
+          for (var g = 0; g < kz.gruppen.length; g++) {
+            if (kz.gruppen[g].namen.indexOf(geschoss) >= 0) { rang = g; break; }
+          }
+        }
+        if (rang < 0) {
+          rang = 0;
+          if (isFinite(hoehe)) {
+            for (var h = 0; h < kz.gruppen.length; h++) {
+              if (kz.gruppen[h].hoehe + versatz <= hoehe) rang = h;
+            }
+          }
+        }
+        return { rang: rang, hub: rang * this.abstand,
+                 basis: kz.gruppen[rang].hoehe + versatz, flach: flach };
+      }
+
+      for (i = 0; i < this.ziele.length; i++) {
+        var z = this.ziele[i];
+        if (z.tileset !== tileset) continue;
+        // Shader-Weg: dieselbe Schwelle wie im Shader — die Höhe entscheidet.
+        var etage = 0;
+        if (isFinite(hoehe)) {
+          for (var k = 0; k < z.grenzen.length; k++) if (hoehe >= z.grenzen[k]) etage = k + 1;
+        }
+        var basen = z.basen || [];
+        var basis = basen.length > etage ? basen[etage] : (etage ? z.grenzen[etage - 1] : 0);
+        return { rang: etage, hub: etage * this.abstand, basis: basis, flach: flach };
+      }
+      return null;
+    },
+
     /** Nach dem Laden weiterer Modelle: die neuen mitnehmen. */
     auffrischen: function () {
       if (this.aktiv) this._neuAufbauen();
@@ -414,6 +476,7 @@
           tileset: asset.tileset,
           shader: shader,
           grenzen: ebenen.grenzen,
+          basen: ebenen.basen,
           name: asset.name,
           quelle: ebenen.quelle
         });
@@ -730,7 +793,7 @@ ${kette}
       var versatz = spanne ? spanne.unten : 0;
 
       var eintrag = {
-        asset: asset, name: asset.name, gruppen: gruppen,
+        asset: asset, name: asset.name, gruppen: gruppen, versatz: versatz,
         klone: [], showVorher: vorlage.show, basisVorher: null
       };
 
@@ -972,53 +1035,51 @@ ${kette}
     },
 
     /**
-     * Alle Entities beider Werkzeuge mit ihrem Geschossrang.
+     * Alle Körper beider Werkzeuge mit ihrem Geschossrang.
      *
      * Der Rang zählt von unten ab null — nicht der Geschossname, denn der ist
      * beim Bauplaner ein Index und beim Konzept ein Schlüssel („UG", „EG",
      * „1.OG"), und beide sagen für sich genommen nichts über die Reihenfolge.
      * Was die Reihenfolge sagt, ist die Höhe.
+     *
+     * Seit 2026-10-05 stehen beide nicht mehr als Entities in der Szene,
+     * sondern in Darstellungsebenen (bauplaner-darstellung.js). Gehoben wird
+     * über den Versatz je Instanz — kein Neubau, und der Versatz überlebt es,
+     * wenn der Bauplaner nach einer Änderung neu baut.
      */
     _entityZiele: function () {
       var liste = [];
-      var v = BimViewer.viewer;
-      if (!v) return liste;
 
       // 1 · Konzept-Baukörper
-      var quelle = v.dataSources.getByName && v.dataSources.getByName('konzept-4d')[0];
       var zustand = window.Konzept4D && Konzept4D.zustand;
-      if (quelle && zustand && zustand.koerper && zustand.koerper.length) {
-        var nachId = {};
+      var eK = window.Konzept4D && Konzept4D.ebene && Konzept4D.ebene();
+      if (eK && zustand && zustand.koerper && zustand.koerper.length) {
         var tiefste = {};
         zustand.koerper.forEach(function (k) {
-          nachId[k.id] = k;
           if (!k.geschoss) return;
           if (tiefste[k.geschoss] === undefined || k.z < tiefste[k.geschoss]) {
             tiefste[k.geschoss] = k.z;
           }
         });
         var rang = this._raengeAus(tiefste);
-
-        quelle.entities.values.forEach(function (e) {
-          var k = nachId[e._konzept4d];
+        zustand.koerper.forEach(function (k) {
           // Baustelleneinrichtung — Kran, Bauzaun, Container, Baugrube — hat
           // kein Geschoss und bleibt stehen. Sie mit anzuheben hieße, den
           // Kran im dritten Obergeschoss schweben zu lassen.
-          if (!k || !k.geschoss) return;
-          liste.push({ entity: e, rang: rang[k.geschoss] || 0 });
+          if (!k.geschoss) return;
+          liste.push({ ebene: eK, key: k.id, rang: rang[k.geschoss] || 0 });
         });
       }
 
       // 2 · Bauplaner-Bauteile
       var bp = window.Bauplaner && Bauplaner.zustand;
-      if (bp && bp.bauteile && bp.geschosse) {
+      var eB = window.Bauplaner && Bauplaner.ebene && Bauplaner.ebene();
+      if (eB && bp && bp.bauteile && bp.geschosse) {
         var hoehen = {};
         bp.geschosse.forEach(function (g, i) { hoehen[i] = g.z; });
         var rangBp = this._raengeAus(hoehen);
-
         bp.bauteile.forEach(function (t) {
-          if (!t.entity) return;
-          liste.push({ entity: t.entity, rang: rangBp[t.geschoss] || 0 });
+          liste.push({ ebene: eB, key: t.id, rang: rangBp[t.geschoss] || 0 });
         });
       }
 
@@ -1035,61 +1096,24 @@ ${kette}
     },
 
     /**
-     * Setzt jede Entity auf `Ausgangslage + Rang · Abstand`.
+     * Hebt jeden Körper um `Rang · Abstand` entlang der Hochachse.
      *
-     * Immer von der gemerkten Ausgangslage aus, nie um den letzten Schritt
-     * weiter: sonst summierte sich jeder Reglerzug auf, und das Zurückstellen
-     * fände nie wieder den Anfang.
+     * Der Versatz ist absolut, nicht der letzte Schritt plus einer: sonst
+     * summierte sich jeder Reglerzug auf, und das Zurückstellen fände nie
+     * wieder den Anfang.
      */
     _entitiesAnwenden: function () {
       var hoch = this._hochachse();
-      var zeit = BimViewer.viewer && BimViewer.viewer.clock.currentTime;
+      if (!hoch) return;
       var abstand = this.abstand;
-
       this._entityZiele().forEach(function (z) {
-        var e = z.entity;
         var meter = z.rang * abstand;
-
-        // Decken und Platten aus dem Bauplaner sind ausgezogene Polygone —
-        // ihre Höhe ist eine Zahl, keine Position.
-        if (e.polygon && Cesium.defined(e.polygon.height)) {
-          if (!e._explosionBasis) {
-            e._explosionBasis = {
-              h: e.polygon.height.getValue(zeit),
-              eh: e.polygon.extrudedHeight ? e.polygon.extrudedHeight.getValue(zeit) : undefined
-            };
-          }
-          e.polygon.height = e._explosionBasis.h + meter;
-          if (e._explosionBasis.eh !== undefined) {
-            e.polygon.extrudedHeight = e._explosionBasis.eh + meter;
-          }
-          return;
-        }
-
-        if (!e.position || !hoch) return;
-        if (!e._explosionBasis) {
-          e._explosionBasis = { p: Cesium.Cartesian3.clone(e.position.getValue(zeit)) };
-        }
-        if (!e._explosionBasis.p) return;
-        e.position = Cesium.Cartesian3.add(
-          e._explosionBasis.p,
-          Cesium.Cartesian3.multiplyByScalar(hoch, meter, new Cesium.Cartesian3()),
-          new Cesium.Cartesian3());
+        z.ebene.anheben(z.key, meter ? Cesium.Cartesian3.multiplyByScalar(hoch, meter, new Cesium.Cartesian3()) : null);
       });
     },
 
     _entitiesZuruecksetzen: function () {
-      this._entityZiele().forEach(function (z) {
-        var e = z.entity;
-        if (!e._explosionBasis) return;
-        if (e.polygon && e._explosionBasis.h !== undefined) {
-          e.polygon.height = e._explosionBasis.h;
-          if (e._explosionBasis.eh !== undefined) e.polygon.extrudedHeight = e._explosionBasis.eh;
-        } else if (e._explosionBasis.p) {
-          e.position = e._explosionBasis.p;
-        }
-        delete e._explosionBasis;
-      });
+      this._entityZiele().forEach(function (z) { z.ebene.anheben(z.key, null); });
     },
 
     // ── Wache ──────────────────────────────────────────────────────────────
@@ -1097,10 +1121,9 @@ ${kette}
     /**
      * Je Bild die Uniforms, alle zwanzig Bilder ein Blick auf die Entities.
      *
-     * Der Bauplaner zeichnet ein Bauteil bei jeder Änderung neu — die neue
-     * Entity kennt die Explosion dann nicht und stünde als einziges Bauteil an
-     * seiner Rasterlage. Statt in bauplaner.js einzugreifen, wird hier
-     * nachgesehen, ob unversetzte Entities dazugekommen sind. Zwanzig Bilder
+     * Ein neu gesetztes Bauteil kennt die Explosion nicht und stünde als
+     * einziges an seiner Rasterlage. Statt in bauplaner.js einzugreifen, wird
+     * hier nachgesehen, ob ungehobene Körper dazugekommen sind. Zwanzig Bilder
      * sind ein Drittel Sekunde: schnell genug, dass es niemand bemerkt, und
      * selten genug, dass die Liste nicht sechzigmal je Sekunde entsteht.
      */
@@ -1111,8 +1134,8 @@ ${kette}
         self._uniformsNachfuehren();
 
         if (++self._bild % 20) return;
-        var offen = self._entityZiele().some(function (z) {
-          return z.rang > 0 && !z.entity._explosionBasis;
+        var offen = self.abstand > 0 && self._entityZiele().some(function (z) {
+          return z.rang > 0 && !z.ebene.angehoben(z.key);
         });
         if (offen) self._entitiesAnwenden();
 
@@ -1185,6 +1208,14 @@ ${kette}
 
       var fuge = document.getElementById('explosionFuge');
       if (fuge) fuge.value = this.fuge.toFixed(2);
+
+      // Für Tastenkürzel, Nutzungsprotokoll und alles, was mitzieht, ohne
+      // hier eingetragen zu sein.
+      try {
+        document.dispatchEvent(new CustomEvent('ileen:explosion', {
+          detail: { aktiv: this.aktiv, abstand: this.abstand, flach: this.flach }
+        }));
+      } catch (e) { /* ohne DOM (Prüfstein) */ }
     }
   };
 

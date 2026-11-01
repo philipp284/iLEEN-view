@@ -52,13 +52,27 @@ window.ILeenGelaende = (function () {
 
   const KANTE = 65;              // Stützstellen je Kachelkante (wie heightmap-1.0)
   const MAX_EBENE = 16;          // tiefste Ebene von basemap.de; darunter teilt Cesium selbst
+  const DGM1_MAX_EBENE = 18;     // DGM1 RLP aus dem eigenen Backend: Ebene 18 ≈ 0,75 m Stützstellenabstand
+  const DGM1_INFO_FRIST = 3000;  // ms; antwortet das Backend nicht, geht es ohne DGM1 weiter
   const TERRARIUM_MAX_Z = 15;
   const DGM_LEER = 5000;         // Rohwert für 0,0 m: basemap.de außerhalb Deutschlands
   const TERRARIUM_VORRAT = 96;   // dekodierte Terrarium-Kacheln im Speicher (je 256 KB)
   const LAYER_WARTEZEIT = 4000;  // ms; danach startet der Viewer mit Terrain Tiles allein
+  const KACHEL_FRIST = 5000;     // ms je DGM5-Kachel; danach springen Terrain Tiles ein
+  const AUSFALL_NACH = 3;        // so viele Fehlschläge am Stück → basemap.de gilt als ausgefallen
+  const AUSFALL_PAUSE = 120000;  // ms ohne basemap.de, danach ein neuer Versuch
   const MERCATOR_GRENZE = 85.05112878;
 
   // ── Abruf und Dekodierung ───────────────────────────────────────────
+
+  /**
+   * Antwort von /gelaende/dgm1/{z}/{x}/{y}: 65 × 65 Float32, Reihe 0 im Süden, m ü. NHN,
+   * NaN wo das DGM1 nichts hat. 204 (ganz außerhalb) kommt leer an → null.
+   */
+  function dgm1Lesen(puffer) {
+    if (!puffer || puffer.byteLength < KANTE * KANTE * 4) return null;
+    return new Float32Array(puffer, 0, KANTE * KANTE);
+  }
 
   /**
    * Über Cesium.Resource, damit der Abruf in Cesiums Drosselung läuft:
@@ -67,6 +81,30 @@ window.ILeenGelaende = (function () {
    */
   function holenUeberCesium(url, request) {
     return new Cesium.Resource({ url: url, request: request }).fetchArrayBuffer();
+  }
+
+  /**
+   * Ein Abruf, der nie antwortet, wirft keinen Fehler — er hängt. Am
+   * 2026-10-31 nahm der Server des BKG keine Verbindung mehr an: jede
+   * DGM5-Kachel blieb offen, die 18 Plätze, die Cesium einem Server gibt,
+   * waren belegt, und weil Cesium eine Geländekachel erst verfeinert, wenn
+   * ihr Gelände da ist, blieb unter ~500 m der ganze Globus auf Ebene 10
+   * stehen. Gecachte Kacheln (und `layer.json`) verdeckten das.
+   *
+   * Nach der Frist wird der Abruf über `request.cancel()` abgebrochen — das
+   * gibt Cesiums Platz frei — und das Versprechen mit `abgelaufen` verworfen.
+   */
+  function mitFrist(abruf, ms, request) {
+    let uhr;
+    const frist = new Promise((_, nein) => {
+      uhr = setTimeout(() => {
+        if (request && typeof request.cancel === 'function') request.cancel();
+        const fehler = new Error('keine Antwort nach ' + ms / 1000 + ' s');
+        fehler.abgelaufen = true;
+        nein(fehler);
+      }, ms);
+    });
+    return Promise.race([abruf, frist]).finally(() => clearTimeout(uhr));
   }
 
   /** PNG → RGBA-Pixel, ohne Farbraumumrechnung (sonst verschieben sich die Höhen). */
@@ -139,11 +177,20 @@ window.ILeenGelaende = (function () {
 
     // Überall Daten bis Ebene 16 — ohne Verfügbarkeitstabelle lehnt
     // sampleTerrainMostDetailed (terrain-align.js) den Provider ab.
-    this._availability = new Cesium.TileAvailability(this._tilingScheme, MAX_EBENE);
+    const dgm1 = opt.dgm1 && Cesium.Rectangle.fromDegrees(...opt.dgm1.grenzen);
+    this._availability = new Cesium.TileAvailability(this._tilingScheme, dgm1 ? DGM1_MAX_EBENE : MAX_EBENE);
     for (let l = 0; l <= MAX_EBENE; l++) {
       this._availability.addAvailableTileRange(l, 0, 0,
         this._tilingScheme.getNumberOfXTilesAtLevel(l) - 1,
         this._tilingScheme.getNumberOfYTilesAtLevel(l) - 1);
+    }
+    // Feiner als das DGM5 nur dort, wo das DGM1 liegt (Rechteck um Rheinland-Pfalz)
+    if (dgm1) {
+      for (let l = MAX_EBENE + 1; l <= DGM1_MAX_EBENE; l++) {
+        const nw = this._tilingScheme.positionToTileXY(Cesium.Rectangle.northwest(dgm1), l);
+        const so = this._tilingScheme.positionToTileXY(Cesium.Rectangle.southeast(dgm1), l);
+        this._availability.addAvailableTileRange(l, nw.x, nw.y, so.x, so.y);
+      }
     }
 
     this._dgm = opt.dgm || null;              // { verfuegbar, version } aus layer.json
@@ -151,10 +198,19 @@ window.ILeenGelaende = (function () {
     this._holen = opt.holen || holenUeberCesium;
     this._bild = opt.bild || bildLesen;
     this._terrarium = new Map();               // 'z/x/y' → Promise<Kachel>, älteste zuerst
+    this._frist = opt.frist || KACHEL_FRIST;
+    this._dgm1 = opt.dgm1 || null;             // { basis, grenzen: [W, S, O, N] Grad } aus /gelaende/dgm1/info
+    this._dgm1Rechteck = this._dgm1 && Cesium.Rectangle.fromDegrees(...this._dgm1.grenzen);
+    this._dgm1FehlFolge = 0;
+    this._dgm1AusBis = 0;
+    this._fehlFolge = 0;                       // DGM5-Fehlschläge am Stück
+    this._ausBis = 0;                          // bis dahin kein Abruf bei basemap.de
 
     const jahr = new Date().getFullYear();
     this._creditDgm = new Cesium.Credit('Gelände Deutschland: © GeoBasis-DE/BKG ' + jahr +
       ' (basemap.de 3D, verändert: Höhen auf das WGS84-Ellipsoid umgerechnet)');
+    this._creditDgm1 = new Cesium.Credit('Gelände Rheinland-Pfalz: DGM1 © GeoBasis-DE / LVermGeoRP (2022–2025), ' +
+      'dl-de/by-2-0 (verändert: Höhen auf das WGS84-Ellipsoid umgerechnet)');
     this._creditWelt = new Cesium.Credit('Gelände: Terrain Tiles (Mapzen/Tilezen, AWS Open Data; ' +
       'SRTM, EU-DEM, GMTED2010, ETOPO1 u. a.)');
   }
@@ -169,7 +225,7 @@ window.ILeenGelaende = (function () {
     hasVertexNormals: { get() { return true; } },
     availability: { get() { return this._availability; } },
     /** Für Anzeige und Prüfsteine: welche Quellen tatsächlich angebunden sind. */
-    quellen: { get() { return { dgm5: !!this._dgm, terrainTiles: true }; } }
+    quellen: { get() { return { dgm1: !!this._dgm1, dgm5: !!this._dgm, terrainTiles: true }; } }
   });
 
   Provider.prototype.getLevelMaximumGeometricError = function (level) {
@@ -177,7 +233,16 @@ window.ILeenGelaende = (function () {
   };
 
   Provider.prototype.getTileDataAvailable = function (x, y, level) {
-    return level <= MAX_EBENE;
+    if (level <= MAX_EBENE) return true;
+    return level <= DGM1_MAX_EBENE && !!this._dgm1Rechteck &&
+      !!Cesium.Rectangle.intersection(this._tilingScheme.tileXYToRectangle(x, y, level), this._dgm1Rechteck);
+  };
+
+  /** Reicht das DGM1 in diese Kachel, und antwortet das Backend gerade? */
+  Provider.prototype._dgm1Da = function (rechteck, level) {
+    if (!this._dgm1Rechteck || level > DGM1_MAX_EBENE) return false;
+    if (this._dgm1AusBis && Date.now() < this._dgm1AusBis) return false;
+    return !!Cesium.Rectangle.intersection(rechteck, this._dgm1Rechteck);
   };
 
   Provider.prototype.loadTileDataAvailability = function () {
@@ -187,6 +252,7 @@ window.ILeenGelaende = (function () {
   /** Liegt die Kachel (TMS-Zählung) im Bestand von basemap.de? */
   Provider.prototype._dgmDa = function (x, tmsY, level) {
     if (!this._dgm || level > MAX_EBENE) return false;
+    if (this._ausBis && Date.now() < this._ausBis) return false;
     const bereiche = this._dgm.verfuegbar[level];
     if (!bereiche) return false;
     return bereiche.some((b) => x >= b.startX && x <= b.endX && tmsY >= b.startY && tmsY <= b.endY);
@@ -197,19 +263,74 @@ window.ILeenGelaende = (function () {
     // Cesium zählt y von Norden, basemap.de (schema "tms") von Süden.
     const tmsY = this._tilingScheme.getNumberOfYTilesAtLevel(level) - 1 - y;
 
-    if (this._dgmDa(x, tmsY, level)) {
+    // Zuerst das DGM1 RLP aus dem eigenen Backend (gleiche Kachelzählung wie Cesium); wo es Lücken
+    // lässt (außerhalb von RLP), springen DGM5 und Terrain Tiles ein — dann ohne Cesiums Drosselung,
+    // die gilt für genau eine Anfrage.
+    if (this._dgm1Da(rechteck, level)) {
+      const abruf = this._holen(this._dgm1.basis + '/' + level + '/' + x + '/' + y, request);
+      if (!abruf) return undefined;
+      return mitFrist(Promise.resolve(abruf), this._frist, request)
+        .then((puffer) => { this._dgm1FehlFolge = 0; return dgm1Lesen(puffer); })
+        .catch((fehler) => {
+          const vonCesium = !(fehler && fehler.abgelaufen) && request &&
+            Cesium.RequestState && request.state === Cesium.RequestState.CANCELLED;
+          if (!vonCesium && ++this._dgm1FehlFolge >= AUSFALL_NACH) {
+            this._dgm1AusBis = Date.now() + AUSFALL_PAUSE;
+            this._dgm1FehlFolge = 0;
+            console.warn('[Gelände] DGM1 (Backend) antwortet nicht — für ' + AUSFALL_PAUSE / 60000 + ' min ohne:',
+                         fehler && fehler.message);
+          }
+          return null;
+        })
+        .then((dgm1) => this._ohneDgm1(x, tmsY, rechteck, level, undefined, dgm1));
+    }
+    return this._ohneDgm1(x, tmsY, rechteck, level, request, null);
+  };
+
+  /** DGM5 und Terrain Tiles für alles, was das DGM1 nicht abdeckt. */
+  Provider.prototype._ohneDgm1 = function (x, tmsY, rechteck, level, request, dgm1) {
+    const voll = dgm1 && dgm1.every(Number.isFinite);
+    if (!voll && this._dgmDa(x, tmsY, level)) {
       const abruf = this._holen(DGM5_URL + level + '/' + x + '/' + tmsY + '.terrain?v=' + this._dgm.version, request);
       if (!abruf) return undefined;
-      return Promise.resolve(abruf)
-        .then(dgmLesen)
+      return mitFrist(Promise.resolve(abruf), this._frist, request)
+        .then((puffer) => { this._fehlFolge = 0; return dgmLesen(puffer); })
         .catch((fehler) => {
+          // Von Cesium abgebrochen (Kachel nicht mehr im Bild): kein Ausfall
+          const vonCesium = !(fehler && fehler.abgelaufen) && request &&
+            Cesium.RequestState && request.state === Cesium.RequestState.CANCELLED;
+          if (!vonCesium) this._fehlschlag(fehler);
           console.warn('[Gelände] DGM5-Kachel ' + level + '/' + x + '/' + tmsY + ' fehlt, Terrain Tiles springen ein:',
                        fehler && fehler.message);
           return null;
         })
-        .then((dgm) => this._zusammensetzen(rechteck, level, dgm, undefined));
+        .then((dgm) => this._zusammensetzen(rechteck, level, dgm, undefined, dgm1));
     }
-    return this._zusammensetzen(rechteck, level, null, request);
+    return this._zusammensetzen(rechteck, level, null, request, dgm1);
+  };
+
+  /**
+   * Nach `AUSFALL_NACH` Fehlschlägen am Stück fragt der Provider basemap.de
+   * für `AUSFALL_PAUSE` gar nicht mehr und nimmt Terrain Tiles allein — sonst
+   * wartete jede neue Kachel erst ihre Frist ab. Danach ein neuer Versuch.
+   */
+  Provider.prototype._fehlschlag = function (fehler) {
+    this._fehlFolge++;
+    if (this._fehlFolge < AUSFALL_NACH || (this._ausBis && Date.now() < this._ausBis)) return;
+    this._ausBis = Date.now() + AUSFALL_PAUSE;
+    this._fehlFolge = 0;
+    const text = 'Gelände: basemap.de (BKG) antwortet nicht — für ' + AUSFALL_PAUSE / 60000 +
+      ' min Terrain Tiles (gröber)';
+    console.warn('[Gelände] ' + text + ':', fehler && fehler.message);
+    try {
+      if (window.BimViewer && typeof BimViewer.updateStatus === 'function') BimViewer.updateStatus('⚠️ ' + text, 'warning');
+    } catch (e) { /* Statuszeile fehlt */ }
+  };
+
+  /** Für Anzeige und Prüfsteine: Stand des Ausfallschalters. */
+  Provider.prototype.dgmStand = function () {
+    return { dgm5: !!this._dgm, aus: !!(this._ausBis && Date.now() < this._ausBis),
+             ausBis: this._ausBis, fehlFolge: this._fehlFolge };
   };
 
   /**
@@ -217,21 +338,24 @@ window.ILeenGelaende = (function () {
    * Daten hat, sonst aus Terrain Tiles. Index j·65 + i, j = 0 im Süden.
    * Gibt `undefined` zurück, wenn Cesium den ersten Abruf gedrosselt hat.
    */
-  Provider.prototype._zusammensetzen = function (rechteck, level, dgm, request) {
+  Provider.prototype._zusammensetzen = function (rechteck, level, dgm, request, dgm1) {
     const n = KANTE;
     const meer = new Float64Array(n * n);
     const offen = [];
+    let ausDgm1 = 0, ausDgm5 = 0;
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const k = j * n + i;
+        if (dgm1 && Number.isFinite(dgm1[k])) { meer[k] = dgm1[k]; ausDgm1++; continue; }
         const roh = dgm ? dgm[(n - 1 - j) * n + i] : DGM_LEER;
         if (roh === DGM_LEER) offen.push(k);
-        else meer[k] = roh / 5 - 1000;
+        else { meer[k] = roh / 5 - 1000; ausDgm5++; }
       }
     }
 
     const credits = [];
-    if (offen.length < n * n) credits.push(this._creditDgm);
+    if (ausDgm1) credits.push(this._creditDgm1);
+    if (ausDgm5) credits.push(this._creditDgm);
     if (!offen.length) return Promise.resolve(this._netz(rechteck, level, meer, credits));
 
     const abtaster = this._weltAbtaster(rechteck, request);
@@ -485,10 +609,38 @@ window.ILeenGelaende = (function () {
    * `opt` (für Prüfsteine): `holen(url, request)`, `bild(puffer)`,
    * `undulation(lat, lon)`, `dgm: false` (nur Terrain Tiles).
    */
+  /** Ist das DGM1 im eigenen Backend bereit? Liefert { basis, grenzen } oder wirft. */
+  async function dgm1Bestand() {
+    const bv = window.BimViewer;
+    const backend = bv && typeof bv.getBackendUrl === 'function' ? bv.getBackendUrl()
+      : ((typeof ILEEN_CONFIG !== 'undefined' && ILEEN_CONFIG.backendUrl) || '');
+    if (!backend) throw new Error('keine Backend-Adresse');
+    const basis = backend.replace(/\/+$/, '') + '/gelaende/dgm1';
+    const steuer = new AbortController();
+    const uhr = setTimeout(() => steuer.abort(), DGM1_INFO_FRIST);
+    try {
+      const r = await fetch(basis + '/info', { signal: steuer.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const info = await r.json();
+      if (!Array.isArray(info.grenzen) || info.grenzen.length !== 4) throw new Error('ohne Grenzen');
+      return { basis: basis, grenzen: info.grenzen };
+    } finally {
+      clearTimeout(uhr);
+    }
+  }
+
   async function erzeugen(opt) {
     opt = opt || {};
     const holen = opt.holen || holenUeberCesium;
     const undulation = opt.undulation || await undulationBereit();
+    let dgm1 = opt.dgm1 || null;
+    if (opt.dgm1 === undefined) {
+      try {
+        dgm1 = await dgm1Bestand();
+      } catch (fehler) {
+        console.info('[Gelände] DGM1 RLP nicht verfügbar (' + fehler.message + '), weiter mit DGM5/Terrain Tiles');
+      }
+    }
     let dgm = null;
     if (opt.dgm !== false) {
       try {
@@ -497,7 +649,7 @@ window.ILeenGelaende = (function () {
         console.warn('[Gelände] basemap.de nicht erreichbar, weiter mit Terrain Tiles allein:', fehler.message);
       }
     }
-    return new Provider({ dgm: dgm, undulation: undulation, holen: holen, bild: opt.bild });
+    return new Provider({ dgm: dgm, dgm1: dgm1, undulation: undulation, holen: holen, bild: opt.bild, frist: opt.frist });
   }
 
   return {
@@ -506,7 +658,9 @@ window.ILeenGelaende = (function () {
     DGM5_URL: DGM5_URL,
     TERRARIUM_URL: TERRARIUM_URL,
     MAX_EBENE: MAX_EBENE,
-    _intern: { dgmLesen: dgmLesen, terrariumLesen: terrariumLesen, terrariumZoom: terrariumZoom,
+    KACHEL_FRIST: KACHEL_FRIST,
+    DGM1_MAX_EBENE: DGM1_MAX_EBENE,
+    _intern: { mitFrist: mitFrist, dgm1Lesen: dgm1Lesen, dgmLesen: dgmLesen, terrariumLesen: terrariumLesen, terrariumZoom: terrariumZoom,
                mercatorX: mercatorX, mercatorY: mercatorY }
   };
 })();
