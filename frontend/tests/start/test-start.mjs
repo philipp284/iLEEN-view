@@ -52,13 +52,15 @@ const ERWARTET = [
   // Schnitt, Sensoren, Präsentation, Erklärtexte und Handbuch (Oktober 2026)
   'SchnittRechnen', 'SchnittKarte', 'SensorStore', 'SensorFarben', 'SensorPanel',
   'PraesentationText', 'Praesentation', 'PraesentationPanel', 'ILeenHinweise', 'ILeenHilfe',
+  // Raumansicht (seit 2026-11-01 links, also Viewer), Bewegung weich, Sortiert, Zwilling
+  'RoomConcept', 'Bewegungsweich', 'SortiertPanel', 'Zwilling',
 ];
 
 // Dieselbe Frage für die Module, die sich unter `BimViewer` anmelden statt
 // unter `window`. `SectionBox` ist seit dem Schnitt-Umbau nur noch die alte
 // Schnittstelle, die `schnitt.js` weiterführt — andere Module sprechen sie an.
 const ERWARTET_BV = ['Aufmass', 'Schnitt', 'SectionBox', 'Explosion', 'Bildebenen',
-                     'Untergrund', 'Licht', 'Zustand', 'lageInsBackend'];
+                     'Untergrund', 'Licht', 'Zustand', 'lageInsBackend', 'Startbild', 'Sortiert'];
 
 // Und die Gegenprobe: was hier steht, darf es NICHT geben. Ohne sie fiele
 // nicht auf, wenn ein Analysewerkzeug über eine vergessene Einbindung
@@ -75,7 +77,7 @@ const VERBOTEN = [
   // Die Anmelde-Dateien der Auswertungen. Sie sind der eigentliche Zuschnitt
   // seit der Trennung: das Panelgerüst links wie rechts ist in beiden
   // Fassungen dieselbe Datei, verschieden ist nur, wer sich anmeldet.
-  'SolarPanel', 'BimLpPanel', 'IFClashPanel', 'RoomConceptPanel',
+  'SolarPanel', 'BimLpPanel', 'IFClashPanel',
 ];
 
 // Dasselbe für die Auswertungen, die sich an `BimViewer` hängen.
@@ -246,7 +248,7 @@ try {
     'gefunden: ' + trennung.bruecken.join(', '));
 
   // Links die Gegenprobe: die Gruppen der Auswertungen dürfen nicht auftauchen.
-  const VERBOTENE_GRUPPEN = ['group-rooms', 'group-clash'];
+  const VERBOTENE_GRUPPEN = ['group-clash'];
   const fremdeGruppen = VERBOTENE_GRUPPEN.filter((g) => trennung.gruppen.includes(g));
   pruefe('links steht keine Auswertungs-Gruppe', fremdeGruppen.length === 0,
     'gefunden: ' + fremdeGruppen.join(', '));

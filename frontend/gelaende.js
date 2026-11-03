@@ -57,7 +57,8 @@ window.ILeenGelaende = (function () {
   const TERRARIUM_MAX_Z = 15;
   const DGM_LEER = 5000;         // Rohwert für 0,0 m: basemap.de außerhalb Deutschlands
   const TERRARIUM_VORRAT = 96;   // dekodierte Terrarium-Kacheln im Speicher (je 256 KB)
-  const LAYER_WARTEZEIT = 4000;  // ms; danach startet der Viewer mit Terrain Tiles allein
+  const LAYER_WARTEZEIT = 4000;  // ms; so lange darf layer.json brauchen, sonst bleibt es bei Terrain Tiles allein
+  const LAYER_ERSTWARTE = 1000;  // ms; so lange hält layer.json den Start auf, danach startet der Viewer ohne und bekommt es nachgereicht
   const KACHEL_FRIST = 5000;     // ms je DGM5-Kachel; danach springen Terrain Tiles ein
   const AUSFALL_NACH = 3;        // so viele Fehlschläge am Stück → basemap.de gilt als ausgefallen
   const AUSFALL_PAUSE = 120000;  // ms ohne basemap.de, danach ein neuer Versuch
@@ -642,14 +643,31 @@ window.ILeenGelaende = (function () {
       }
     }
     let dgm = null;
+    let spaeter = null;
     if (opt.dgm !== false) {
-      try {
-        dgm = await dgmBestand(holen);
-      } catch (fehler) {
-        console.warn('[Gelände] basemap.de nicht erreichbar, weiter mit Terrain Tiles allein:', fehler.message);
-      }
+      // Der Viewer steht erst, wenn das Gelände steht — und der Start hing an einem BKG, das
+      // nicht antwortet, volle LAYER_WARTEZEIT lang vor einem leeren Bild. Jetzt wartet er
+      // LAYER_ERSTWARTE; kommt die Antwort danach noch (bis LAYER_WARTEZEIT), wird sie
+      // nachgereicht. Kacheln, die bis dahin schon aus Terrain Tiles standen, bleiben so —
+      // das ist der Start aus dem All, noch weit oberhalb der Ebenen, in denen das DGM5 zählt.
+      const abruf = dgmBestand(holen).then(
+        (bestand) => ({ bestand: bestand }),
+        (fehler) => ({ fehler: fehler }));
+      const erst = await Promise.race([
+        abruf,
+        new Promise((ok) => setTimeout(() => ok(null), LAYER_ERSTWARTE))]);
+      if (erst === null) spaeter = abruf;
+      else if (erst.bestand) dgm = erst.bestand;
+      else console.warn('[Gelände] basemap.de nicht erreichbar, weiter mit Terrain Tiles allein:', erst.fehler.message);
     }
-    return new Provider({ dgm: dgm, dgm1: dgm1, undulation: undulation, holen: holen, bild: opt.bild, frist: opt.frist });
+    const provider = new Provider({ dgm: dgm, dgm1: dgm1, undulation: undulation, holen: holen, bild: opt.bild, frist: opt.frist });
+    if (spaeter) {
+      spaeter.then((erg) => {
+        if (erg.bestand) provider._dgm = erg.bestand;
+        else console.warn('[Gelände] basemap.de nicht erreichbar, weiter mit Terrain Tiles allein:', erg.fehler.message);
+      });
+    }
+    return provider;
   }
 
   return {

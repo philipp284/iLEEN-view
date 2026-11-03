@@ -11,9 +11,9 @@ import {
   VR_FAEHIG, backendBasis, startAbstand, tischMassstab, begehbar, punktBegehbar,
   totzone, schrittDrehung, schwebeFolgen, bauteilZeilen, ifcName,
   filterNeu, filterLeer, bauteilSichtbar, geschossRang, geschosseSortieren,
-  wertText, eigenschaftsGruppen, meterText, messung, STUFE, bodenNachfuehren, fussRechteck, imFuss,
+  wertText, eigenschaftsGruppen, meterText, messung, STUFE, bodenNachfuehren, flugSchritt, fussRechteck, imFuss,
   DOP_LAENDER, KARTEN, GELAENDE, kachelMerc, kachelGrad, mercPixel, pixelGrad, meterProPixel,
-  schichtPasst, schichtQuelle, kartenVermerke, inDeutschland,
+  schichtPasst, schichtQuelle, kartenVermerke, inDeutschland, zellenImUmkreis, LOD2_UMKREIS_M,
 } from '../../vr-rechnen.js';
 
 let fehler = 0;
@@ -145,6 +145,30 @@ pruefe('Stufe hinauf: sofort', bodenNachfuehren(0, 0.18, 0.016) === 0.18);
 pruefe('zu hoch (Tisch): bleibt', bodenNachfuehren(0, 0.75, 0.016) === 0 && STUFE < 0.75);
 pruefe('hinab: weich, nicht durch den Boden', nahe(bodenNachfuehren(3, 0, 0.1), 2.2) && bodenNachfuehren(0.1, 0, 0.1) === 0);
 pruefe('kein Boden: bleibt', bodenNachfuehren(1, null, 0.1) === 1);
+
+// ── Durch die Luft ziehen (Vision Pro) ──────────────────────────
+{
+  const n0 = { h: 0, v: 0 };
+  const r1 = flugSchritt(n0, [0, 1.2, -0.3], [0, 1.2, -0.4], { weite: 6 });
+  pruefe('Hand 10 cm von sich weg: man geht 60 cm zurück (die Welt wird weggeschoben)', nahe(r1.schritt[2], 0.6) && r1.schritt[0] === 0);
+  const r2 = flugSchritt(n0, [0, 1.2, -0.5], [0, 1.2, -0.3], { weite: 6 });
+  pruefe('Hand 20 cm heranziehen: 1,20 m vor', nahe(r2.schritt[2], -1.2));
+  pruefe('waagerecht gezogen: Höhe bleibt dem Boden überlassen', r2.schritt[1] === 0 && !r2.schwebt);
+  pruefe('… auch wenn die Hand dabei etwas wandert', flugSchritt(n0, [0, 1.2, -0.5], [0, 1.18, -0.3], { weite: 6 }).schritt[1] === 0);
+  const r3 = flugSchritt(n0, [0, 1.4, -0.4], [0, 1.1, -0.4], { weite: 6 });
+  pruefe('Hand 30 cm nach unten: 1,80 m nach oben, schwebt', nahe(r3.schritt[1], 1.8) && r3.schwebt);
+  pruefe('wer schwebt, behält die Höhe auch beim Ziehen nach vorn', flugSchritt(r3.zug, [0, 1.2, -0.5], [0, 1.15, -0.3], { weite: 6, frei: true }).schritt[1] > 0.2);
+  pruefe('nur ein kurzes Heben (< 30 cm Weg) macht noch nicht flugfähig', !flugSchritt(n0, [0, 1.2, -0.4], [0, 1.18, -0.4], { weite: 6 }).schwebt);
+  pruefe('mehr quer als hoch: gehen', !flugSchritt(n0, [0, 1.5, -0.2], [0, 1.4, -0.7], { weite: 6 }).schwebt);
+  pruefe('ohne „Boden folgen" immer die volle Richtung', flugSchritt(n0, [0, 1.2, -0.5], [0, 1.1, -0.3], { weite: 6, bodenFolgen: false }).schritt[1] > 0.5);
+  pruefe('… aber das gilt nicht als Schweben des Bodenfolgers', !flugSchritt(n0, [0, 1.2, -0.5], [0, 1.1, -0.3], { weite: 6, bodenFolgen: false }).schwebt);
+  const sp = flugSchritt(n0, [0, 1, 0], [0.5, 1, 0], { weite: 6 });
+  pruefe('Tracking-Sprung (50 cm in einem Bild) wird nicht mitgezogen', sp.schritt.every(x => x === 0) && sp.zug === n0);
+  pruefe('weite 1: Welt klebt an der Hand', nahe(flugSchritt(n0, [0, 0, -0.4], [0, 0, -0.2], { weite: 1 }).schritt[2], -0.2));
+  let zug = n0, summe = 0;
+  for (let i = 0; i < 10; i++) { const r = flugSchritt(zug, [0, 1, -0.5 + i * 0.02], [0, 1, -0.5 + (i + 1) * 0.02], { weite: 6 }); zug = r.zug; summe += r.schritt[2]; }
+  pruefe('in kleinen Schritten gezogen = in einem (20 cm → 1,20 m)', nahe(summe, -1.2, 1e-9), summe);
+}
 // 20 × 10 m, um 30° gedreht
 const w30 = Math.PI / 6;
 const u = [Math.cos(w30), 0, Math.sin(w30)];
@@ -194,6 +218,35 @@ pruefe('Gelände: Mapterhorn fein, Terrain Tiles als Rückfall', GELAENDE.mapter
   const brille = DOP_LAENDER.map(l => [l.id, l.url, l.layers, l.format, l.rechteck.join(',')].join(' '));
   pruefe('DOP-Länder gleich wie in kartenquellen.js', viewer.join('\n') === brille.join('\n'),
     `Viewer:\n        ${viewer.join('\n        ')}\n      Brille:\n        ${brille.join('\n        ')}`);
+}
+
+
+// ── LoD2-Zellen im Umkreis ───────────────────────────────────────
+{
+  const rad = x => x * Math.PI / 180;
+  const zelle = (w, s, e, n) => ({ boundingVolume: { region: [rad(w), rad(s), rad(e), rad(n), 0, 100] } });
+  const lat = rad(49.96), lon = rad(8.265);                 // Campus Mainz
+  const kinder = [
+    zelle(8.20, 49.90, 8.32, 50.02),                        // enthält den Punkt
+    zelle(6.0, 47.0, 14.0, 55.0),                           // riesige Zelle, enthält ihn
+    zelle(8.27, 49.97, 8.28, 49.98),                        // ~1,2 km entfernt
+    zelle(8.40, 49.96, 8.45, 50.00),                        // ~9 km östlich
+    zelle(9.50, 49.96, 9.60, 50.00),                        // ~80 km
+    zelle(11.0, 48.0, 11.2, 48.2),                          // München
+    { boundingVolume: { box: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1] } },   // ohne Region
+  ];
+  const nah = zellenImUmkreis(kinder, lat, lon, 3000);
+  pruefe('3 km: die beiden Zellen mit dem Punkt, die nahe und die ohne Region', nah.length === 4, nah.length);
+  pruefe('3 km: die 9 km entfernte fällt weg', !nah.includes(kinder[3]));
+  pruefe('15 km (Vorgabe): die 9 km entfernte bleibt', zellenImUmkreis(kinder, lat, lon, LOD2_UMKREIS_M).includes(kinder[3]));
+  pruefe('15 km: 80 km und München fallen weg', !zellenImUmkreis(kinder, lat, lon, LOD2_UMKREIS_M).includes(kinder[4])
+    && !zellenImUmkreis(kinder, lat, lon, LOD2_UMKREIS_M).includes(kinder[5]));
+  pruefe('Zelle mit dem Punkt bleibt auch bei Radius 0', zellenImUmkreis(kinder, lat, lon, 0).filter(k => k.boundingVolume.region).length === 2);
+  pruefe('ohne Region wird nie verworfen', zellenImUmkreis([kinder[6]], lat, lon, 0).length === 1);
+  pruefe('leere Liste', zellenImUmkreis([], lat, lon, 1000).length === 0);
+  // Abstand stimmt: die Zelle bei 8,40 °E liegt 9,66 km östlich (0,135° · 111,195 km · cos 49,96°)
+  const e = zellenImUmkreis([kinder[3]], lat, lon, 9600).length, f = zellenImUmkreis([kinder[3]], lat, lon, 9720).length;
+  pruefe('Entfernung auf 1 % genau (9,66 km)', e === 0 && f === 1, `${e}/${f}`);
 }
 
 console.log(fehler ? `\n${fehler} Fehler` : '\nalles in Ordnung');

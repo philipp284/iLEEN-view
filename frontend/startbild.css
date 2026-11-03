@@ -1,0 +1,144 @@
+/* © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+   SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+   iLEEN — das Startbild
+
+   Beim Öffnen und bei jedem Neuladen steht zuerst nur der Schriftzug auf
+   Schwarz, während dahinter der Globus fertig geladen wird (`startbild.js`
+   puffert ihn). Steht er, löst sich der Schriftzug in ein helles, bläuliches
+   Licht auf, das über zwei Sekunden abklingt und die Welt freigibt — sie
+   taucht aus einem Lichtschein auf, und `startbild.js` lässt sie dabei kurz
+   aufglühen.
+
+   Bewusst eigenständig: keine Variable aus style.css, kein Bauteil aus dem
+   Designsystem. Das Startbild muss stehen, bevor irgendetwas anderes steht.
+   Die Farben sind die des Logos (LOGO/LOGO_1st_Ai.png: Grund #010103,
+   Cyan #30B4E7). */
+
+#ileenStart {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;           /* über allem, auch über Cesiums eigenen Widgets */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #010103;
+  opacity: 1;
+}
+
+/* Schriftzug und Untertitel zusammen: dieser Block ist es, der beim Abgang aufgeht */
+#ileenStart .sb-block {
+  width: min(46vw, 560px);
+  /* ein Hauch Cyan um die Buchstaben, kaum sichtbar — wie der Rand des Globus im Logo */
+  filter: drop-shadow(0 0 22px rgba(48, 180, 231, 0.16));
+}
+
+/* Der Schriftzug: ein Rahmen im Seitenverhältnis der Konturen, darin fünf Buchstaben-svg */
+#ileenStart .sb-wort {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 945 / 158;
+}
+#ileenStart .sb-b {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Das helle Licht des Abgangs: in der Mitte fast weiß, nach außen blauer und zum Rand
+   hin durchsichtig — die Ränder bleiben dunkel, die Welt taucht aus einem Lichtschein auf. */
+#ileenStart::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse 72% 64% at 50% 50%,
+    rgba(234, 245, 255, 0.97) 0%,
+    rgba(166, 214, 248, 0.84) 34%,
+    rgba(66, 152, 218, 0.46) 66%,
+    rgba(16, 64, 120, 0) 100%);
+}
+
+/* Abgang in zwei Takten, 2 s: in den ersten 0,4 s steigt das Licht, das Logo löst sich darin auf;
+   danach klingt alles ab (der schwarze Grund und das Licht zugleich) und gibt die Welt frei. */
+#ileenStart.geht {
+  pointer-events: none;
+  animation: ileenStartAb 2s cubic-bezier(0.45, 0, 0.25, 1) forwards;
+}
+#ileenStart.geht::after {
+  animation: ileenStartLicht 2s ease-out forwards;
+}
+#ileenStart.geht .sb-block {
+  animation: ileenStartLogoAb 0.6s ease-in forwards;
+}
+
+@keyframes ileenStartAb {
+  0%, 20% { opacity: 1; visibility: visible; }
+  100%    { opacity: 0; visibility: hidden; }
+}
+@keyframes ileenStartLicht {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+@keyframes ileenStartLogoAb {
+  to { opacity: 0; transform: scale(1.08); filter: blur(5px) drop-shadow(0 0 30px rgba(48, 180, 231, 0.45)); }
+}
+
+/* Auftritt: Buchstabe für Buchstabe, langsam, jeder aus der Unschärfe heraus und von unten.
+   Der Aufbau dauert 0,15 s + 4 × 0,5 s + 0,95 s = 3,1 s; danach setzt das Überblenden ein
+   (startbild.js: minMs). Wer hier eine Zeit ändert, ändert dort mit — ein Prüfstein vergleicht. */
+#ileenStart .sb-b {
+  fill: #ffffff;
+  opacity: 0;
+  transform: translateY(10px);
+  filter: blur(7px);
+  animation: ileenStartEin 0.95s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: calc(var(--i, 0) * 500ms + 150ms);
+}
+
+/* Der Untertitel „Immersive Learning Environment" wie im Originallogo: unter dem Schriftzug im Abstand
+   von gut einer halben Strichstärke-Reihe (5,3 % der Breite), hell, leicht durchscheinend, I · L · E
+   in Cyan. Er blendet ein, während die letzten Buchstaben einlaufen, und endet mit ihnen zusammen
+   (0,15 s + 2,05 s + 0,9 s = 3,1 s). */
+#ileenStart .sb-sub {
+  display: block;
+  width: 100%;
+  margin-top: 5.3%;
+  overflow: visible;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-weight: 300;
+  fill: rgba(255, 255, 255, 0.86);
+  opacity: 0;
+  transform: translateY(6px);
+  filter: blur(5px);
+  animation: ileenStartEin 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 2.2s forwards;
+}
+#ileenStart .sb-sub .sb-c2 { fill: #30b4e7; }
+
+/* Danach atmen nur die cyanfarbenen Teile (i-Punkt, Mittelstriche der beiden E) —
+   das Zeichen „lebt", bis die Welt dahinter steht */
+#ileenStart .sb-c {
+  fill: #30b4e7;
+  animation: ileenStartAtmen 2.2s ease-in-out 3.1s infinite;
+}
+
+@keyframes ileenStartEin {
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@keyframes ileenStartAtmen {
+  0%, 100% { filter: none; }
+  50%      { filter: drop-shadow(0 0 7px rgba(48, 180, 231, 0.95)) brightness(1.12); }
+}
+
+/* Wer Bewegung abgeschaltet hat, bekommt das Logo ohne Auftritt und ohne Atmen */
+@media (prefers-reduced-motion: reduce) {
+  #ileenStart.geht,
+  #ileenStart.geht::after { animation-duration: 0.5s; }
+  #ileenStart.geht .sb-block { animation: none; opacity: 0; }
+  #ileenStart .sb-b,
+  #ileenStart .sb-sub { animation: none; opacity: 1; transform: none; filter: none; }
+  #ileenStart .sb-c { animation: none; }
+}

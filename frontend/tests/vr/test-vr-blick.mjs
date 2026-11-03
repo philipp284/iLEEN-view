@@ -340,6 +340,97 @@ try {
   pruefe('lange gekniffen: kein Landeplatz-Ring', !k4.ring, JSON.stringify(k4));
   pruefe('… und kein Sprung', Math.hypot(p2[0] - p1[0], p2[2] - p1[2]) < 1e-6, JSON.stringify([p1, p2]));
 
+  // ── Kneifen und ziehen in der Luft: gehen, fliegen, schweben, landen ──
+  // `punkte` sind Lagen der Finger im Rahmen des Nutzers (m). Mit `grip: false` liefert die
+  // Brille keinen gripSpace — dann zählt der Strahl, der vom Auge aus mit der Hand wandert.
+  const luft = (punkte, { grip = true } = {}) => seite.evaluate(async ({ punkte, grip }) => {
+    const V = ILeenVR, T = V.THREE;
+    const { XRInputSource, XRSpace, P_SPACE } = __iwer;
+    const s = V.renderer.xr.getSession();
+    const bild = n => new Promise(f => { let r = n; const w = () => (--r <= 0 ? f() : s.requestAnimationFrame(w)); s.requestAnimationFrame(w); });
+    const bezug = V.renderer.xr.getReferenceSpace();
+    __vp.blick = new XRInputSource('right', 'transient-pointer', ['generic-button'], new XRSpace(bezug), undefined, grip ? new XRSpace(bezug) : undefined, undefined);
+    const setze = p => {
+      if (grip) __vp.blick.gripSpace[P_SPACE].offsetMatrix.set(new T.Matrix4().makeTranslation(...p).elements);
+      else __vp.zielen(__vp.blick, V.nutzer.localToWorld(new T.Vector3(...p)));
+    };
+    // Der Strahl zeigt in den Himmel: ein Kneifen ohne Bewegung soll hier nichts treffen
+    if (grip) __vp.zielen(__vp.blick, V.kamera.getWorldPosition(new T.Vector3()).add(new T.Vector3(0, 30, 0)));
+    setze(punkte[0]);
+    __vp.wechsel([__vp.blick], []);
+    await bild(3);
+    const vorher = V.nutzer.position.toArray();
+    const richtung = new T.Vector3(0, 0, -1).applyQuaternion(V.nutzer.quaternion).toArray();
+    await __vp.ereignis('selectstart', __vp.blick);
+    await bild(2);
+    const hand = V.haende.find(x => x.quelle === __vp.blick);
+    const vorZug = !!(hand.flug && hand.flug.aktiv);
+    for (const p of punkte.slice(1)) { setze(p); await bild(3); }
+    const mitten = { aktiv: !!(hand.flug && hand.flug.aktiv), zielt: hand.zielt, ring: __vp.ring() };
+    await __vp.ereignis('selectend', __vp.blick);
+    __vp.wechsel([], [__vp.blick]);
+    await bild(2);
+    return { vorher, nachher: V.nutzer.position.toArray(), richtung, vorZug, ...mitten, schwebt: V.app.schwebt };
+  }, { punkte, grip });
+  const schritte = (von, bis, n) => Array.from({ length: n + 1 }, (_, i) => von.map((v, k) => v + (bis[k] - v) * i / n));
+
+  // vor: Hand 40 cm zu sich heran (Schritte von 8 cm; der erste löst das Ziehen aus und zählt nicht)
+  const f1 = await luft(schritte([0.15, 1.2, -0.65], [0.15, 1.2, -0.25], 5));
+  const dxz = [f1.nachher[0] - f1.vorher[0], f1.nachher[2] - f1.vorher[2]];
+  const weg = Math.hypot(...dxz);
+  const vorn = (dxz[0] * f1.richtung[0] + dxz[1] * f1.richtung[2]) / (weg || 1);
+  pruefe('Kneifen und die Hand heranziehen: man geht nach vorn (≈ 4 Schritte × 8 cm × 6)', weg > 1.5 && weg < 2.1 && vorn > 0.99,
+    `${weg.toFixed(2)} m, vorn ${vorn.toFixed(3)}`);
+  pruefe('… waagerecht gezogen bleibt die Höhe, man schwebt nicht', Math.abs(f1.nachher[1] - f1.vorher[1]) < 0.05 && !f1.schwebt, JSON.stringify(f1));
+  pruefe('… beim Ziehen kein Landeplatz-Ring, nach dem Loslassen kein Sprung',
+    !f1.zielt && !f1.ring && Math.hypot(f1.nachher[0] - f1.vorher[0], f1.nachher[2] - f1.vorher[2]) < 2.2);
+
+  // hoch: Hand 40 cm nach unten ziehen = steigen, und dort bleiben
+  const f2 = await luft(schritte([0.15, 1.5, -0.4], [0.15, 1.1, -0.4], 5));
+  const steigt = f2.nachher[1] - f2.vorher[1];
+  pruefe('Hand nach unten gezogen: man steigt (≈ 4 × 8 cm × 6)', steigt > 1.5 && steigt < 2.1, steigt.toFixed(2));
+  pruefe('… und schwebt dort (Boden folgen setzt aus)', f2.schwebt);
+  await bilder(15);
+  pruefe('… bleibt in der Luft stehen', await seite.evaluate(y => ILeenVR.nutzer.position.y > y - 0.05, f2.nachher[1]));
+
+  // Wer schwebt, bekommt auch beim waagerechten Ziehen die volle Richtung
+  const f3 = await luft(schritte([0.15, 1.2, -0.65], [0.15, 1.35, -0.25], 5));
+  const sinkt = f3.nachher[1] - f3.vorher[1];
+  pruefe('schwebend, schräg gezogen (Hand hoch und heran): die Höhe folgt der Hand — man sinkt ≈ 4 × 3 cm × 6',
+    sinkt < -0.5 && sinkt > -1 && f3.schwebt, sinkt.toFixed(2));
+
+  // Tablet: wer schwebt, kann auf den Werkzeugen landen; die Flugweite wählt man dort ebenfalls
+  await seite.evaluate(() => { ILeenVR.app.aktionen.seite('werkzeuge'); ILeenVR.ui.oben('werkzeuge'); });
+  await bilder(4);
+  pruefe('Tablet: schwebend ist „Landen" auf den Werkzeugen wählbar', await seite.evaluate(() => !!__vp.region('wz:landen')), 'wz:landen fehlt');
+  await seite.evaluate(() => { ILeenVR.ui.scroll.set('werkzeuge', 400); ILeenVR.ui.schmutzig = true; });
+  await bilder(4);
+  const flugweiten = await seite.evaluate(() => ILeenVR.ui.regionen.filter(r => r.id.startsWith('wz:flug:')).map(r => r.id));
+  pruefe('… und die Flugweite (fein · normal · weit) ohne Controller', flugweiten.join() === 'wz:flug:2,wz:flug:6,wz:flug:15', flugweiten.join());
+  await seite.evaluate(() => ILeenVR.ui.oben('werkzeuge'));
+  await bilder(3);
+
+  // Landen: zurück auf den Boden, der Boden folgt wieder
+  await seite.evaluate(() => { ILeenVR.app.aktionen.landen(); });
+  await bilder(25);
+  const gelandet = await seite.evaluate(() => ({ y: ILeenVR.nutzer.position.y, schwebt: ILeenVR.app.schwebt }));
+  pruefe('„Landen" setzt den Nutzer auf den Boden', Math.abs(gelandet.y) < 0.05 && !gelandet.schwebt, JSON.stringify(gelandet));
+  await seite.evaluate(() => { ILeenVR.ui.schmutzig = true; });
+  await bilder(3);
+  pruefe('… danach ist der Knopf „Landen" gesperrt (keine Trefferfläche)', await seite.evaluate(() => !__vp.region('wz:landen')));
+
+  // Brille ohne gripSpace: der Strahl, der mit der Hand wandert, trägt ersatzweise
+  const f4 = await luft(schritte([0.1, 1.15, -0.7], [0.5, 1.15, -0.7], 5), { grip: false });
+  pruefe('ohne gripSpace zieht der Strahl: die Welt wird bewegt', Math.hypot(f4.nachher[0] - f4.vorher[0], f4.nachher[2] - f4.vorher[2]) > 0.3,
+    JSON.stringify(f4));
+  await seite.evaluate(() => { ILeenVR.app.aktionen.landen(); });
+  await bilder(10);
+
+  // Ein stilles Kneifen (Hand bleibt) springt weiter, statt zu fliegen — oben geprüft (k3);
+  // hier zusätzlich: die Hand ruht, auch nach 8 Bildern ist nichts gezogen
+  const f5 = await luft(schritte([0.15, 1.2, -0.45], [0.15, 1.2, -0.45], 5));
+  pruefe('Kneifen ohne Handbewegung zieht nicht', !f5.aktiv && Math.hypot(f5.nachher[0] - f5.vorher[0], f5.nachher[2] - f5.vorher[2]) < 1e-6, JSON.stringify(f5));
+
   // ── Ein Controller kommt dazu: er trägt das Tablet wieder ────
   await seite.evaluate(() => { __brille.controllers.left.connected = true; });
   await bilder(6);

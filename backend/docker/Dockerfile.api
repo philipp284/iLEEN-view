@@ -1,0 +1,65 @@
+# ── splat-transform (SOG-Export) ─────────────────────────────────────────────
+# PlayCanvas' Werkzeug für Gaussian Splats ist Node ≥ 22. Ein eigener Stage statt
+# `apt install nodejs`: Debian bookworm liefert Node 18, und npm samt Zusatzpaketen
+# wöge im Endimage mehr als der ganze Rest. Übernommen werden nur die Node-Binärdatei
+# (rund 100 MB, beide Stages sind Debian bookworm, die Bibliotheken passen) und das
+# installierte Paket.
+FROM node:22-slim AS splat-transform
+RUN npm install --prefix /opt/splat-transform --no-audit --no-fund @playcanvas/splat-transform@3.1.6
+
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl build-essential pdf2svg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Eigener Layer, siehe requirements-splat.txt.
+COPY requirements-splat.txt .
+RUN pip install --no-cache-dir -r requirements-splat.txt
+
+# Erst hier und nicht oben bei den Systempaketen: jede Schicht vor dem pip-Layer macht
+# dessen Cache ungültig, und der kostet mehrere Gigabyte Download.
+COPY --from=splat-transform /usr/local/bin/node /usr/local/bin/node
+COPY --from=splat-transform /opt/splat-transform /opt/splat-transform
+
+COPY api/       ./api/
+COPY tiling/    ./tiling/
+COPY scan2bim/  ./scan2bim/
+# Splat-Training und -Export: Warteschlange, scan2gs (LAS → Splat), SOG, Georeferenzierung.
+# Der Worker (`splatwerk/worker.py`) liegt mit im Image, läuft aber auf dem Mac, nicht hier.
+COPY splatwerk/ ./splatwerk/
+COPY semantic/  ./semantic/
+COPY storage/   ./storage/
+# Rundgang-Kern (Fotos → tour.json). Ein Wurzel-Modul, kein Paket — muss
+# einzeln kopiert werden, sonst scheitert `import panorama_tour` in
+# api/routes/tour.py und die ganze API startet nicht.
+COPY panorama_tour.py ./
+# Statik aus dem Zeichenmodus. Die Beispieldateien kommen mit: sie sind die
+# einzige Möglichkeit, den Rechenweg im laufenden Container zu prüfen, ohne
+# vorher ein IFC hochzuladen und einen Grundriss zu zeichnen.
+COPY ileen/     ./ileen/
+
+# Das Sensorregister (data/*.csv) ist Vertrag, nicht Laufzeitdatum: wenige
+# Kilobyte, die `ileen/zeitreihe.py` beim ersten Zugriff liest. Der Rest von
+# data/ bleibt draußen — dort liegen Uploads und Caches.
+COPY data/*.csv ./data/
+
+# `jax_fem.generate_mesh` importiert gmsh auf Modulebene — ohne das Modul
+# lässt sich der Löser nicht einmal laden. Für Linux-arm64 gibt es kein
+# gmsh-Wheel (siehe requirements.txt); dort tritt das Ersatzmodul an seine
+# Stelle, das den Import überlebt und erst bei echter Benutzung abbricht.
+# Auf x86_64 ist das echte Paket installiert und diese Zeile ein No-op.
+RUN python -c "import gmsh" 2>/dev/null \
+    || cp ileen/shims/gmsh.py "$(python -c 'import site; print(site.getsitepackages()[0])')/gmsh.py"
+
+EXPOSE 8100
+
+# Kreuzberg wird als Python-Bibliothek in-process genutzt, nicht als Server:
+# `kreuzberg serve` bräuchte das separate Rust-CLI-Binary aus den GitHub-Releases.
+# Ein Worker, weil der Job-Status im Prozessspeicher gehalten wird.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8100", "--workers", "1"]

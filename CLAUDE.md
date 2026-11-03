@@ -106,6 +106,23 @@ Genau das ist beim Aufsetzen zweimal passiert (einmal die Vollfassung, einmal
 eine fremde React-App auf 5182). `tests/start/test-start.mjs` prüft deshalb als
 Erstes den Seitentitel.
 
+## Das Backend (`backend/`)
+
+Seit dem 2026-11-03 liegt das Backend **vollständig** hier — dieselben Dateien
+wie `~/Projekte/iLEEN/backend`, ohne Zuschnitt, unter AGPL-3.0
+(`backend/LICENSE`). Auch hier gilt: **geändert wird in der Vollfassung**,
+übernommen wird hierher, und zwar genau das, was dort getrackt ist:
+
+```bash
+cd ~/Projekte && git -C iLEEN archive HEAD backend | tar -x -C iLEEN-view
+```
+
+`backend/data/` ist bis auf die Demo-CSVs ausgeschlossen (`backend/.gitignore`),
+ebenso `.env`. Vor jedem Übernehmen nach Zugangsdaten suchen — das Repo ist
+öffentlich. `docker-compose.yml` bindet `../projekte/2026_1031_mainz_zwilling/…`
+als DGM1-Quelle ein; den Ordner gibt es hier nicht, Docker legt ihn leer an und
+die Route `/gelaende/dgm1` antwortet dann ohne Daten.
+
 ## Wie ein Werkzeug dazukommt
 
 Beide Seiten sind Steckplätze. Kein Panelgerüst kennt ein Werkzeug; jedes
@@ -247,7 +264,8 @@ Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.
 * **In gaeco läuft dieser Viewer im Rahmen.** `gaeco-bruecke.js` spricht das
   Protokoll `ileen-gaeco/1` mit dem gaeco-Modul (das Modul selbst, der Export
-  und die Einrichtung liegen nur in der Vollfassung: `gaeco/`, `backend/`).
+  und die Einrichtung liegen nur in der Vollfassung: `gaeco/`; der Export
+  steht im mitgelieferten `backend/`).
   Angenommen wird nur, was vom Elternfenster kommt und von einem Origin aus
   `ILEEN_CONFIG.gaecoOrigins`. Gebaut auf drei Stellen, die jedes Panel nutzen
   kann: die Ereignisse `ileen:auswahl` (features.js) und `ileen:modelle`

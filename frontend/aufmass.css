@@ -1,66 +1,39 @@
-/* aufmass.css — Fadenkreuz und Ablesefeld des Messmodus.
+/* aufmass.css — Ablesefeld des Messmodus.
  *
- * Beides liegt über der Leinwand und nicht im Panel: was beim Messen
- * gebraucht wird, muss dort stehen, wo der Blick ohnehin ist. Wer für die
- * laufende Länge in die Seitenleiste sehen muss, verliert die Stelle, die er
- * gerade anzielt.
+ * Es liegt über der Leinwand und nicht im Panel: was beim Messen gebraucht
+ * wird, muss dort stehen, wo der Blick ohnehin ist. Wer für die laufende
+ * Länge in die Seitenleiste sehen muss, verliert die Stelle, die er gerade
+ * anzielt.
+ *
+ * Ein Fadenkreuz gibt es nicht mehr. Es stand auf dem gefangenen Punkt, nicht
+ * auf der Maus — der Systemzeiger war ausgeblendet (`cursor:none`) —, und weil
+ * es erst nach der Fangrechnung nachrückte, lief der Zeiger der Hand hinterher.
+ * Jetzt bleibt der Systemzeiger (als Fadenkreuz-Cursor) und die Szene zeigt den
+ * Fang: eine Kante als Strecke, eine Ecke als Ring (`aufmass.js`, „Markierung
+ * des Fangs"). Was gefangen wurde und an welchem Bauteil, steht unten links.
  */
 
-/* ── Fadenkreuz ─────────────────────────────────────────────────────────────
+/* ── Markierung des Fangs ───────────────────────────────────────────────────
  *
- * Es steht auf dem *gefangenen* Punkt, nicht auf der Maus — der Systemzeiger
- * ist im Messmodus ausgeblendet (`cursor:none`). Genau das ist das „Springen"
- * des Zeigers: ein echter Sprung ist im Browser nicht möglich, ein sichtbar
- * versetztes Kreuz erfüllt denselben Zweck und zeigt zusätzlich, worauf
- * gefangen wurde.
+ * Eine Zeichnung über der Leinwand, keine in der Szene: was in der Szene
+ * steht, nimmt am Picken teil und verdeckt dem nächsten Fang das Bauteil
+ * darunter (siehe aufmass.js, „Markierung des Fangs"). Kante und Silhouette
+ * blau, Ecke bernstein — dieselben Töne wie die Fangarten im Panel.
  */
-.aufmass-kreuz {
+.aufmass-marke {
   position: absolute;
   left: 0; top: 0;
-  width: 0; height: 0;
+  width: 100%; height: 100%;
   pointer-events: none;
-  z-index: 900;
-  --ton: #97BF0D;
-  transition: opacity .12s ease;
+  z-index: 899;
+  overflow: visible;
 }
-.aufmass-kreuz__h,
-.aufmass-kreuz__v {
-  position: absolute;
-  background: var(--ton);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55);
-}
-.aufmass-kreuz__h { left: -13px; top: -1px; width: 26px; height: 1.5px; }
-.aufmass-kreuz__v { left: -1px; top: -13px; width: 1.5px; height: 26px; }
-.aufmass-kreuz__ring {
-  position: absolute;
-  left: -7px; top: -7px; width: 14px; height: 14px;
-  border: 1.5px solid var(--ton);
-  border-radius: 50%;
-  background: rgba(0, 0, 0, .18);
-}
-
-/* Die Form sagt, was gefangen wurde — ohne dass man das Ablesefeld ansehen
- * muss. Ecke: gefülltes Quadrat. Kante: Raute. Messpunkt: Doppelring.
- * Fläche und Raster: der offene Ring. */
-.aufmass-kreuz[data-art="ecke"]        { --ton: #FF9F1C; }
-.aufmass-kreuz[data-art="ecke"] .aufmass-kreuz__ring {
-  border-radius: 2px; background: var(--ton);
-}
-.aufmass-kreuz[data-art="kante"]       { --ton: #4DA6FF; }
-.aufmass-kreuz[data-art="kante"] .aufmass-kreuz__ring {
-  border-radius: 2px; transform: rotate(45deg); background: rgba(77, 166, 255, .35);
-}
-.aufmass-kreuz[data-art="silhouette"]  { --ton: #4DA6FF; }
-.aufmass-kreuz[data-art="silhouette"] .aufmass-kreuz__ring {
-  border-radius: 2px; transform: rotate(45deg); border-style: dashed;
-}
-.aufmass-kreuz[data-art="messpunkt"]   { --ton: #FFFFFF; }
-.aufmass-kreuz[data-art="messpunkt"] .aufmass-kreuz__ring {
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, .28);
-}
-.aufmass-kreuz[data-art="raster"]      { --ton: #C77DFF; }
-.aufmass-kreuz[data-art="splat"]       { --ton: #FFC83D; }
-.aufmass-kreuz[data-art="nichts"]      { --ton: #7a7a7a; }
+.aufmass-marke__saum   { fill: none; stroke: rgba(0, 0, 0, .55); stroke-width: 8.5px; stroke-linecap: round; }
+.aufmass-marke__kante  { fill: none; stroke: #4DA6FF; stroke-width: 4px; stroke-linecap: round; }
+.aufmass-marke__ecke   { fill: none; stroke: #FF9F1C; stroke-width: 3px; }
+.aufmass-marke__punkt  { fill: #4DA6FF; stroke: #fff; stroke-width: 1.5px; }
+.aufmass-marke__fuell  { fill: #FF9F1C; stroke: none; }
+circle.aufmass-marke__saum { stroke-width: 7px; }
 
 /* ── Ablesefeld ─────────────────────────────────────────────────────────── */
 .aufmass-hud {
@@ -70,6 +43,8 @@
   pointer-events: none;
   padding: 10px 13px;
   min-width: 190px;
+  max-width: 340px;
+  overflow-wrap: anywhere;
   border-radius: 10px;
   border: 1px solid rgba(151, 191, 13, .30);
   background: rgba(12, 15, 16, .84);

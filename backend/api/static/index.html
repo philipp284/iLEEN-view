@@ -1,0 +1,2173 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iLEEN Backend — Asset-Manager</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<script>
+  // Muss vor dem Laden von Cesium.js stehen — sonst sucht Cesium seine
+  // Worker und Assets relativ zu dieser Seite.
+  window.CESIUM_BASE_URL = "https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/";
+</script>
+<link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Widgets/widgets.css">
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.139.1/Build/Cesium/Cesium.js"></script>
+
+<!-- Leiste, Panel, Bausteine und Farben wie im iLEEN-Viewer -->
+<link rel="stylesheet" href="ileen-ui.css?v=1">
+
+<style>
+  /* Aufbau wie im Viewer: die Szene füllt das Fenster, links schwebt die
+     Aktivitätsleiste mit ihrem Panel, rechts die Assetliste. Was über der
+     Szene liegt (Bauteilkarte, Materialpalette, Cesiums Quellenangabe),
+     rückt um die Breite der Panels ein — die Breiten stehen in
+     --links-belegt / --rechts-belegt, gesetzt von belegungMessen(). */
+  :root { --links-belegt: 0px; --rechts-belegt: 0px; --assets-breite: 340px; }
+
+  #viewer { position: fixed; inset: 0; }
+
+  /* Cesium setzt die Lage der Quellenangabe als Inline-Stil (left: 5px) —
+     dagegen hilft nur `!important`. */
+  #viewer .cesium-viewer-bottom { left: calc(var(--links-belegt) + 4px) !important; }
+
+  /* ── Panelinhalt ───────────────────────────────────────────────────────── */
+
+  .btn-row > button { flex: 1 1 auto; }
+  .abstand-oben { margin-top: var(--ds-space-3); }
+
+  /* Regler mit Zahl daneben: Drehung und Deckkraft */
+  .regler-zeile {
+    display: grid; grid-template-columns: minmax(0, 1fr) 76px;
+    align-items: center; gap: var(--ds-space-2);
+  }
+  .regler-zeile output {
+    color: var(--text-primary); font-size: 11px; font-weight: 600;
+    font-variant-numeric: tabular-nums; text-align: right;
+  }
+
+  /* Beschriftung, Zahl und Einheit auf einer Zeile. */
+  .zahl-zeile { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .zahl-zeile label { flex: 1; margin: 0; color: var(--text-secondary); font-size: 11px; }
+  .zahl-zeile input[type=number] { width: 5.5em !important; flex: none; text-align: right; }
+  .zahl-zeile span { width: 1.2em; color: var(--text-muted); font-size: 11px; }
+
+  .status { min-height: 16px; margin: var(--ds-space-2) 0 0; font-size: 11px; color: var(--text-secondary); }
+  .status:empty { min-height: 0; margin: 0; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); }
+
+  code {
+    display: block; padding: 6px 7px; border-radius: var(--ds-radius-sm);
+    background: rgba(0, 0, 0, 0.28); color: var(--text-secondary);
+    font: 10.5px/1.4 ui-monospace, Menlo, monospace; word-break: break-all;
+  }
+
+  .check {
+    display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 8px;
+    font-size: 12px; cursor: pointer;
+  }
+  .check input { margin-top: 2px; }
+  .check small { color: var(--text-muted); font-size: 10.5px; }
+
+  /* Ausgewähltes Modell: steht über den Gruppen und klappt nie zu */
+  .auswahl-kopf { display: flex; align-items: center; gap: var(--ds-space-2); min-width: 0; }
+  .auswahl-name {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .section--pinned .btn-group { margin-top: var(--ds-space-3); }
+
+  .leer { padding: var(--ds-space-2) 0; color: var(--text-secondary); font-size: 12px; }
+  .leer p { margin: 0; }
+
+  /* Angebot des Texturassistenten nach dem Upload — sichtbar, aber
+     überspringbar: die automatische Zuordnung ist bereits angewandt. */
+  .upload-offer {
+    margin-top: 10px; padding: 9px 10px; border-radius: var(--ds-radius);
+    border: 1px solid var(--ds-accent); background: rgba(var(--ds-accent-rgb), .08);
+  }
+  .upload-offer p { margin: 0 0 8px; font-size: 11.5px; line-height: 1.45; }
+
+  /* ── Fotos → Splat ─────────────────────────────────────────────────────── */
+  .dropzone {
+    padding: 14px 10px; border: 1.5px dashed var(--ds-border-strong); border-radius: var(--ds-radius);
+    color: var(--text-secondary); text-align: center; line-height: 1.4; cursor: pointer;
+    transition: border-color .12s, background .12s, color .12s;
+  }
+  .dropzone:hover, .dropzone:focus-visible, .dropzone.drueber {
+    border-color: var(--ds-accent); background: rgba(var(--ds-accent-rgb), .06);
+    color: var(--text-primary); outline: none;
+  }
+  .dropzone small { display: block; margin-top: 4px; font-size: 10.5px; color: var(--text-muted); }
+  .st-zeile { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ds-space-2); margin-top: var(--ds-space-2); }
+  .st-zeile select { width: auto !important; }
+  .st-haken { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; color: var(--ds-text-2, #bbb); }
+  .st-banner {
+    margin: 8px 0 0; padding: 5px 8px; border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm); font-size: 11px;
+  }
+  .st-banner.ok { color: var(--ok); } .st-banner.warn { color: var(--warn); border-color: var(--warn); }
+  #st-liste { margin: 10px 0 0; padding: 0; list-style: none; }
+  .st-job {
+    margin-bottom: 6px; padding: 7px 9px; border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius); background: var(--ds-surface);
+  }
+  .st-job[data-status="fertig"] { border-color: rgba(var(--ds-accent-rgb), .35); }
+  .st-job[data-status="fehler"] { border-color: rgba(224, 92, 92, .45); }
+  .st-kopf { display: flex; gap: 6px; align-items: baseline; }
+  .st-kopf b { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .st-chip {
+    padding: 1px 7px; border-radius: 99px; background: var(--ds-surface-hover);
+    color: var(--text-secondary); font-size: 10px; white-space: nowrap;
+  }
+  .st-job[data-status="laeuft"] .st-chip, .st-job[data-status="uebernehme"] .st-chip { background: rgba(78, 163, 255, .16); color: var(--info); }
+  .st-job[data-status="fertig"] .st-chip { background: rgba(var(--ds-accent-rgb), .16); color: var(--ok); }
+  .st-job[data-status="fehler"] .st-chip { background: rgba(224, 92, 92, .16); color: var(--err); }
+  .st-bar { height: 3px; margin: 6px 0 4px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, .1); }
+  .st-bar i { display: block; height: 100%; background: var(--info); transition: width .4s; }
+  .st-job[data-status="fertig"] .st-bar i { background: var(--ok); }
+  .st-meld { font-size: 11.5px; }
+  .st-info { margin-top: 2px; color: var(--text-muted); font-size: 10.5px; }
+  .st-info.warn { color: var(--warn); }
+  .st-aktionen { margin-top: 6px; gap: 4px; }
+  .st-aktionen > button { flex: 0 0 auto; }
+  .st-log {
+    max-height: 160px; margin: 6px 0 0; padding: 6px; overflow: auto; border-radius: var(--ds-radius-sm);
+    background: #000; color: var(--text-secondary); font: 10.5px/1.35 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all;
+  }
+
+  /* ── Rechts: Assetliste ────────────────────────────────────────────────
+     Ein eigenes Panel, gespiegelt zur linken Leiste: ausblendbar und am
+     linken Rand in der Breite ziehbar. Breite, Sichtbarkeit und
+     Kategoriefilter überleben einen Reload. */
+  #assets-panel {
+    position: fixed; top: 10px; right: 10px; bottom: 10px; z-index: 100;
+    width: var(--assets-breite); min-width: 0; max-width: none;
+    border-left: 1px solid var(--border-subtle); border-radius: 4px;
+  }
+  #assets-panel .sidebar-resize-handle { right: auto; left: -4px; }
+  .sidebar-toggle--rechts { left: auto; right: 10px; }
+
+  .assets-kopf {
+    display: flex; flex-direction: column; gap: var(--ds-space-2);
+    padding: 10px 12px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .assets-liste { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px; }
+  #assets-panel > .hint, #assets-panel > .status { margin: 0; padding: 0 14px 10px; }
+
+  .asset {
+    display: flex; align-items: center; gap: 1px; margin-bottom: 1px;
+    border-left: 2px solid transparent; border-radius: 0 4px 4px 0;
+  }
+  .asset:hover { background: var(--ds-surface); }
+  .asset[data-selected="true"] { background: rgba(var(--ds-accent-rgb), .10); border-left-color: var(--ds-accent); }
+  .asset-main {
+    display: flex; flex: 1 1 auto; justify-content: flex-start; gap: 8px; min-width: 0;
+    min-height: 30px; padding: 0 6px; border: none; background: none;
+    color: var(--text-primary); font-size: 12px; font-weight: 400; text-align: left;
+  }
+  .asset-main:hover:not(:disabled) { border: none; background: none; }
+  .asset .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset[data-loaded="true"] .name { font-weight: 600; }
+  .asset .meta { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .tag {
+    flex: 0 0 auto; padding: 1px 5px; border-radius: 3px; background: var(--ds-surface-hover);
+    color: var(--text-muted); font-size: 9px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .asset-mini {
+    flex: 0 0 auto; width: 24px; min-height: 24px; padding: 0; border: none; border-radius: 3px;
+    background: none; color: var(--text-secondary); font-size: 12px; opacity: .6;
+  }
+  .asset-mini:hover:not(:disabled) { border: none; background: var(--ds-surface-hover); opacity: 1; }
+  .asset-mini.terrain { cursor: default; opacity: 1; }
+  .asset-mini.terrain:hover { background: none; }
+  /* Sichtbarkeit in der Szene: blass = nicht geladen, hinterlegt = geladen. */
+  .asset-mini.eye { opacity: .3; }
+  .asset-mini.eye.on { opacity: 1; background: rgba(var(--ds-accent-rgb), .16); }
+  /* Umbenennen, Löschen, Texturen, Export erscheinen erst an der Zeile, über
+     der der Zeiger steht (oder die ausgewählt ist) — sechzig Zeilen mit je
+     fünf Symbolen sind sonst eine Symbolwand, in der die Namen untergehen.
+     `visibility` statt `display`: die Namen behalten ihre Breite. Ohne Maus
+     (Tablet) bleiben sie stehen. */
+  @media (hover: hover) {
+    .asset:not(:hover):not(:focus-within):not([data-selected="true"]) .asset-mini.aktion { visibility: hidden; }
+  }
+
+  .assets-fuss {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+    border-top: 1px solid var(--border-subtle); background: var(--bg-overlay);
+  }
+  .assets-fuss .hint { flex: 1; margin: 0; }
+
+  /* ── Bauteilkarte über der Szene ───────────────────────────────────────
+     Wie die Eigenschaftsanzeige im Viewer: erscheint nur bei Auswahl und
+     steht neben der Assetliste, nicht in einem Panel. */
+  #feature {
+    position: absolute; top: 10px; right: calc(var(--rechts-belegt) + 10px);
+    width: 340px; max-height: calc(100% - 20px);
+    display: flex; flex-direction: column; overflow: hidden;
+    /* Cesium hängt sein Widget nach dieser Karte in den Container und würde sie
+       sonst überdecken — gleiche Stapelebene, spätere Position im DOM. */
+    z-index: 10;
+    background: var(--bg-surface); border: 1px solid var(--border-default);
+    border-radius: 4px; box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
+    transition: right 0.2s ease;
+  }
+  #feature header { align-items: flex-start; }
+  #feature header > div { flex: 1; min-width: 0; }
+  #feature-name { color: var(--text-secondary); font-size: 11px; word-break: break-word; }
+  #feature-body { overflow-y: auto; padding: 0 0 10px; }
+  #feature h3 {
+    margin: 0; padding: 8px 14px; background: rgba(255, 255, 255, .03);
+    color: var(--text-secondary); font-size: 10px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  #feature table { width: 100%; border-collapse: collapse; }
+  #feature td {
+    padding: 5px 14px; border-bottom: 1px solid rgba(255, 255, 255, .03);
+    font-size: 11px; vertical-align: top; word-break: break-word;
+  }
+  #feature td:first-child { width: 45%; padding-right: 8px; color: var(--text-secondary); }
+  #feature td:last-child { text-align: right; }
+  #feature-body > .hint { padding: 0 14px; }
+
+  @media (max-width: 900px) {
+    :root { --sidebar-width: min(340px, calc(100vw - 80px)); }
+    #assets-panel { width: min(var(--assets-breite), calc(100vw - 20px)); }
+    #feature { width: calc(100vw - 20px); right: 10px; }
+  }
+</style>
+
+<link rel="stylesheet" href="materials.css?v=4">
+<link rel="stylesheet" href="material-modus.css?v=4">
+</head>
+
+<body>
+<main id="viewer">
+  <aside id="feature" hidden>
+    <header class="modern-header">
+      <div>
+        <div id="feature-type" class="modern-logo-title"></div>
+        <div id="feature-name"></div>
+      </div>
+      <button id="feature-close" class="btn--ghost btn--icon btn--sm" title="Auswahl aufheben">✕</button>
+    </header>
+    <div id="feature-body"></div>
+  </aside>
+</main>
+
+<button id="sidebarToggle" class="sidebar-toggle" title="Seitenleiste zeigen (M)" hidden>☰</button>
+
+<!-- Links: Aktivitätsleiste und Panel. Jeder Bereich ist ein Symbol in der
+     Leiste und ein Abschnitt im Panel; seine Untergruppen sind `<details>`
+     und verhalten sich als Akkordeon (Skript, Abschnitt „Leiste und Panel"). -->
+<div id="toolbar">
+  <nav id="activityBar" class="activity-bar" aria-label="Bereiche">
+    <div class="activity-logo" title="iLEEN Backend — Asset-Manager"><img src="ileen-marke.svg" alt="iLEEN"></div>
+    <button class="activity-btn" data-section="import" title="Hochladen — Modelle, Punktwolken, Fotos">📥</button>
+    <button class="activity-btn" data-section="verortung" title="Verortung — Position, Drehung, Gelände">📍</button>
+    <button class="activity-btn activity-btn--collapse" id="sidebar-collapse" title="Seitenleiste einklappen (M)">⇤</button>
+  </nav>
+
+  <div id="sidebarPanel" class="sidebar-panel">
+    <div class="sidebar-resize-handle" id="sidebar-resizer" title="Breite ziehen"></div>
+
+    <!-- ── Hochladen ─────────────────────────────────────────────────── -->
+    <section class="sidebar-section" id="section-import">
+      <header class="modern-header"><div class="modern-logo-title">Hochladen</div></header>
+      <div class="section-scroll-content">
+
+        <details class="panel-group" open>
+          <summary class="panel-group__header"><span>Modell hochladen</span></summary>
+          <div class="panel-group__body">
+            <div class="field">
+              <input type="file" id="file" accept=".ifc,.las,.laz,.ply,.obj,.stl,.gltf,.glb,.xyz,.pts">
+            </div>
+            <!-- Nur bei Punktwolken sichtbar: aus einem Laserscan wird ohne Training ein Gaussian Splat
+                 (Surfels, metrisch exakt, aber ohne blickabhängige Farbe). Siehe splatwerk/scan2gs.py. -->
+            <div id="als-splat-block" hidden>
+              <label class="check" title="Jeder Punkt wird zu einem flachen, flächenausgerichteten Gaussian — in Sekunden statt Stunden, ohne Fotos.">
+                <input type="checkbox" id="als-splat">
+                <span>Punktwolke als <b>Gaussian Splat</b> umrechnen<br><small>Surfels aus dem Scan, kein Training</small></span>
+              </label>
+              <div class="zahl-zeile" id="als-voxel-zeile" hidden>
+                <label for="als-voxel">Voxel</label>
+                <input type="number" id="als-voxel" min="0.1" max="500" step="0.1" placeholder="auto">
+                <span>cm</span>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button id="upload" class="primary">Hochladen &amp; Tilen</button>
+            </div>
+            <p class="status" id="upload-status"></p>
+            <p class="hint">IFC, LAS/LAZ, XYZ/PTS, PLY (Punktwolke oder Splat), OBJ, STL, glTF/GLB.
+              Das fertige Tileset erscheint in der Assetliste und wird gleich ausgewählt.</p>
+          </div>
+        </details>
+
+        <details class="panel-group" id="splat-training">
+          <summary class="panel-group__header">
+            <span>Fotos → Splat</span>
+            <span class="count-badge" id="st-zahl" title="Laufende Aufträge" hidden></span>
+          </summary>
+          <div class="panel-group__body">
+            <div class="dropzone" id="st-drop" tabindex="0" role="button" aria-label="Fotos, Videos oder ZIP auswählen">
+              Fotos, Videos oder ZIP hierher ziehen
+              <small>oder klicken · Ordner gehen auch · iPhone-HEIC und Aufnahmen von Gaussian Splat King (Foto-Serie, Doppelvideo) sind in Ordnung</small>
+            </div>
+            <input type="file" id="st-dateien" multiple hidden
+                   accept="image/*,.heic,.heif,.tif,.tiff,video/*,.mp4,.mov,.zip,.json,.csv,.ndjson">
+            <div id="st-gewaehlt" class="st-info" hidden></div>
+            <div class="st-zeile">
+              <input type="text" id="st-name" placeholder="Name (optional)">
+              <select id="st-qualitaet" title="Trainingsschritte · Bildgröße · Obergrenze der Splats">
+                <option value="schnell">schnell</option>
+                <option value="standard" selected>standard</option>
+                <option value="hoch">hoch</option>
+              </select>
+            </div>
+            <div class="st-zeile">
+              <select id="st-verfahren" title="Wie aus den Bildern Kameras werden. COLMAP rechnet lokal; Atlas (World Labs) schätzt Kameras und dichte Tiefe — trägt auch bei wenig Überlappung, kostet Credits.">
+                <option value="colmap" selected>Kameras: COLMAP (lokal)</option>
+                <option value="atlas">Kameras + Tiefe: World Labs Atlas</option>
+              </select>
+              <label class="st-haken" title="Nach dem Splat ein texturiertes Mesh über World Labs splats2Mesh — eigenes Asset, deckungsgleich mit dem Splat. Kostet Credits.">
+                <input type="checkbox" id="st-mesh"> + Mesh</label>
+              <label class="st-haken" title="Öffnet auf dem Mac ein Fenster von Spirula Studio: das Training live ansehen, drehen, zoomen, anhalten. Das Fenster schließt sich, wenn der Splat fertig ist.">
+                <input type="checkbox" id="st-fenster"> Spirula-Fenster</label>
+            </div>
+            <div class="btn-row abstand-oben"><button id="st-start" class="primary" disabled>Training starten</button></div>
+            <p class="status" id="st-status"></p>
+            <div id="st-worker" class="st-banner" hidden></div>
+            <ul id="st-liste"></ul>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- ── Verortung ─────────────────────────────────────────────────── -->
+    <section class="sidebar-section" id="section-verortung">
+      <header class="modern-header"><div class="modern-logo-title">Verortung</div></header>
+      <div class="section-scroll-content">
+
+        <div id="placement-leer" class="leer">
+          <p>Kein Modell ausgewählt.</p>
+          <p class="hint">In der Assetliste rechts ein Modell anklicken — es wird geladen,
+            angeflogen und lässt sich hier verorten.</p>
+        </div>
+
+        <div id="placement" hidden>
+          <div class="section--pinned">
+            <div class="section__label">Ausgewählt</div>
+            <div class="auswahl-kopf">
+              <span class="auswahl-name" id="auswahl-name"></span>
+              <span class="tag" id="auswahl-typ"></span>
+            </div>
+            <p class="status" id="placement-status"></p>
+            <div class="btn-group">
+              <button id="reset">Verwerfen</button>
+              <button id="save" class="primary">Speichern</button>
+            </div>
+          </div>
+
+          <details class="panel-group" open>
+            <summary class="panel-group__header"><span>Position</span></summary>
+            <div class="panel-group__body">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="lat">Breite (°)</label>
+                  <input type="number" id="lat" step="0.000001" min="-90" max="90">
+                </div>
+                <div class="field">
+                  <label for="lon">Länge (°)</label>
+                  <input type="number" id="lon" step="0.000001" min="-180" max="180">
+                </div>
+                <div class="field">
+                  <label for="height" id="height-label">Höhe über Gelände (m)</label>
+                  <input type="number" id="height" step="0.5">
+                </div>
+                <div class="field">
+                  <label for="height_reference">Höhenbezug</label>
+                  <select id="height_reference">
+                    <option value="terrain">über Gelände</option>
+                    <option value="msl">über NHN</option>
+                    <option value="ellipsoid">über Ellipsoid</option>
+                  </select>
+                </div>
+              </div>
+              <p class="hint" id="height-info"></p>
+              <div class="btn-row abstand-oben">
+                <button id="pick" aria-pressed="false" title="Nächster Klick auf die Karte setzt den Bezugspunkt">Auf Karte setzen</button>
+                <button id="ground" title="Höhe 0 über Gelände">Auf Gelände</button>
+                <button id="flyto">Hinfliegen</button>
+              </div>
+              <p class="hint">Die farbigen Pfeile in der Szene verschieben das Modell direkt
+                (rot = Ost, grün = Nord, blau = Hoch).</p>
+            </div>
+          </details>
+
+          <details class="panel-group">
+            <summary class="panel-group__header"><span>Drehung &amp; Maßstab</span></summary>
+            <div class="panel-group__body">
+              <div class="field">
+                <label for="heading">Drehung / Heading (°) — im Uhrzeigersinn</label>
+                <div class="regler-zeile">
+                  <input type="range" id="heading-slider" min="0" max="360" step="0.5" aria-label="Heading">
+                  <input type="number" id="heading" step="0.5">
+                </div>
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="pitch">Neigung Nord (°)</label>
+                  <input type="number" id="pitch" step="0.5">
+                </div>
+                <div class="field">
+                  <label for="roll">Neigung Ost (°)</label>
+                  <input type="number" id="roll" step="0.5">
+                </div>
+              </div>
+              <div class="field">
+                <label for="scale">Maßstab</label>
+                <input type="number" id="scale" step="0.01" min="0.001">
+              </div>
+            </div>
+          </details>
+
+          <details class="panel-group">
+            <summary class="panel-group__header"><span>Darstellung</span></summary>
+            <div class="panel-group__body">
+              <div class="field">
+                <label for="opacity">Deckkraft dieses Modells — zum Durchschauen beim Ausrichten</label>
+                <div class="regler-zeile">
+                  <input type="range" id="opacity" min="10" max="100" step="5" value="100">
+                  <output id="opacity-wert" for="opacity">100 %</output>
+                </div>
+              </div>
+              <p class="hint">Bearbeitet wird immer nur das ausgewählte Modell; über 👁 in der
+                Assetliste kommen weitere Modelle als Referenz dazu.</p>
+            </div>
+          </details>
+
+          <details class="panel-group" id="terrain-block">
+            <summary class="panel-group__header"><span>Geländereferenz</span></summary>
+            <div class="panel-group__body">
+              <p class="hint" id="terrain-info" style="margin-top:0"></p>
+              <div class="btn-row abstand-oben">
+                <button id="terrain-mark">Als Geländereferenz verwenden</button>
+                <button id="terrain-clear" class="btn--danger" hidden>Referenz entfernen</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- Nur bei Punktwolken: Rekonstruktion zu IFC + GLB -->
+          <details class="panel-group" id="scan2bim-block" hidden>
+            <summary class="panel-group__header"><span>Rekonstruktion zu BIM</span></summary>
+            <div class="panel-group__body">
+              <div class="field">
+                <select id="s2b-netz">
+                  <option value="adaptiv" selected>Netz adaptiv (nach Toleranz)</option>
+                  <option value="fest">Netz fest (Maschenweite)</option>
+                </select>
+              </div>
+              <div class="zahl-zeile" id="s2b-tol-row">
+                <label for="s2b-toleranz">Höhentoleranz</label>
+                <input id="s2b-toleranz" type="number" value="0.15" step="0.01" min="0.02" max="5">
+                <span>m</span>
+              </div>
+              <div class="zahl-zeile" id="s2b-masche-row" hidden>
+                <label for="s2b-maschenweite">Maschenweite</label>
+                <input id="s2b-maschenweite" type="number" value="1.0" step="0.1" min="0.1" max="25">
+                <span>m</span>
+              </div>
+              <div class="btn-row abstand-oben">
+                <button id="s2b-start">Punktwolke rekonstruieren</button>
+              </div>
+              <p class="hint" id="s2b-info">
+                Erzeugt aus der Wolke ein IFC (Bauteile einzeln) und ein GLB
+                (texturiert) und legt beide als neue Modelle ab — exakt auf der
+                Wolke platziert.
+              </p>
+            </div>
+          </details>
+
+          <details class="panel-group">
+            <summary class="panel-group__header"><span>Tileset</span></summary>
+            <div class="panel-group__body">
+              <code id="tileset-url"></code>
+              <p class="hint">Vorschau live — gespeichert wird der root.transform der tileset.json.
+                Jeder Viewer sieht die neue Position sofort, ohne neu zu tilen.</p>
+            </div>
+          </details>
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- Rechts: die Assetliste -->
+<aside id="assets-panel" class="sidebar-panel is-open" aria-label="Assets">
+  <div id="assets-resizer" class="sidebar-resize-handle" title="Breite der Assetliste ziehen"></div>
+  <header class="modern-header">
+    <div class="modern-logo-title">Assets</div>
+    <span class="count-badge" id="assets-zahl"></span>
+    <button id="refresh" class="btn--ghost btn--icon btn--sm" title="Liste neu laden">↻</button>
+    <button id="assets-collapse" class="btn--ghost btn--icon btn--sm" title="Assetliste ausblenden">⟩</button>
+  </header>
+  <div class="assets-kopf">
+    <input type="text" id="assets-search" placeholder="Name suchen…" autocomplete="off">
+    <div id="assets-tabs" class="pill-group" hidden></div>
+  </div>
+  <div id="assets" class="assets-liste"></div>
+  <p class="hint" id="assets-empty" hidden>Noch keine Tilesets vorhanden.</p>
+  <p class="hint" id="assets-none" hidden>Kein Asset passt zu Filter und Suche.</p>
+  <p class="status" id="assets-status"></p>
+  <div class="assets-fuss" id="layers-bar" hidden>
+    <span class="hint" id="layer-count"></span>
+    <button id="hide-others" class="btn--sm" title="Alle außer dem ausgewählten Modell aus der Szene nehmen">Nur dieses</button>
+    <button id="hide-all" class="btn--sm" title="Alle Modelle aus der Szene nehmen">Alle ausblenden</button>
+  </div>
+</aside>
+
+<button id="assets-show" class="sidebar-toggle sidebar-toggle--rechts" title="Assetliste einblenden" hidden>☰</button>
+
+<!-- Textur-Zuordnungsassistent — muss vor dem Hauptskript stehen -->
+<script src="materials.js?v=3"></script>
+<script src="material-modus.js?v=4"></script>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["lon", "lat", "height", "heading", "pitch", "roll", "scale"];
+
+// ── Viewer ────────────────────────────────────────────────────────────────
+// OpenStreetMap statt Bing/Ion: der Asset-Manager soll ohne Ion-Token laufen,
+// zum Verorten braucht es aber eine Karte, auf der Gebäude erkennbar sind.
+const viewer = new Cesium.Viewer("viewer", {
+  baseLayer: new Cesium.ImageryLayer(
+    new Cesium.OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" })
+  ),
+  baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
+  navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
+  infoBox: false, selectionIndicator: false,
+});
+viewer.scene.globe.depthTestAgainstTerrain = true;
+
+// ── Einstellungen der Oberfläche ──────────────────────────────────────────
+// localStorage wirft in manchen Kontexten (Privatfenster, blockierte
+// Website-Daten) schon beim Zugriff — die Oberfläche muss auch ohne
+// gemerkte Werte funktionieren.
+function merke(schluessel, wert) {
+  try { localStorage.setItem(schluessel, wert); } catch { /* egal */ }
+}
+function gemerkt(schluessel) {
+  try { return localStorage.getItem(schluessel); } catch { return null; }
+}
+
+// ── Zustand ───────────────────────────────────────────────────────────────
+// Mehrere Modelle liegen gleichzeitig in der Szene (`layers`), bearbeitet wird
+// immer nur eines (`current`) — siehe „Ebenen" weiter unten.
+let assets = [];
+let current = null;      // ausgewähltes Asset, das Formular und Pfeile steuern
+const layers = new Map();// job_id → { asset, tileset, loadedMatrix, placement, opacity }
+let saved = null;        // zuletzt gespeicherte Platzierung (für "Verwerfen")
+let pickMode = false;
+let adjustable = true;   // false bei CRS-georeferenzierten Punktwolken (nicht verschiebbar)
+let terrainReference = null; // aktive Geländereferenz aus /geo/terrain-reference, oder null
+
+const currentLayer = () => (current ? layers.get(current.job_id) ?? null : null);
+
+// ── Höhenbezug ────────────────────────────────────────────────────────────
+// Der Transform kennt nur Ellipsoidhöhen. Eingegeben wird aber die Höhe über
+// Gelände oder über NHN — Gelände- und Geoidhöhe holt der Server, weil Cesium
+// World Terrain dafür einen Ion-Token bräuchte.
+let terrain = { ground_ellipsoid: null, undulation: 0, ground_msl: null, lon: null, lat: null, source: null };
+let terrainTimer = null;
+
+function ellipsoidHeight(p) {
+  if (p.height_reference === "ellipsoid") return p.height;
+  if (p.height_reference === "msl") return p.height + terrain.undulation;
+  // Ohne DEM-Antwort bleibt der Geoid die beste Näherung — dieselbe Regel
+  // wie serverseitig in tiling/elevation.py.
+  return p.height + (terrain.ground_ellipsoid ?? terrain.undulation);
+}
+
+async function refreshTerrain() {
+  const p = readForm();
+  if (terrain.lon === p.lon && terrain.lat === p.lat) return;
+  try {
+    terrain = await (await fetch(`/geo/elevation?lon=${p.lon}&lat=${p.lat}`)).json();
+  } catch (e) {
+    status($("placement-status"), `Geländehöhe nicht abrufbar: ${e.message}`, "warn");
+  }
+  showHeight();
+  preview();
+}
+
+function scheduleTerrain() {
+  clearTimeout(terrainTimer);
+  terrainTimer = setTimeout(refreshTerrain, 500);
+}
+
+function showHeight() {
+  const p = readForm();
+  const m = (v) => (v === null || v === undefined ? "–" : v.toFixed(1).replace(".", ",") + " m");
+  $("height-label").textContent = {
+    terrain: "Höhe über Gelände (m)",
+    msl: "Höhe über NHN (m)",
+    ellipsoid: "Höhe über Ellipsoid (m)",
+  }[p.height_reference];
+  const sourceLabel = {
+    local: "lokale Geländereferenz", dem: "Copernicus-DEM", none: "kein Wert",
+  }[terrain.source] ?? "";
+  $("height-info").textContent =
+    `Gelände ${m(terrain.ground_msl)} ü. NHN (${sourceLabel}) · Geoid ${m(terrain.undulation)} ` +
+    `→ ${m(ellipsoidHeight(p))} über dem Ellipsoid`;
+}
+
+// ── Platzierung → Matrix ──────────────────────────────────────────────────
+// Muss exakt der Berechnung in tiling/georef.py entsprechen: ENU am
+// Referenzpunkt, darin Heading (um die Hochachse, im Uhrzeigersinn),
+// Pitch (um Ost) und Roll (um Nord), zuletzt gleichmäßig skaliert.
+function placementMatrix(p) {
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(
+    Cesium.Cartesian3.fromDegrees(p.lon, p.lat, ellipsoidHeight(p))
+  );
+  const rad = Cesium.Math.toRadians;
+  const rot = Cesium.Matrix3.multiply(
+    Cesium.Matrix3.multiply(
+      Cesium.Matrix3.fromRotationZ(-rad(p.heading)),
+      Cesium.Matrix3.fromRotationX(rad(p.pitch)),
+      new Cesium.Matrix3()
+    ),
+    Cesium.Matrix3.fromRotationY(rad(p.roll)),
+    new Cesium.Matrix3()
+  );
+  Cesium.Matrix3.multiplyByScalar(rot, p.scale, rot);
+  return Cesium.Matrix4.multiply(
+    enu,
+    Cesium.Matrix4.fromRotationTranslation(rot, Cesium.Cartesian3.ZERO),
+    new Cesium.Matrix4()
+  );
+}
+
+// Live-Vorschau ohne Neuladen: das Tileset trägt im root.transform noch die
+// Platzierung vom Laden. modelMatrix = neu · alt⁻¹ ergibt in Summe genau die
+// neue Platzierung — dieselbe Matrix, die der Server gleich schreiben wird.
+function preview() {
+  const layer = currentLayer();
+  if (!layer) return;
+  layer.tileset.modelMatrix = Cesium.Matrix4.multiply(
+    placementMatrix(readForm()),
+    Cesium.Matrix4.inverse(layer.loadedMatrix, new Cesium.Matrix4()),
+    new Cesium.Matrix4()
+  );
+  updateGizmo();
+}
+
+// ── Ebenen: mehrere Modelle gleichzeitig ──────────────────────────────────
+// Zwei Modelle lassen sich nur aufeinander ausrichten, wenn beide zu sehen
+// sind. Deshalb liegt nicht *ein* Tileset im Viewer, sondern eine Karte
+// job_id → Ebene. Bearbeitet wird trotzdem immer nur eine davon: die des
+// ausgewählten Assets. Alle anderen behalten ihre gespeicherte Platzierung
+// und dienen als Referenz — Formular, Pfeile und "Speichern" rühren sie nicht
+// an.
+async function loadLayer(asset) {
+  const existing = layers.get(asset.job_id);
+  if (existing) return existing;
+
+  const placement = await (await fetch(`/assets/${asset.job_id}/placement`)).json();
+
+  // Für den Ausgangszustand die vom Server aufgelöste Ellipsoidhöhe nehmen,
+  // nicht selbst nachrechnen: sonst hinge die Vorschau daran, ob die
+  // Geländeabfrage schon zurück ist.
+  const loadedMatrix = placementMatrix({
+    ...placement,
+    height: placement.height_ellipsoid ?? placement.height,
+    height_reference: "ellipsoid",
+  });
+
+  // Immer relativ zum eigenen Origin laden: TILES_PUBLIC_URL kann auf den
+  // öffentlichen MinIO-Bucket zeigen, der hier nicht erreichbar sein muss.
+  const tileset = await Cesium.Cesium3DTileset.fromUrl(
+    `/tiles/${asset.job_id}/tileset.json`, { maximumScreenSpaceError: 8 }
+  );
+  viewer.scene.primitives.add(tileset);
+
+  const layer = { asset, tileset, loadedMatrix, placement, opacity: 1 };
+  layers.set(asset.job_id, layer);
+  return layer;
+}
+
+function unloadLayer(jobId) {
+  const layer = layers.get(jobId);
+  if (!layer) return;
+
+  // Auswahl vor dem Entfernen aufheben — danach zeigt die Feature-Referenz
+  // ins Leere und das Zurücksetzen der Farbe wirft.
+  if (selected && selected.feature.tileset === layer.tileset) clearFeature();
+
+  viewer.scene.primitives.remove(layer.tileset);
+  layers.delete(jobId);
+
+  if (current?.job_id === jobId) {
+    current = null;
+    saved = null;
+    hideGizmo();
+    zeigeVerortung(false);
+  }
+}
+
+// Weiß mit Alpha lässt Farbe und Textur des Bauteils stehen und senkt nur die
+// Deckkraft. Bei 100 % wird der Stil wieder entfernt, sonst überschriebe er
+// die Auswahlfarbe dauerhaft.
+function setOpacity(layer, opacity) {
+  layer.opacity = opacity;
+  try {
+    layer.tileset.style = opacity >= 1
+      ? undefined
+      : new Cesium.Cesium3DTileStyle({ color: `color('#ffffff', ${opacity})` });
+  } catch (e) {
+    // Gaussian-Splat-Tilesets kennen keinen Stil — sie bleiben undurchsichtig.
+    console.warn("Deckkraft nicht anwendbar:", e);
+  }
+  // Der Stil setzt die Farbe aller Bauteile neu und löscht dabei die
+  // Hervorhebung des ausgewählten.
+  if (selected && selected.feature.tileset === layer.tileset) {
+    try { selected.feature.color = HIGHLIGHT; } catch { /* Tile entladen */ }
+  }
+}
+
+function updateLayerBar() {
+  const n = layers.size;
+  $("layers-bar").hidden = n === 0;
+  $("layer-count").textContent = n === 1 ? "1 Modell in der Szene" : `${n} Modelle in der Szene`;
+  $("hide-others").disabled = !current || n < 2;
+}
+
+// Hier stand einmal ein Patch auf Cesium.GaussianSplatSorter.radixSortIndexes,
+// der die Sortiermatrix um tileset.modelMatrix ergänzt hat. Er beruhte auf einer
+// falschen Annahme und hat genau den Fehler erzeugt, den er beheben sollte —
+// siehe CLAUDE.md, „Kein Bug: Splat-Sortierung und tileset.modelMatrix".
+// Kurz: Cesium bäckt modelMatrix über tile.computedTransform bereits in die
+// Splat-Positionen ein. Sortierung und Zeichenbefehl benutzen danach dieselbe
+// Matrix (view · rootTransform) auf denselben Positionen — modelMatrix ein
+// zweites Mal einzurechnen verschiebt nur die Sortierung gegen das Zeichnen.
+
+// ── Verschiebe-Handle (XYZ-Pfeile) ───────────────────────────────────────────
+// Drei Pfeile in ENU-Richtung (Ost/Nord/Hoch) am aktuellen Modellursprung.
+// Ziehen an Ost/Nord verschiebt lon/lat (Höhe bleibt über ihrem Bezug
+// erhalten, weil der Bezug pro Standort neu aufgelöst wird); Ziehen an Hoch
+// addiert die Strecke direkt auf das Höhenfeld — der Bezug ist dabei egal,
+// weil `elevation.to_ellipsoid()` in `height` affin mit Steigung 1 ist.
+const GIZMO_COLORS = {
+  east: Cesium.Color.fromCssColorString("#e35b5b"),
+  north: Cesium.Color.fromCssColorString("#4ec97f"),
+  up: Cesium.Color.fromCssColorString("#4ea3ff"),
+};
+let gizmo = null;       // { east, north, up }: Cesium.Entity je Achse
+let gizmoState = null;  // zuletzt berechnete { origin, east, north, up } für Drag-Start
+let dragAxis = null;    // aktive Drag-Operation oder null
+let gizmoJustDragged = false; // unterdrückt den Klick, der auf eine Drag-Operation folgt
+
+function ensureGizmo() {
+  if (gizmo) return gizmo;
+  const make = (color) => viewer.entities.add({
+    polyline: {
+      positions: [Cesium.Cartesian3.ZERO, Cesium.Cartesian3.ZERO],
+      width: 14,
+      material: new Cesium.PolylineArrowMaterialProperty(color),
+    },
+  });
+  gizmo = { east: make(GIZMO_COLORS.east), north: make(GIZMO_COLORS.north), up: make(GIZMO_COLORS.up) };
+  return gizmo;
+}
+
+function updateGizmo() {
+  const layer = currentLayer();
+  if (!layer || !adjustable || pickMode) { hideGizmo(); return; }
+  const g = ensureGizmo();
+  const p = readForm();
+  const origin = Cesium.Cartesian3.fromDegrees(p.lon, p.lat, ellipsoidHeight(p));
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+  const east = Cesium.Matrix4.multiplyByPointAsVector(enu, Cesium.Cartesian3.UNIT_X, new Cesium.Cartesian3());
+  const north = Cesium.Matrix4.multiplyByPointAsVector(enu, Cesium.Cartesian3.UNIT_Y, new Cesium.Cartesian3());
+  const up = Cesium.Matrix4.multiplyByPointAsVector(enu, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3());
+
+  // Pfeillänge an die Modellgröße koppeln (feste Pixelbreite bliebe sonst bei
+  // einem 200-m-Campusmodell unsichtbar klein oder bei einer kleinen Sonde riesig).
+  const radius = layer.tileset.boundingSphere ? layer.tileset.boundingSphere.radius : 10;
+  const length = Cesium.Math.clamp(radius * 0.9, 3, 300);
+  const tip = (dir) => Cesium.Cartesian3.add(
+    origin, Cesium.Cartesian3.multiplyByScalar(dir, length, new Cesium.Cartesian3()), new Cesium.Cartesian3()
+  );
+
+  g.east.polyline.positions = [origin, tip(east)];
+  g.north.polyline.positions = [origin, tip(north)];
+  g.up.polyline.positions = [origin, tip(up)];
+  g.east.show = g.north.show = g.up.show = true;
+
+  gizmoState = { origin, east, north, up };
+}
+
+function hideGizmo() {
+  if (gizmo) gizmo.east.show = gizmo.north.show = gizmo.up.show = false;
+  gizmoState = null;
+}
+
+function axisFromEntity(entity) {
+  if (!gizmo || !entity) return null;
+  if (entity === gizmo.east) return "east";
+  if (entity === gizmo.north) return "north";
+  if (entity === gizmo.up) return "up";
+  return null;
+}
+
+// Achsgebundenes Ziehen: die Maus bewegt sich frei im 3D-Raum, gebraucht wird
+// aber nur ihre Position entlang einer Achse. Klassischer Trick dafür ist eine
+// Hilfsebene, auf der die Achse liegt — bei Ost/Nord die lokale Horizontale,
+// bei Hoch eine kameraseitig ausgerichtete Vertikalebene (sonst stünde die
+// Ebene bei Blick von oben fast parallel zum Sichtstrahl und der Schnittpunkt
+// würde numerisch instabil). Der Schnittpunkt wird auf die Achse projiziert
+// (Skalarprodukt), die Differenz zum Startwert ist die gezogene Strecke.
+function dragPlaneFor(axisKey, origin, upDir) {
+  if (axisKey === "up") return Cesium.Plane.fromPointNormal(origin, viewer.camera.rightWC);
+  return Cesium.Plane.fromPointNormal(origin, upDir);
+}
+
+function axisPosition(ray, plane, origin, dir) {
+  const hit = Cesium.IntersectionTests.rayPlane(ray, plane);
+  if (!hit) return null;
+  return Cesium.Cartesian3.dot(Cesium.Cartesian3.subtract(hit, origin, new Cesium.Cartesian3()), dir);
+}
+
+// ── Formular ──────────────────────────────────────────────────────────────
+function readForm() {
+  const p = { height_reference: $("height_reference").value };
+  for (const f of FIELDS) p[f] = Number($(f).value) || 0;
+  if (!p.scale) p.scale = 1;
+  return p;
+}
+
+function writeForm(p) {
+  for (const f of FIELDS) $(f).value = Number(p[f] ?? 0);
+  $("height_reference").value = p.height_reference ?? "ellipsoid";
+  $("heading-slider").value = ((p.heading % 360) + 360) % 360;
+}
+
+for (const f of FIELDS) {
+  $(f).addEventListener("input", () => {
+    if (f === "heading") $("heading-slider").value = ((readForm().heading % 360) + 360) % 360;
+    if (f === "lon" || f === "lat") scheduleTerrain();
+    if (f === "height") showHeight();
+    preview();
+  });
+}
+
+$("height_reference").addEventListener("change", () => {
+  showHeight();
+  preview();
+});
+$("heading-slider").addEventListener("input", (e) => {
+  $("heading").value = e.target.value;
+  preview();
+});
+
+function status(el, text, kind = "") {
+  el.textContent = text;
+  el.className = "status " + kind;
+}
+
+// ── Assets laden ──────────────────────────────────────────────────────────
+// Kategorie- und Namensfilter sitzen zwischen Serverliste und Anzeige:
+// `assets` bleibt immer der vollständige Stand — Layer, Geländereferenz und
+// Umbenennen arbeiten darauf —, gerendert wird nur die Auswahl.
+const ASSET_KATEGORIEN = {
+  ifc: "IFC", mesh: "Mesh", pointcloud: "Punktwolke", splat: "Splat", unknown: "Sonstiges",
+};
+let assetFilter = gemerkt("ileen.assets.filter") ?? "alle";
+let assetSuche = "";
+
+function gefilterteAssets() {
+  const q = assetSuche.trim().toLowerCase();
+  return assets.filter((a) =>
+    (assetFilter === "alle" || a.content_type === assetFilter) &&
+    (!q || a.name.toLowerCase().includes(q))
+  );
+}
+
+function renderAssetTabs() {
+  const zaehler = new Map();
+  for (const a of assets) zaehler.set(a.content_type, (zaehler.get(a.content_type) ?? 0) + 1);
+  // Ein Filter auf eine Kategorie, die es nicht mehr gibt (letztes IFC
+  // gelöscht), zeigte sonst eine leere Liste ohne sichtbaren Grund.
+  if (assetFilter !== "alle" && !zaehler.has(assetFilter)) assetFilter = "alle";
+
+  const tabs = $("assets-tabs");
+  tabs.innerHTML = "";
+  const eintraege = [
+    ["alle", "Alle", assets.length],
+    ...[...zaehler.keys()].sort().map((k) => [k, ASSET_KATEGORIEN[k] ?? k, zaehler.get(k)]),
+  ];
+  for (const [key, label, n] of eintraege) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pill" + (assetFilter === key ? " is-active" : "");
+    b.textContent = label;
+    const zahl = document.createElement("span");
+    zahl.className = "pill__zahl";
+    zahl.textContent = n;
+    b.appendChild(zahl);
+    b.addEventListener("click", () => {
+      assetFilter = key;
+      merke("ileen.assets.filter", key);
+      renderAssets();
+    });
+    tabs.appendChild(b);
+  }
+  // Bei nur einer Kategorie sagen Reiter nichts aus, was die Liste nicht
+  // schon zeigt — dann lieber den Platz an die Liste geben.
+  tabs.hidden = zaehler.size < 2;
+}
+
+async function loadAssets() {
+  const res = await fetch("/assets/");
+  assets = await res.json();
+  renderAssets();
+}
+
+// Größe wie im Finder: unter einem Megabyte in kB, darüber in MB.
+function groesse(bytes) {
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} kB`;
+  return `${(kb / 1024).toLocaleString("de-DE", { maximumFractionDigits: kb < 10240 ? 1 : 0 })} MB`;
+}
+
+function renderAssets() {
+  renderAssetTabs();
+  const sichtbar = gefilterteAssets();
+  const list = $("assets");
+  list.innerHTML = "";
+  $("assets-zahl").textContent = sichtbar.length === assets.length
+    ? String(assets.length) : `${sichtbar.length} / ${assets.length}`;
+  $("assets-empty").hidden = assets.length > 0;
+  $("assets-none").hidden = assets.length === 0 || sichtbar.length > 0;
+
+  for (const a of sichtbar) {
+    const row = document.createElement("div");
+    row.className = "asset";
+    row.dataset.selected = String(current?.job_id === a.job_id);
+    row.dataset.loaded = String(layers.has(a.job_id));
+
+    const main = document.createElement("button");
+    main.className = "asset-main";
+    main.title = a.name;
+    main.innerHTML =
+      `<span class="name"></span><span class="tag"></span>` +
+      `<span class="meta">${groesse(a.size_bytes)}</span>`;
+    main.querySelector(".name").textContent = a.name;
+    main.querySelector(".tag").textContent = ASSET_KATEGORIEN[a.content_type] ?? a.content_type;
+    main.addEventListener("click", () => select(a));
+    row.appendChild(main);
+
+    // Sichtbarkeit unabhängig von der Auswahl: so bleibt ein Referenzmodell
+    // stehen, während nebenan ein anderes verschoben wird.
+    const eye = document.createElement("button");
+    eye.className = "asset-mini eye" + (layers.has(a.job_id) ? " on" : "");
+    eye.title = layers.has(a.job_id)
+      ? "Aus der Szene nehmen"
+      : "Zusätzlich in die Szene laden";
+    eye.textContent = "👁";
+    eye.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (layers.has(a.job_id)) {
+        unloadLayer(a.job_id);
+      } else {
+        eye.disabled = true;
+        try {
+          const layer = await loadLayer(a);
+          if (layers.size === 1) await viewer.flyTo(layer.tileset, { duration: 1.2 });
+        } catch (err) {
+          status($("assets-status"), `Laden fehlgeschlagen: ${err.message}`, "err");
+        }
+      }
+      await loadAssets();
+    });
+    row.appendChild(eye);
+
+    if (terrainReference && terrainReference.job_id === a.job_id) {
+      const badge = document.createElement("span");
+      badge.className = "asset-mini terrain";
+      badge.title = "Aktuelle Geländereferenz";
+      badge.textContent = "⛰";
+      row.appendChild(badge);
+    }
+
+    // Texturzuordnung gibt es nur für IFC — andere Formate bringen ihre
+    // Materialien selbst mit und haben keine IfcSurfaceStyles.
+    if (a.content_type === "ifc") {
+      const textures = document.createElement("button");
+      textures.className = "asset-mini aktion";
+      textures.title = "Materialien: Texturen auf Bauteile ziehen";
+      textures.textContent = "🎨";
+      textures.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        // Der Materialmodus arbeitet am Modell in der Szene — ohne geladenes
+        // Tileset gäbe es nichts, worauf sich ziehen ließe.
+        if (!layers.has(a.job_id)) await select(a);
+        MaterialModus.umschalten(a, viewer, layers);
+      });
+      row.appendChild(textures);
+    }
+
+    // Splat-Export: SOG (PlayCanvas, SuperSplat, splides); mit Umschalt die 3DGS-PLY.
+    if (a.content_type === "splat") {
+      const ex = document.createElement("button");
+      ex.className = "asset-mini aktion";
+      ex.title = "Als SOG exportieren (Umschalt: 3DGS-PLY)";
+      ex.textContent = "⬇";
+      ex.addEventListener("click", (e) => { e.stopPropagation(); exportiereSplat(a, e.shiftKey ? "ply" : "sog"); });
+      row.appendChild(ex);
+    }
+
+    const rename = document.createElement("button");
+    rename.className = "asset-mini aktion";
+    rename.title = "Umbenennen";
+    rename.textContent = "✎";
+    rename.addEventListener("click", (e) => { e.stopPropagation(); renameAsset(a); });
+    row.appendChild(rename);
+
+    const del = document.createElement("button");
+    del.className = "asset-mini aktion";
+    del.title = "Löschen";
+    del.textContent = "🗑";
+    del.addEventListener("click", (e) => { e.stopPropagation(); deleteAsset(a); });
+    row.appendChild(del);
+
+    list.appendChild(row);
+  }
+
+  updateLayerBar();
+}
+
+// SOG braucht je nach Größe Sekunden bis Minuten: anstoßen, abfragen, dann laden.
+// Der Server hebt das Ergebnis auf — ein zweiter Klick lädt sofort.
+async function exportiereSplat(asset, art) {
+  const el = $("assets-status");
+  try {
+    if (art === "ply") {
+      status(el, `Lade ${asset.name} als PLY…`, "ok");
+      ladeDatei(`/assets/${asset.job_id}/export/ply`);
+      return;
+    }
+    let s = await (await fetch(`/assets/${asset.job_id}/export/sog`, { method: "POST" })).json();
+    while (s.status === "wartet" || s.status === "laeuft") {
+      status(el, `SOG-Export „${asset.name}“: ${s.meldung ?? s.status}…`);
+      await new Promise((r) => setTimeout(r, 1500));
+      s = await (await fetch(`/assets/${asset.job_id}/export/sog/status`)).json();
+    }
+    if (s.status !== "fertig") throw new Error(s.meldung ?? s.detail ?? "Export nicht möglich.");
+    status(el, `SOG fertig (${(s.bytes / 1048576).toFixed(1)} MB) — wird geladen.`, "ok");
+    ladeDatei(`/assets/${asset.job_id}/export/sog`);
+  } catch (e) {
+    status(el, `Export fehlgeschlagen: ${e.message}`, "err");
+  }
+}
+
+function ladeDatei(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function renameAsset(asset) {
+  const name = prompt("Neuer Name:", asset.name);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === asset.name) return;
+
+  try {
+    const res = await fetch(`/assets/${asset.job_id}/name`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail ?? res.statusText);
+    await loadAssets();
+  } catch (e) {
+    status($("assets-status"), `Umbenennen fehlgeschlagen: ${e.message}`, "err");
+  }
+}
+
+async function deleteAsset(asset) {
+  if (!confirm(`"${asset.name}" wirklich unwiderruflich löschen?`)) return;
+
+  try {
+    const res = await fetch(`/assets/${asset.job_id}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) throw new Error((await res.json()).detail ?? res.statusText);
+
+    unloadLayer(asset.job_id);
+    if (terrainReference?.job_id === asset.job_id) await refreshTerrainReference();
+    await loadAssets();
+  } catch (e) {
+    status($("assets-status"), `Löschen fehlgeschlagen: ${e.message}`, "err");
+  }
+}
+
+// ── Asset auswählen ───────────────────────────────────────────────────────
+// Das Formular steht im Bereich „Verortung"; ohne ausgewähltes Modell zeigt
+// er nur den Hinweis, wo man eines auswählt.
+function zeigeVerortung(an) {
+  $("placement").hidden = !an;
+  $("placement-leer").hidden = an;
+}
+
+async function select(asset) {
+  zeigeVerortung(true);
+  bereichOeffnen("verortung");
+  $("auswahl-name").textContent = asset.name;
+  $("auswahl-name").title = asset.name;
+  $("auswahl-typ").textContent = ASSET_KATEGORIEN[asset.content_type] ?? asset.content_type;
+  updateScan2BimUI(asset);          // sofort, nicht erst nach dem Laden
+  status($("placement-status"), "Lade Tileset…");
+  $("tileset-url").textContent =
+    new URL(`/tiles/${asset.job_id}/tileset.json`, location.origin).href;
+
+  // Begonnene, noch nicht gespeicherte Ausrichtung der bisherigen Ebene
+  // festhalten — beim Ausrichten wechselt man zwischen zwei Modellen hin und
+  // her, und die Vorschau steht ohnehin schon in deren modelMatrix.
+  const previous = currentLayer();
+  if (previous) previous.form = readForm();
+
+  // Nur beim erstmaligen Laden hinfliegen: beim Hin- und Herwechseln zwischen
+  // zwei bereits geladenen Modellen soll die Kamera stehen bleiben, sonst
+  // lässt sich nichts aufeinander ausrichten.
+  const wasLoaded = layers.has(asset.job_id);
+  let layer;
+  try {
+    layer = await loadLayer(asset);
+  } catch (e) {
+    status($("placement-status"), `Laden fehlgeschlagen: ${e.message}`, "err");
+    return;
+  }
+
+  current = asset;
+  saved = layer.placement;
+  writeForm(layer.form ?? layer.placement);
+  $("opacity").value = Math.round(layer.opacity * 100);
+  $("opacity-wert").value = `${$("opacity").value} %`;
+
+  terrain = { ground_ellipsoid: null, undulation: 0, ground_msl: null, lon: null, lat: null, source: null };
+  refreshTerrain();
+
+  if (!wasLoaded) await viewer.flyTo(layer.tileset, { duration: 1.2 });
+
+  adjustable = layer.placement.adjustable !== false;
+  $("save").disabled = !adjustable;
+  await loadAssets();
+  updateGizmo();
+  status(
+    $("placement-status"),
+    adjustable
+      ? "Bereit — Werte ändern, auf die Karte klicken oder an den Pfeilen ziehen."
+      : "Bereits über CRS georeferenziert, Position nicht änderbar.",
+    adjustable ? "ok" : "warn"
+  );
+
+  updateTerrainUI();
+  updateScan2BimUI();
+}
+
+// ── Scan2BIM: Punktwolke → IFC + GLB ──────────────────────────────────────
+// Sichtbar nur bei Punktwolken — für ein IFC gäbe es nichts zu rekonstruieren,
+// und ein Mesh trägt die Höheninformation nicht rasterweise.
+// `asset` wird beim Auswahlwechsel mitgegeben, weil `current` zu dem Zeitpunkt
+// noch das vorige Modell ist: `select()` setzt es erst, nachdem das Tileset
+// geladen ist. Ohne das Argument stünde bei einem großen IFC sekundenlang das
+// Panel des zuvor gewählten Modells da.
+function updateScan2BimUI(asset = current) {
+  const block = $("scan2bim-block");
+  block.hidden = !(asset && asset.content_type === "pointcloud");
+  const adaptiv = $("s2b-netz").value === "adaptiv";
+  $("s2b-tol-row").hidden = !adaptiv;
+  $("s2b-masche-row").hidden = adaptiv;
+}
+
+$("s2b-netz").addEventListener("change", updateScan2BimUI);
+
+$("s2b-start").addEventListener("click", async () => {
+  if (!current) return;
+  const knopf = $("s2b-start");
+  const info = $("s2b-info");
+  knopf.disabled = true;
+  const anfrage = {
+    projekt: current.name.replace(/\.(las|laz)$/i, ""),
+    netz: $("s2b-netz").value,
+    toleranz_m: parseFloat($("s2b-toleranz").value),
+    maschenweite_m: parseFloat($("s2b-maschenweite").value),
+  };
+  try {
+    const res = await fetch(`/assets/${current.job_id}/scan2bim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(anfrage),
+    });
+    const lauf = await res.json();
+    if (!res.ok) throw new Error(lauf.detail ?? res.statusText);
+
+    // Der Lauf dauert bei hundert Millionen Punkten Minuten. Abgefragt wird
+    // deshalb der Status, nicht auf die Antwort gewartet.
+    const jobId = current.job_id;
+    while (true) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const stand = await (await fetch(`/assets/${jobId}/scan2bim/${lauf.lauf_id}`)).json();
+      info.textContent = `${Math.round((stand.anteil ?? 0) * 100)} % — ${stand.text}`;
+      if (stand.status === "done") {
+        const anzahl = Object.keys(stand.ergebnis_jobs ?? {}).length;
+        status($("placement-status"), `Rekonstruktion fertig — ${anzahl} neue Modelle.`, "ok");
+        info.textContent = stand.bericht?.kennzahlen
+          ? `Fertig. Baugrube ${Math.round(stand.bericht.flaechen?.grube_m2 ?? 0)} m², `
+            + `Aushub ${Math.round(stand.bericht.flaechen?.aushub_m3 ?? 0)} m³, `
+            + `${stand.bericht.netz?.dreiecke ?? "?"} Dreiecke.`
+          : "Fertig.";
+        await loadAssets();
+        break;
+      }
+      if (stand.status === "failed") throw new Error(stand.fehler ?? "unbekannt");
+    }
+  } catch (e) {
+    status($("placement-status"), `Rekonstruktion fehlgeschlagen: ${e.message}`, "err");
+    info.textContent = "";
+  }
+  knopf.disabled = false;
+});
+
+// ── Klick in die Szene ────────────────────────────────────────────────────
+// Zwei Bedeutungen: im Verortungsmodus setzt der Klick die Position, sonst
+// wählt er das getroffene Bauteil aus.
+const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+// ── Verschiebe-Handle: Ziehen an den Achsen ─────────────────────────────────
+handler.setInputAction((movement) => {
+  if (!gizmo || pickMode || !gizmoState) return;
+  const picked = viewer.scene.pick(movement.position);
+  const axisKey = axisFromEntity(picked && picked.id);
+  if (!axisKey) return;
+
+  const ray = viewer.camera.getPickRay(movement.position);
+  if (!ray) return;
+  const dir = { east: gizmoState.east, north: gizmoState.north, up: gizmoState.up }[axisKey];
+  const plane = dragPlaneFor(axisKey, gizmoState.origin, gizmoState.up);
+  const startT = axisPosition(ray, plane, gizmoState.origin, dir);
+  if (startT === null) return;
+
+  dragAxis = { key: axisKey, origin: gizmoState.origin, dir, plane, startT, startForm: readForm() };
+  viewer.scene.screenSpaceCameraController.enableInputs = false;
+  viewer.canvas.style.cursor = "grabbing";
+}, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+handler.setInputAction((movement) => {
+  if (!dragAxis) return;
+  const ray = viewer.camera.getPickRay(movement.endPosition);
+  if (!ray) return;
+  const t = axisPosition(ray, dragAxis.plane, dragAxis.origin, dragAxis.dir);
+  if (t === null) return;
+  const delta = t - dragAxis.startT;
+
+  if (dragAxis.key === "up") {
+    $("height").value = (Number(dragAxis.startForm.height) + delta).toFixed(2);
+    showHeight();
+  } else {
+    const moved = Cesium.Cartesian3.add(
+      dragAxis.origin,
+      Cesium.Cartesian3.multiplyByScalar(dragAxis.dir, delta, new Cesium.Cartesian3()),
+      new Cesium.Cartesian3()
+    );
+    const carto = Cesium.Cartographic.fromCartesian(moved);
+    $("lon").value = Cesium.Math.toDegrees(carto.longitude).toFixed(7);
+    $("lat").value = Cesium.Math.toDegrees(carto.latitude).toFixed(7);
+  }
+  preview();
+  scheduleTerrain();
+}, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+function endDrag() {
+  if (!dragAxis) return;
+  dragAxis = null;
+  gizmoJustDragged = true;
+  setTimeout(() => { gizmoJustDragged = false; }, 0);
+  viewer.scene.screenSpaceCameraController.enableInputs = true;
+  viewer.canvas.style.cursor = pickMode ? "crosshair" : "";
+}
+handler.setInputAction(endDrag, Cesium.ScreenSpaceEventType.LEFT_UP);
+// Sicherheitsnetz: Loslassen außerhalb des Canvas liefert Cesium kein LEFT_UP.
+window.addEventListener("mouseup", endDrag);
+
+handler.setInputAction((click) => {
+  // Der Klick, der auf eine Drag-Operation am Handle folgt, darf weder ein
+  // Bauteil auswählen noch (im Verortungsmodus) die Position neu setzen.
+  if (gizmoJustDragged) return;
+  if (!pickMode) { selectFeature(click.position); return; }
+
+  const ray = viewer.camera.getPickRay(click.position);
+  const hit = viewer.scene.globe.pick(ray, viewer.scene)
+           ?? viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+  if (!hit) return;
+
+  const carto = Cesium.Cartographic.fromCartesian(hit);
+  $("lon").value = Cesium.Math.toDegrees(carto.longitude).toFixed(7);
+  $("lat").value = Cesium.Math.toDegrees(carto.latitude).toFixed(7);
+  setPickMode(false);
+  preview();
+  refreshTerrain();   // neue Position, neue Geländehöhe
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+// ── Bauteilauswahl ────────────────────────────────────────────────────────
+// Die Batch Table im B3DM liefert GlobalId, Typ, Name und Geschoss sofort;
+// die Property-Sets holt der Server über die GlobalId nach.
+let selected = null;          // { feature, color } — Farbe zum Zurücksetzen
+const HIGHLIGHT = Cesium.Color.fromCssColorString("#ffd166");
+
+function highlight(feature) {
+  // Nach dem Entladen eines Tiles zeigt die alte Referenz ins Leere — der
+  // Zugriff wirft dann, und die Auswahl ist ohnehin hinfällig.
+  if (selected) {
+    try { selected.feature.color = selected.color; } catch { /* Tile entladen */ }
+  }
+  selected = feature ? { feature, color: Cesium.Color.clone(feature.color) } : null;
+  if (feature) feature.color = HIGHLIGHT;
+}
+
+function clearFeature() {
+  highlight(null);
+  $("feature").hidden = true;
+}
+
+// Laufende Nummer der Auswahl: eine Antwort, die zu einem inzwischen
+// abgewählten Bauteil gehört, darf die Karte nicht mehr überschreiben.
+let selection = 0;
+
+function selectFeature(position) {
+  const picked = viewer.scene.pick(position);
+  if (!(picked instanceof Cesium.Cesium3DTileFeature)) { clearFeature(); return; }
+
+  highlight(picked);
+  const props = {};
+  for (const id of picked.getPropertyIds()) props[id] = picked.getProperty(id);
+
+  // Bei mehreren Modellen in der Szene entscheidet nicht die Auswahl in der
+  // Liste, zu welchem Asset das angeklickte Bauteil gehört, sondern sein
+  // eigenes Tileset — sonst holte der Server die Property-Sets aus dem
+  // falschen Modell.
+  const owner = [...layers.values()].find((l) => l.tileset === picked.tileset) ?? null;
+
+  $("feature").hidden = false;
+  $("feature-type").textContent = props.IfcType ?? "Bauteil";
+  $("feature-name").textContent =
+    [owner?.asset.name, props.Name || props.GlobalId].filter(Boolean).join(" · ");
+  $("feature-body").innerHTML = "";
+  addTable("Auswahl", props);
+
+  if (props.GlobalId && owner) loadPropertySets(owner.asset.job_id, props.GlobalId, ++selection);
+}
+
+async function loadPropertySets(jobId, globalId, token) {
+  const body = $("feature-body");
+  const pending = document.createElement("p");
+  pending.className = "hint";
+  pending.textContent = "Lade Property-Sets…";
+  body.appendChild(pending);
+
+  try {
+    const res = await fetch(`/assets/${jobId}/elements/${encodeURIComponent(globalId)}`);
+    const data = await res.json();
+    if (token !== selection) return;   // inzwischen ist ein anderes Bauteil dran
+    pending.remove();
+    if (!res.ok) { pending.textContent = data.detail ?? res.statusText; body.appendChild(pending); return; }
+
+    const base = {
+      Typ: data.ifc_type, Name: data.name, ObjectType: data.object_type,
+      Beschreibung: data.description, Geschoss: data.storey, GlobalId: data.global_id,
+    };
+    body.innerHTML = "";
+    addTable("Bauteil", base);
+    for (const [pset, values] of Object.entries(data.psets ?? {})) addTable(pset, values);
+    if (!Object.keys(data.psets ?? {}).length) {
+      const none = document.createElement("p");
+      none.className = "hint";
+      none.textContent = "Keine Property-Sets hinterlegt.";
+      body.appendChild(none);
+    }
+  } catch (e) {
+    pending.textContent = `Eigenschaften nicht abrufbar: ${e.message}`;
+  }
+}
+
+function addTable(title, values) {
+  const entries = Object.entries(values).filter(
+    ([k, v]) => v !== null && v !== undefined && v !== "" && k !== "id"
+  );
+  if (!entries.length) return;
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const table = document.createElement("table");
+  for (const [key, value] of entries) {
+    const row = table.insertRow();
+    row.insertCell().textContent = key;
+    row.insertCell().textContent = typeof value === "number"
+      ? Number(value.toFixed(4)).toString().replace(".", ",")
+      : String(value);
+  }
+  $("feature-body").append(heading, table);
+}
+
+$("feature-close").addEventListener("click", clearFeature);
+
+function setPickMode(on) {
+  pickMode = on;
+  $("pick").setAttribute("aria-pressed", String(on));
+  viewer.canvas.style.cursor = on ? "crosshair" : "";
+  updateGizmo(); // Handle blendet während des Kartenklick-Modus aus, um Konflikte zu vermeiden
+}
+$("pick").addEventListener("click", () => setPickMode(!pickMode));
+
+// ── Speichern / Verwerfen / Fliegen ───────────────────────────────────────
+$("save").addEventListener("click", async () => {
+  if (!current) return;
+  $("save").disabled = true;
+  status($("placement-status"), "Speichere…");
+  try {
+    const res = await fetch(`/assets/${current.job_id}/placement`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readForm()),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail ?? res.statusText);
+    saved = await res.json();
+    // Die Ebene bleibt geladen — ohne diese Zeile zeigte das Formular beim
+    // nächsten Auswählen wieder die Werte von vor dem Speichern.
+    const layer = currentLayer();
+    if (layer) { layer.placement = saved; layer.form = { ...saved }; }
+    status($("placement-status"), "Position gespeichert.", "ok");
+  } catch (e) {
+    status($("placement-status"), `Speichern fehlgeschlagen: ${e.message}`, "err");
+  }
+  $("save").disabled = false;
+});
+
+$("ground").addEventListener("click", async () => {
+  $("height_reference").value = "terrain";
+  $("height").value = 0;
+  await refreshTerrain();
+  showHeight();
+  preview();
+  status($("placement-status"), "Auf Geländeoberkante gesetzt.", "ok");
+});
+
+$("reset").addEventListener("click", () => {
+  if (!saved) return;
+  writeForm(saved);
+  const layer = currentLayer();
+  if (layer) layer.form = { ...saved };
+  showHeight();
+  preview();
+  status($("placement-status"), "Auf gespeicherte Position zurückgesetzt.");
+});
+
+$("flyto").addEventListener("click", () => {
+  const layer = currentLayer();
+  if (layer) viewer.flyTo(layer.tileset);
+});
+
+$("opacity").addEventListener("input", (e) => {
+  $("opacity-wert").value = `${e.target.value} %`;
+  const layer = currentLayer();
+  if (layer) setOpacity(layer, Number(e.target.value) / 100);
+});
+
+$("hide-all").addEventListener("click", async () => {
+  for (const jobId of [...layers.keys()]) unloadLayer(jobId);
+  await loadAssets();
+});
+
+$("hide-others").addEventListener("click", async () => {
+  for (const jobId of [...layers.keys()]) {
+    if (jobId !== current?.job_id) unloadLayer(jobId);
+  }
+  await loadAssets();
+});
+
+// ── Upload ────────────────────────────────────────────────────────────────
+// „Als Splat umrechnen“ gibt es nur für Punktwolken (Endung entscheidet, wie bei
+// der Serverprüfung). Eine PLY kann Punktwolke oder schon Splat sein — das weiß
+// erst der Server; er lehnt den zweiten Fall mit einem Satz ab.
+const PUNKTWOLKEN = /\.(las|laz|xyz|pts|ply)$/i;
+function updateAlsSplat() {
+  const name = $("file").files[0]?.name ?? "";
+  const moeglich = PUNKTWOLKEN.test(name);
+  $("als-splat-block").hidden = !moeglich;
+  if (!moeglich) $("als-splat").checked = false;
+  $("als-voxel-zeile").hidden = !$("als-splat").checked;
+}
+$("file").addEventListener("change", updateAlsSplat);
+$("als-splat").addEventListener("change", updateAlsSplat);
+
+function uploadOptionen() {
+  if (!$("als-splat").checked) return "";
+  const q = new URLSearchParams({ als: "splat" });
+  const v = parseFloat($("als-voxel").value);
+  if (v > 0) q.set("voxel_cm", String(v));
+  return "?" + q;
+}
+
+$("upload").addEventListener("click", async () => {
+  const file = $("file").files[0];
+  if (!file) { status($("upload-status"), "Keine Datei gewählt.", "warn"); return; }
+
+  $("upload").disabled = true;
+  const mb = file.size / 1048576;
+
+  try {
+    await uploadWithProgress(file);
+  } catch (e) {
+    status($("upload-status"), e.message, "err");
+  }
+  $("upload").disabled = false;
+});
+
+// XHR statt fetch: liefert Upload-Fortschritt und unterscheidet Timeout/Abbruch/
+// HTTP-Fehler. Bei Fehlschlag prüfen: Backend erreichbar, Proxy/CDN-Größenlimit
+// (Cloudflare 100 MB, nginx 1 MB), Datei tatsächlich lokal vorhanden (keine
+// Cloud-Platzhalter von OneDrive/iCloud, die On-Demand nachgeladen werden müssten).
+function uploadWithProgress(file) {
+  return new Promise((resolve, reject) => {
+    const body = new FormData();
+    body.append("file", file);
+
+    const mb = file.size / 1048576;
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/upload/" + uploadOptionen());
+    xhr.timeout = 0;
+
+    let sent = 0;
+    const started = Date.now();
+    const diag = () =>
+      `[${((Date.now() - started) / 1000).toFixed(1)} s, ` +
+      `${(sent / 1048576).toFixed(1)} von ${mb.toFixed(1)} MB gesendet, ` +
+      `readyState ${xhr.readyState}, status ${xhr.status}]`;
+
+    xhr.upload.addEventListener("progress", (e) => {
+      sent = e.loaded;
+      if (!e.lengthComputable) return;
+      const percent = Math.round((e.loaded / e.total) * 100);
+      status($("upload-status"),
+             `Lade ${file.name} hoch… ${percent} % (${(e.loaded / 1048576).toFixed(0)} von ${mb.toFixed(0)} MB)`);
+    });
+
+    xhr.addEventListener("load", async () => {
+      let job = {};
+      try { job = JSON.parse(xhr.responseText); } catch {}
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        status($("upload-status"), "Übertragen, Tiling startet…", "ok");
+        await pollJob(job.job_id);
+        resolve();
+        return;
+      }
+
+      if (xhr.status === 413) {
+        reject(new Error(
+          `Die Datei ist zu groß für den Weg zum Server (${mb.toFixed(0)} MB). ` +
+          `Begrenzt wird das nicht vom Backend, sondern von einem Proxy oder CDN davor — ` +
+          `bei Cloudflare sind es 100 MB. Direkt über die lokale Adresse hochladen ` +
+          `(http://localhost:8100/ui) oder das Limit im Proxy anheben.`
+        ));
+        return;
+      }
+
+      reject(new Error(
+        `Upload fehlgeschlagen (HTTP ${xhr.status} ${xhr.statusText}): ` +
+        `${job.detail ?? xhr.responseText.slice(0, 200)} ${diag()}`
+      ));
+    });
+
+    xhr.addEventListener("error", () => {
+      const partial = sent > 0 && sent < file.size;
+      reject(new Error(
+        (partial
+          ? `Verbindung nach ${(sent / 1048576).toFixed(0)} von ${mb.toFixed(0)} MB abgebrochen. ` +
+            `Das deutet auf ein Größenlimit eines Proxys oder CDNs vor dem Backend hin ` +
+            `(Cloudflare Free: 100 MB, nginx-Standard: 1 MB) — im Serverlog steht dazu nichts, ` +
+            `weil der Request dort nie ankommt. Abhilfe: direkt über http://localhost:8100/ui ` +
+            `hochladen oder das Limit im Proxy anheben.`
+          : `Verbindung nicht zustande gekommen — der Request hat den Server nie erreicht. ` +
+            `Mögliche Gründe: Backend nicht erreichbar, CORS, oder ein Proxy lehnt POST ab. ` +
+            `Gegenprobe: http://localhost:8100/ui direkt öffnen.`
+        ) + ` ${diag()}`
+      ));
+    });
+
+    xhr.addEventListener("timeout", () =>
+      reject(new Error(`Zeitüberschreitung beim Hochladen. ${diag()}`)));
+    xhr.addEventListener("abort", () =>
+      reject(new Error(`Upload abgebrochen. ${diag()}`)));
+
+    xhr.send(body);
+  });
+}
+
+// Tiling läuft als Background-Task — der Status kommt über /upload/status.
+async function pollJob(jobId) {
+  while (true) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const job = await (await fetch(`/upload/status/${jobId}`)).json();
+    status($("upload-status"), `${job.status}: ${job.message}`,
+           job.status === "failed" ? "err" : job.status === "done" ? "ok" : "");
+    if (job.status === "done" || job.status === "failed") {
+      await loadAssets();
+      if (job.status === "done") {
+        const fresh = assets.find((a) => a.job_id === jobId);
+        if (fresh) {
+          await select(fresh);
+          if (fresh.content_type === "ifc") await offerMaterialAssistant(fresh);
+        }
+      }
+      return;
+    }
+  }
+}
+
+/**
+ * Bietet nach einem IFC-Upload die Texturzuordnung an — als Hinweis, nicht als
+ * Zwang: das Modell ist mit der automatischen Erkennung bereits fertig
+ * texturiert. Angezeigt wird, wie viel davon erkannt wurde, damit erkennbar
+ * ist, ob sich das Nachbessern überhaupt lohnt.
+ */
+async function offerMaterialAssistant(asset) {
+  let data;
+  try {
+    const res = await fetch(`/assets/${asset.job_id}/materials`);
+    if (!res.ok) return;
+    data = await res.json();
+  } catch {
+    return;
+  }
+  if (!data.available || !data.styles.length) return;
+
+  const assigned = data.styles.filter((s) => s.category).length;
+  const uncertain = data.styles.filter((s) => s.category && s.confidence < 0.75).length;
+
+  const box = document.createElement("div");
+  box.className = "upload-offer";
+  box.innerHTML = `
+    <p>
+      <strong>${assigned} von ${data.styles.length}</strong> Oberflächenstilen automatisch
+      texturiert${uncertain ? `, ${uncertain} davon unsicher` : ""}.
+    </p>
+    <div class="btn-row">
+      <button class="primary" type="button">Texturen prüfen</button>
+      <button type="button">Passt so</button>
+    </div>`;
+
+  const [check, accept] = box.querySelectorAll("button");
+  check.addEventListener("click", () => { box.remove(); MaterialAssistant.open(asset); });
+  accept.addEventListener("click", () => box.remove());
+
+  $("upload-status").after(box);
+}
+
+// ── Geländereferenz ───────────────────────────────────────────────────────
+async function refreshTerrainReference() {
+  try {
+    const res = await fetch("/geo/terrain-reference");
+    terrainReference = res.ok ? await res.json() : null;
+  } catch {
+    terrainReference = null;
+  }
+  updateTerrainUI();
+}
+
+function updateTerrainUI() {
+  const info = $("terrain-info");
+  const isCurrent = !!(terrainReference && current && terrainReference.job_id === current.job_id);
+  $("terrain-clear").hidden = !terrainReference;
+  $("terrain-mark").hidden = !current || isCurrent;
+
+  if (!terrainReference) {
+    info.textContent = "Keine gesetzt — Höhe „über Gelände“ nutzt den externen DEM-Dienst.";
+  } else if (isCurrent) {
+    info.textContent =
+      `Dieses Modell ist die Geländereferenz: ${terrainReference.rows}×${terrainReference.cols} ` +
+      `Zellen à ${terrainReference.resolution_m} m, ${terrainReference.filled_cells} gefüllt.`;
+  } else {
+    const name = assets.find((a) => a.job_id === terrainReference.job_id)?.name
+      ?? terrainReference.source_filename;
+    info.textContent = `Aktive Referenz: „${name}“.`;
+  }
+}
+
+$("terrain-mark").addEventListener("click", async () => {
+  if (!current) return;
+  $("terrain-mark").disabled = true;
+  status($("placement-status"), "Baue Höhenraster aus dem Modell…");
+  try {
+    const res = await fetch(`/geo/terrain-reference/${current.job_id}`, { method: "PUT" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail ?? res.statusText);
+    terrainReference = data;
+    updateTerrainUI();
+    await loadAssets();
+    status($("placement-status"), "Als Geländereferenz gesetzt.", "ok");
+    terrain.lon = terrain.lat = null; // erzwingt einen frischen /geo/elevation-Abruf
+    await refreshTerrain();
+  } catch (e) {
+    status($("placement-status"), `Geländereferenz fehlgeschlagen: ${e.message}`, "err");
+  }
+  $("terrain-mark").disabled = false;
+});
+
+$("terrain-clear").addEventListener("click", async () => {
+  if (!confirm("Geländereferenz wirklich entfernen? Platzierungen „über Gelände“ nutzen danach wieder den externen DEM-Dienst.")) return;
+  try {
+    await fetch("/geo/terrain-reference", { method: "DELETE" });
+    terrainReference = null;
+    updateTerrainUI();
+    await loadAssets();
+    terrain.lon = terrain.lat = null;
+    await refreshTerrain();
+  } catch (e) {
+    status($("placement-status"), `Entfernen fehlgeschlagen: ${e.message}`, "err");
+  }
+});
+
+$("refresh").addEventListener("click", loadAssets);
+
+// Nach einem Neu-Tiling zeigt der Viewer noch die alten Kacheln — dieselbe
+// URL, anderer Inhalt. Das Tileset muss deshalb neu geladen werden, ein
+// Neuzeichnen genügt nicht.
+document.addEventListener("materials:retiled", async (e) => {
+  const layer = layers.get(e.detail.jobId);
+  if (!layer) return;
+  const asset = layer.asset;
+  const wasCurrent = current?.job_id === asset.job_id;
+  unloadLayer(asset.job_id);
+  if (wasCurrent) await select(asset);
+  else await loadLayer(asset);
+  await loadAssets();
+});
+
+// ── Leiste und Panel (wie im iLEEN-Viewer) ────────────────────────────────
+// Links eine Aktivitätsleiste mit einem Symbol je Bereich, daneben das Panel
+// des offenen Bereichs. Ein zweiter Klick auf das aktive Symbol schließt das
+// Panel, ⇤ (oder die Taste M) fährt die ganze Leiste aus dem Bild, ☰ holt sie
+// zurück. Dieselbe Bedienung wie `BimViewerUI` in frontend/ui.js — nur ohne
+// dessen Anmeldung von Bereichen: die zwei Bereiche hier stehen im Markup.
+function bereichOeffnen(id, { umschalten = false } = {}) {
+  const knopf = document.querySelector(`.activity-btn[data-section="${id}"]`);
+  const panel = $("sidebarPanel");
+  const warOffen = knopf?.classList.contains("active") && panel.classList.contains("is-open");
+
+  document.querySelectorAll(".activity-btn[data-section]").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".sidebar-section").forEach((s) => s.classList.remove("is-active"));
+
+  if (umschalten && warOffen) {
+    panel.classList.remove("is-open");
+    belegungMessen();
+    return;
+  }
+  if ($("toolbar").classList.contains("collapsed")) seitenleisteEinklappen(false);
+  knopf?.classList.add("active");
+  $(`section-${id}`)?.classList.add("is-active");
+  panel.classList.add("is-open");
+  merke("ileen.backend.bereich", id);
+  belegungMessen();
+}
+
+function seitenleisteEinklappen(einklappen) {
+  const zu = $("toolbar").classList.toggle("collapsed", einklappen);
+  $("sidebarToggle").hidden = !zu;
+  belegungMessen();
+}
+
+document.querySelectorAll(".activity-btn[data-section]").forEach((knopf) =>
+  knopf.addEventListener("click", () => bereichOeffnen(knopf.dataset.section, { umschalten: true })));
+$("sidebar-collapse").addEventListener("click", () => seitenleisteEinklappen(true));
+$("sidebarToggle").addEventListener("click", () => seitenleisteEinklappen(false));
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "m" && e.key !== "M") return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const ziel = e.target;
+  if (ziel && (ziel.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ziel.tagName))) return;
+  seitenleisteEinklappen(!$("toolbar").classList.contains("collapsed"));
+});
+
+// ── Akkordeon ──
+// Die Untergruppen eines Panels verhalten sich wie im Viewer: wer eine
+// öffnet, schließt damit die übrigen derselben Ebene. Sonst stehen nach ein
+// paar Klicks alle offen, und die gesuchte rutscht aus dem Bild. `toggle`
+// steigt nicht auf — deshalb die Erfassungsphase (`true`).
+document.addEventListener("toggle", (e) => {
+  const offen = e.target;
+  if (!(offen instanceof HTMLDetailsElement) || !offen.open) return;
+  if (!offen.matches(".sidebar-section details.panel-group")) return;
+  for (const nachbar of offen.parentElement?.children ?? []) {
+    if (nachbar !== offen && nachbar instanceof HTMLDetailsElement
+        && nachbar.classList.contains("panel-group") && nachbar.open) {
+      nachbar.open = false;
+    }
+  }
+}, true);
+
+// ── Was über der Szene liegt, rückt ein ──
+// Leiste und Assetliste schweben über der Szene. Die Bauteilkarte, die
+// Materialpalette (material-modus.css) und Cesiums Quellenangabe richten
+// sich nach --links-belegt / --rechts-belegt. Gemessen wird der Zustand,
+// nicht das Bild: die Leiste fährt per Transform hinaus, und ihre Lage mitten
+// im Übergang wäre falsch. Eingeklappt bleibt Platz für den ☰-Knopf.
+const KNOPF_PLATZ = 56;
+function belegungMessen() {
+  const leiste = $("toolbar");
+  const links = leiste.classList.contains("collapsed")
+    ? KNOPF_PLATZ : Math.round(leiste.getBoundingClientRect().width + 10);
+  const liste = $("assets-panel");
+  const rechts = liste.hidden
+    ? KNOPF_PLATZ : Math.round(window.innerWidth - liste.getBoundingClientRect().left);
+  document.documentElement.style.setProperty("--links-belegt", `${links}px`);
+  document.documentElement.style.setProperty("--rechts-belegt", `${rechts}px`);
+}
+window.addEventListener("resize", belegungMessen);
+
+// Ein Ziehgriff am Panelrand, links wie rechts: `breite(ev)` rechnet aus der
+// Zeigerlage die neue Breite, `setzen` wendet sie an.
+function ziehgriff(griff, breite, setzen) {
+  griff.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    griff.setPointerCapture(e.pointerId);
+    griff.classList.add("dragging");
+    const ziehen = (ev) => setzen(breite(ev));
+    const ende = () => {
+      griff.classList.remove("dragging");
+      griff.removeEventListener("pointermove", ziehen);
+      griff.removeEventListener("pointerup", ende);
+      griff.removeEventListener("pointercancel", ende);
+    };
+    griff.addEventListener("pointermove", ziehen);
+    griff.addEventListener("pointerup", ende);
+    griff.addEventListener("pointercancel", ende);
+  });
+}
+
+const SEITE_MIN_PX = 260, SEITE_MAX_PX = 640;
+function setSeitenBreite(px) {
+  const breite = Math.round(Math.min(SEITE_MAX_PX, Math.max(SEITE_MIN_PX, px)));
+  document.documentElement.style.setProperty("--sidebar-width", `${breite}px`);
+  merke("ileen.backend.seite.breite", String(breite));
+  belegungMessen();
+}
+ziehgriff($("sidebar-resizer"),
+  (ev) => ev.clientX - $("sidebarPanel").getBoundingClientRect().left, setSeitenBreite);
+
+// ── Rechts: die Assetliste ein-/ausblenden und Breite ziehen ──
+const ASSETS_MIN_PX = 240, ASSETS_MAX_PX = 720;
+
+function setAssetsBreite(px) {
+  const max = Math.max(ASSETS_MIN_PX, Math.min(ASSETS_MAX_PX, window.innerWidth - 420));
+  const breite = Math.round(Math.min(max, Math.max(ASSETS_MIN_PX, px)));
+  document.documentElement.style.setProperty("--assets-breite", `${breite}px`);
+  merke("ileen.assets.breite", String(breite));
+  belegungMessen();
+}
+
+function setAssetsOffen(offen) {
+  $("assets-panel").hidden = !offen;
+  $("assets-show").hidden = offen;
+  merke("ileen.assets.offen", offen ? "1" : "0");
+  belegungMessen();
+}
+
+$("assets-collapse").addEventListener("click", () => setAssetsOffen(false));
+$("assets-show").addEventListener("click", () => setAssetsOffen(true));
+ziehgriff($("assets-resizer"), (ev) => window.innerWidth - 10 - ev.clientX, setAssetsBreite);
+
+$("assets-search").addEventListener("input", (e) => {
+  assetSuche = e.target.value;
+  renderAssets();
+});
+
+const gemerkteSeite = Number(gemerkt("ileen.backend.seite.breite"));
+if (gemerkteSeite) setSeitenBreite(gemerkteSeite);
+setAssetsBreite(Number(gemerkt("ileen.assets.breite")) || 340);
+setAssetsOffen(gemerkt("ileen.assets.offen") !== "0");
+zeigeVerortung(false);
+bereichOeffnen(gemerkt("ileen.backend.bereich") === "verortung" ? "verortung" : "import");
+
+// ── Fotos → Splat ─────────────────────────────────────────────────────────
+// Die Rechnung läuft nicht hier und nicht im Backend-Container, sondern im Worker auf dem
+// Mac (COLMAP + Brush brauchen die Metal-GPU). Diese Seite legt Aufträge an und zeigt, wie
+// weit sie sind; ist ein Auftrag fertig, steht der Splat in der Assetliste.
+const ST_MEDIEN = /\.(jpe?g|png|tiff?|heic|heif|webp|bmp|mp4|mov|m4v|avi|mkv|zip)$/i;
+// Begleitdateien von Aufnahme-Apps (splatpack.json, je Foto eine .json, frame_timecodes.csv …):
+// ohne sie fehlen Ort, Sichtfeld und Zeit der Bilder. Allein hochgeladen nützen sie nichts.
+const ST_BEGLEIT = /\.(json|csv|ndjson)$/i;
+const ST_ENDUNGEN = new RegExp(`${ST_MEDIEN.source}|${ST_BEGLEIT.source}`, "i");
+const stPfad = (f) => f.stPfad || f.webkitRelativePath || f.name;
+const ST_STATUS = {
+  laedt: "lädt", wartet: "wartet", laeuft: "läuft", trainiert: "wird übernommen",
+  uebernehme: "wird gekachelt", fertig: "fertig", fehler: "Fehler", abgebrochen: "abgebrochen",
+};
+const ST_MODUS = {
+  gps_3d: "Position, Maßstab und Richtung aus dem GPS der Bilder",
+  schwerkraft_gps: "Position, Maßstab und Richtung aus dem GPS (waagerecht)",
+  schwerkraft: "Ort aus dem GPS — Maßstab und Richtung unbekannt",
+  annahme: "ohne GPS — Standort und Maßstab von Hand setzen",
+};
+let stDateien = [];
+let stStatusVorher = new Map();
+let stTimer = null;
+
+function stZeigeAuswahl() {
+  const medien = stDateien.filter((f) => ST_MEDIEN.test(f.name));
+  const n = medien.length, begleit = stDateien.length - n;
+  const mb = stDateien.reduce((a, f) => a + f.size, 0) / 1048576;
+  $("st-gewaehlt").hidden = stDateien.length === 0;
+  $("st-gewaehlt").textContent = stDateien.length
+    ? `${n} Datei${n === 1 ? "" : "en"}${begleit ? ` + ${begleit} Begleitdatei${begleit === 1 ? "" : "en"}` : ""} · ${mb.toFixed(0)} MB bereit`
+      + (n === 0 ? " — es fehlt ein Bild, Video oder ZIP" : "")
+    : "";
+  $("st-start").disabled = n === 0;
+  if (n && !$("st-name").value) {
+    // Kamen alle aus einem Ordner (Aufnahme-App), trägt der Auftrag dessen Namen.
+    const ordner = new Set(stDateien.map(stPfad).filter((x) => x.includes("/")).map((x) => x.split("/")[0]));
+    $("st-name").placeholder = n === 1 ? medien[0].name.replace(/\.[^.]+$/, "")
+      : (ordner.size === 1 ? [...ordner][0] : `${n} Fotos`);
+  }
+}
+
+function stNimm(dateien) {
+  const gut = [...dateien].filter((f) => ST_ENDUNGEN.test(f.name) && !f.name.startsWith("."));
+  const verworfen = dateien.length - gut.length;
+  stDateien = stDateien.concat(gut);
+  stZeigeAuswahl();
+  status($("st-status"), verworfen ? `${verworfen} Datei${verworfen === 1 ? "" : "en"} ohne Bild-/Videoendung übergangen.` : "",
+         verworfen ? "warn" : "");
+}
+
+// Ordner im Drop: die Einträge müssen *synchron* im Ereignis geholt werden, danach sind sie weg.
+async function stDateienAusDrop(dt) {
+  const eintraege = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
+  if (!eintraege.length) return [...dt.files];
+  const aus = [];
+  const geh = async (e) => {
+    if (e.isFile) {
+      const f = await new Promise((ok, nein) => e.file(ok, nein));
+      f.stPfad = (e.fullPath || f.name).replace(/^\//, "");     // Ordner bleibt erhalten (Aufnahmepakete)
+      aus.push(f);
+    } else if (e.isDirectory) {
+      const leser = e.createReader();
+      for (;;) {
+        const teil = await new Promise((ok, nein) => leser.readEntries(ok, nein));
+        if (!teil.length) break;
+        for (const k of teil) await geh(k);
+      }
+    }
+  };
+  for (const e of eintraege) await geh(e);
+  return aus;
+}
+
+const stDrop = $("st-drop");
+stDrop.addEventListener("click", () => $("st-dateien").click());
+stDrop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("st-dateien").click(); } });
+$("st-dateien").addEventListener("change", (e) => { stNimm(e.target.files); e.target.value = ""; });
+for (const ev of ["dragenter", "dragover"]) {
+  stDrop.addEventListener(ev, (e) => { e.preventDefault(); stDrop.classList.add("drueber"); });
+}
+for (const ev of ["dragleave", "drop"]) {
+  stDrop.addEventListener(ev, () => stDrop.classList.remove("drueber"));
+}
+stDrop.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  stNimm(await stDateienAusDrop(e.dataTransfer));
+});
+
+$("st-start").addEventListener("click", () => {
+  if (!stDateien.length) return;
+  const body = new FormData();
+  for (const f of stDateien) body.append("files", f, stPfad(f));
+  body.append("name", $("st-name").value.trim());
+  body.append("qualitaet", $("st-qualitaet").value);
+  body.append("verfahren", $("st-verfahren").value);
+  body.append("mesh", $("st-mesh").checked ? "true" : "false");
+  body.append("fenster", $("st-fenster").checked ? "true" : "false");
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/splat-training");
+  xhr.timeout = 0;
+  $("st-start").disabled = true;
+  xhr.upload.addEventListener("progress", (e) => {
+    if (e.lengthComputable) status($("st-status"), `Lade hoch… ${Math.round((e.loaded / e.total) * 100)} % (${(e.loaded / 1048576).toFixed(0)} von ${(e.total / 1048576).toFixed(0)} MB)`);
+  });
+  xhr.addEventListener("load", () => {
+    let antwort = {};
+    try { antwort = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status >= 200 && xhr.status < 300) {
+      status($("st-status"), "Auftrag angelegt.", "ok");
+      stDateien = []; $("st-name").value = ""; $("st-name").placeholder = "Name (optional)";
+      stZeigeAuswahl();
+      stLaden();
+    } else {
+      status($("st-status"), `Upload fehlgeschlagen (HTTP ${xhr.status}): ${antwort.detail ?? xhr.statusText}`, "err");
+      $("st-start").disabled = false;
+    }
+  });
+  xhr.addEventListener("error", () => {
+    status($("st-status"), "Verbindung abgebrochen. Bei vielen großen Dateien hilft ein ZIP; über einen Proxy kann ein Größenlimit greifen.", "err");
+    $("st-start").disabled = false;
+  });
+  xhr.send(body);
+});
+
+function stJobKarte(a) {
+  const li = document.createElement("li");
+  li.className = "st-job";
+  li.dataset.status = a.status;
+  const kopf = document.createElement("div");
+  kopf.className = "st-kopf";
+  const name = document.createElement("b");
+  name.textContent = a.name;
+  name.title = a.name;
+  const chip = document.createElement("span");
+  chip.className = "st-chip";
+  chip.textContent = ST_STATUS[a.status] ?? a.status;
+  kopf.append(name, chip);
+  const balken = document.createElement("div");
+  balken.className = "st-bar";
+  balken.innerHTML = `<i style="width:${Math.round((a.anteil ?? 0) * 100)}%"></i>`;
+  const meld = document.createElement("div");
+  meld.className = "st-meld";
+  meld.textContent = a.meldung ?? "";
+  li.append(kopf, balken, meld);
+
+  const info = [];
+  if (a.optionen?.qualitaet) info.push(a.optionen.qualitaet);
+  if (a.optionen?.verfahren === "atlas") info.push("Kameras: World Labs Atlas");
+  if (a.optionen?.mesh) info.push("+ Mesh");
+  if (a.dateien) info.push(`${a.dateien} Datei${a.dateien === 1 ? "" : "en"}`);
+  const g = a.georef;
+  if (g) info.push(ST_MODUS[g.modus] ?? g.modus);
+  if (g && g.rms_m != null) info.push(`GPS-Abweichung ${g.rms_m} m`);
+  if (g?.hochachse_quelle === "geraet") info.push("oben = Schwerkraftsensor des Telefons");
+  if (g?.massstab_geschaetzt) info.push("Maßstab geschätzt (Aufnahmeabstand ≈ 1 m)");
+  if (a.ergebnis?.splats) info.push(`${a.ergebnis.splats.toLocaleString("de-DE")} Splats`);
+  if (a.sekunden) info.push(`${Math.round(a.sekunden / 60) || "<1"} min`);
+  if (info.length) {
+    const el = document.createElement("div");
+    el.className = "st-info";
+    el.textContent = info.join(" · ");
+    li.appendChild(el);
+  }
+  for (const h of g?.hinweise ?? []) {
+    const el = document.createElement("div");
+    el.className = "st-info warn";
+    el.textContent = "⚠ " + h;
+    li.appendChild(el);
+  }
+
+  const knoepfe = document.createElement("div");
+  knoepfe.className = "btn-row st-aktionen";
+  const knopf = (text, titel, fn) => {
+    const b = document.createElement("button");
+    b.className = "btn--sm";
+    b.textContent = text; b.title = titel; b.addEventListener("click", fn);
+    knoepfe.appendChild(b);
+    return b;
+  };
+  const aktiv = ["laedt", "wartet", "laeuft", "trainiert", "uebernehme"].includes(a.status);
+  if (a.status === "fertig" && a.asset) {
+    knopf("Im Viewer zeigen", "Splat laden und anfliegen", async () => {
+      await loadAssets();
+      const asset = assets.find((x) => x.job_id === a.asset.job_id);
+      if (asset) await select(asset);
+    });
+  }
+  if (aktiv && a.status !== "uebernehme") knopf("Abbrechen", "Auftrag abbrechen", async () => {
+    await fetch(`/splat-training/${a.id}/abbrechen`, { method: "POST" }); stLaden();
+  });
+  if (a.status === "fehler" || a.status === "abgebrochen") knopf("Wiederholen", "Ab der unterbrochenen Stufe weiterrechnen", async () => {
+    await fetch(`/splat-training/${a.id}/wiederholen`, { method: "POST" }); stLaden();
+  });
+  if (!aktiv || a.status === "laedt") knopf("Entfernen", "Auftrag samt Arbeitsdateien entfernen (das fertige Asset bleibt)", async () => {
+    if (!confirm(`Auftrag „${a.name}“ entfernen? Das fertige Asset in der Liste bleibt bestehen.`)) return;
+    const r = await fetch(`/splat-training/${a.id}`, { method: "DELETE" });
+    if (!r.ok && r.status !== 204) status($("st-status"), (await r.json()).detail ?? r.statusText, "err");
+    stLaden();
+  });
+  const log = document.createElement("pre");
+  log.className = "st-log";
+  log.hidden = true;
+  knopf("Protokoll", "Ausgabe von COLMAP und Brush", async () => {
+    log.hidden = !log.hidden;
+    if (!log.hidden) {
+      log.textContent = (await (await fetch(`/splat-training/${a.id}/log`)).text()).split("\n").slice(-120).join("\n");
+      log.scrollTop = log.scrollHeight;
+    }
+  });
+  li.append(knoepfe, log);
+  return li;
+}
+
+async function stLaden() {
+  let daten;
+  try {
+    daten = await (await fetch("/splat-training")).json();
+  } catch {
+    return;
+  }
+  const w = daten.worker ?? {};
+  const banner = $("st-worker");
+  const offen = daten.auftraege.some((a) => ["wartet", "laeuft"].includes(a.status));
+  banner.hidden = w.aktiv && !offen;
+  if (!banner.hidden) {
+    banner.className = "st-banner " + (w.aktiv ? "ok" : "warn");
+    banner.textContent = w.aktiv
+      ? (w.zustand === "arbeitet" ? "Worker rechnet." : "Worker bereit.")
+      : "Der Worker auf dem Mac läuft nicht — Aufträge warten. Start: python3 backend/splatwerk/worker.py " +
+        "(oder der launchd-Agent, siehe backend/CLAUDE.md). " + (w.grund ?? "");
+  }
+  const liste = $("st-liste");
+  // Während ein Protokoll offen ist, nicht neu zeichnen — es spränge zurück.
+  if (!liste.querySelector(".st-log:not([hidden])")) {
+    liste.replaceChildren(...daten.auftraege.slice(0, 12).map(stJobKarte));
+  }
+  // Wird ein Auftrag während der Beobachtung fertig, erscheint der Splat in der Liste und wird angeflogen.
+  for (const a of daten.auftraege) {
+    if (stStatusVorher.get(a.id) && stStatusVorher.get(a.id) !== "fertig" && a.status === "fertig" && a.asset) {
+      await loadAssets();
+      const asset = assets.find((x) => x.job_id === a.asset.job_id);
+      if (asset) await select(asset);
+    }
+    stStatusVorher.set(a.id, a.status);
+  }
+  const lebhaft = daten.auftraege.some((a) => ["laedt", "wartet", "laeuft", "trainiert", "uebernehme"].includes(a.status));
+  // Die Gruppe ist meist zugeklappt (Akkordeon) — ihr Kopf zeigt deshalb,
+  // ob gerade etwas läuft.
+  const laufend = daten.auftraege.filter((a) => ["laedt", "wartet", "laeuft", "trainiert", "uebernehme"].includes(a.status)).length;
+  $("st-zahl").hidden = laufend === 0;
+  $("st-zahl").textContent = laufend ? `${laufend} läuft` : "";
+  clearTimeout(stTimer);
+  stTimer = setTimeout(stLaden, lebhaft ? 3000 : 15000);
+}
+
+loadAssets();
+refreshTerrainReference();
+stLaden();
+</script>
+
+</body>
+</html>

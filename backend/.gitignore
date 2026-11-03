@@ -1,0 +1,11 @@
+.env
+data/*
+!data/sensoren.csv
+!data/zonen.csv
+!data/sensoren_raeume.csv
+!data/sensoren_raeume.meta.json
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+.DS_Store

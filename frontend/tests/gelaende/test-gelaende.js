@@ -298,6 +298,33 @@ function hoeheIn(daten, k, lon, lat) {
   try { await pOhneGeoid.requestTileGeometry(mainz.x, mainz.y, mainz.level); } catch (f) { abgelehnt = /Geoid/.test(f.message); }
   pruefe('Ohne Undulation lieber keine Kachel als eine 48 m zu tiefe', abgelehnt);
 
+  // ── 6b · layer.json antwortet spät oder gar nicht: der Start wartet nicht darauf ──
+
+  {
+    const spaet = attrappen();
+    const roh = spaet.holen;
+    spaet.holen = (url, req) => /layer\.json/.test(url)
+      ? new Promise((ok) => setTimeout(() => ok(roh(url, req)), 1500))
+      : roh(url, req);
+    const t0 = Date.now();
+    const pSpaet = await G.erzeugen(spaet);
+    const dauer = Date.now() - t0;
+    pruefe('layer.json braucht 1,5 s: erzeugen() kehrt nach ~1 s zurück, nicht erst nach 1,5 s', dauer >= 900 && dauer < 1400, dauer + ' ms');
+    pruefe('… und startet ohne DGM5 (Terrain Tiles allein)', pSpaet.quellen.dgm5 === false);
+    await new Promise((ok) => setTimeout(ok, 800));
+    pruefe('… die späte Antwort wird nachgereicht: DGM5 ist danach angebunden', pSpaet.quellen.dgm5 === true);
+    const dSpaet = await pSpaet.requestTileGeometry(mainz.x, mainz.y, mainz.level);
+    pruefe('… und die nächste Kachel kommt aus dem DGM5 (148 m), nicht aus Terrain Tiles', nahe(hoeheIn(dSpaet, mainz, 8.2765, 50.0005), 148, 0.05));
+
+    const haengt = attrappen();
+    const roh2 = haengt.holen;
+    haengt.holen = (url, req) => /layer\.json/.test(url) ? new Promise(() => {}) : roh2(url, req);
+    const t1 = Date.now();
+    const pHaengtLayer = await G.erzeugen(haengt);
+    const dauer2 = Date.now() - t1;
+    pruefe('layer.json antwortet nie: der Start dauert ~1 s statt vier', dauer2 >= 900 && dauer2 < 1400 && pHaengtLayer.quellen.dgm5 === false, dauer2 + ' ms');
+  }
+
   globalThis.ILEEN_GEOID = { load: async () => null, getUndulation: () => null };
   let erzeugenAbgelehnt = false;
   try { await G.erzeugen({ holen: attrappen().holen, bild: attrappen().bild }); } catch (f) { erzeugenAbgelehnt = /EGM96/.test(f.message); }

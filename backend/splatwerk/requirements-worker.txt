@@ -1,0 +1,8 @@
+# Was der Splatwerk-Worker auf dem Mac braucht — zusätzlich zu COLMAP, Spirula Studio und ffmpeg
+# (brew install colmap ffmpeg; Spirula Studio: das macOS-DMG von https://github.com/harry7557558/spirula-studio/releases,
+# die App nach ~/Projekte/spirula-studio-app/ kopieren oder SPIRULA_BIN setzen).
+# Der Worker läuft mit der Systempython, nicht im Container.
+numpy
+Pillow
+pillow-heif    # iPhone-Fotos (HEIC) lesen
+plyfile        # nur für die Tests

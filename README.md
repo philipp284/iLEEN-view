@@ -8,13 +8,19 @@ auseinanderziehen.
 Gebaut auf [CesiumJS](https://cesium.com/platform/cesiumjs/). Ohne Framework,
 ohne Anmeldung, ohne Konto — ein Ordner statischer Dateien und ein Browser.
 
-> **Was hier nicht drin ist.** iLEEN-view ist der Viewer. Die Auswerte- und
-> Nachweiswerkzeuge der Vollfassung — Tragwerksberechnung, Lastabtrag,
-> GEG-Energiebilanz, Bauablaufsimulation, Bewehrungsplanung, Verschattung —
-> sind nicht Teil dieses Repos. Sie sind Module und stecken sich an: die
+Dazu gehört ein **selbst gehostetes Backend** (`backend/`, FastAPI + MinIO in
+Docker): es nimmt IFC, Punktwolken, Gaussian Splats und Meshes entgegen, zerlegt
+sie in 3D Tiles, hält die Property-Sets jedes Bauteils, Notizen und Sensorwerte
+und liefert alles an den Viewer aus — ganz ohne Cesium ion.
+
+> **Was im Viewer nicht drin ist.** Die Auswerte- und Nachweiswerkzeuge der
+> Oberfläche — Tragwerksberechnung, Lastabtrag, GEG-Energiebilanz,
+> Bauablaufsimulation, Bewehrungsplanung, Verschattung — sind nicht Teil des
+> Frontends in diesem Repo. Sie sind Module und stecken sich an: die
 > Oberfläche hält dafür zwei Steckplätze bereit, links für Viewer-Werkzeuge
 > und rechts für Auswertungen. Wie das geht, steht unter
-> [Erweitern](#erweitern).
+> [Erweitern](#erweitern). Das Backend ist dagegen vollständig enthalten,
+> samt der Rechenrouten, die diese Auswertungen ansprechen.
 
 ---
 
@@ -35,7 +41,8 @@ ohne Anmeldung, ohne Konto — ein Ordner statischer Dateien und ein Browser.
 | **Rundgang** | 360°-Panoramen als begehbare Tour. |
 | **Präsentation** | Folien aus Kamerapose, Text und Szene — welche Modelle, welcher Schnitt, welches Licht. Von Hand weitergeklickt, zeitgesteuert abgespielt oder als Video aufgenommen; zwischen zwei Folien fahren Kamera, Schnitt und Sonne stetig mit. |
 | **Sensoren** | Messwerte aus dem Backend am Modell: Geschosse nach Raumtemperatur oder Wirkleistung eingefärbt, mit Legende, Ausreißern und veralteten Fühlern. |
-| **Karten** | Luftbild, OpenStreetMap, Sentinel-2, Vektorkacheln von basemap.de, Weltgelände, OSM Buildings, Google Photorealistic 3D Tiles. |
+| **Karten** | Gelände, Luftbild und Gebäude direkt von den Diensten (DGM5 und LoD2 von basemap.de, Luftbilder der Länder, Sentinel-2, OpenStreetMap, Vektorkacheln), Google Photorealistic 3D Tiles mit eigenem Schlüssel, Ortssuche. |
+| **Bedienung** | Tastenkürzel für die häufigen Griffe (X Explosion, P Punktwolken, I IFC, G Splats, M Messen, R Räume, V Vorlagen, ? Übersicht), gespeicherte Ansichten als Vorlagen (⇧1…⇧9), Bauteile einer Klasse sortiert nebeneinander, weniger Detail während Flügen. |
 
 Oberfläche und Hilfetexte gibt es auf Deutsch und Englisch. Die Erklärung zu
 einer Einstellung erscheint als Sprechblase, sobald der Mauszeiger darauf
@@ -46,12 +53,26 @@ liegt; ein Handbuch im Bereich **Info** beschreibt jedes Werkzeug.
 ## Loslegen
 
 ```bash
-git clone <dieses-repo> iLEEN-view
+git clone https://github.com/philipp284/iLEEN-view.git
 cd iLEEN-view/frontend
 npm install
-cp config.example.js config.js     # ion-Token und Backend-Adresse eintragen
+cp config.example.js config.js     # ion-Token (optional) und Backend-Adresse eintragen
 npm run dev                        # → http://localhost:5190
 ```
+
+Das Backend läuft in Docker:
+
+```bash
+cd iLEEN-view/backend
+cp .env.example .env               # Zugangsdaten für MinIO setzen, Referenzpunkt anpassen
+docker compose up -d --build       # → API http://localhost:8100, Asset-Manager http://localhost:8100/ui
+```
+
+In `config.js` steht dann `backendUrl: 'http://localhost:8100'`. Ein Modell
+wird über den Asset-Manager oder `POST /upload/<datei>` hochgeladen, im
+Hintergrund getilet und erscheint danach im Modell-Browser des Viewers.
+Einzelheiten zu Pipeline, Georeferenzierung und Routen stehen in
+[`backend/CLAUDE.md`](backend/CLAUDE.md).
 
 `config.js` ist bewusst nicht im Repo: dort steht der ion-Zugriffsschlüssel,
 und ein Token im Verlauf einer Versionsverwaltung ist auch nach dem Widerrufen
@@ -74,7 +95,8 @@ Zwei Wege, beide unabhängig voneinander:
 **Cesium ion** — Asset-ID im Panel *Asset Browser* eintragen. Die Assets des
 hinterlegten Kontos stehen als Vorschlagsliste bereit.
 
-**Eigenes Backend** — ein Dienst, der 3D Tiles ausliefert und unter
+**Eigenes Backend** — das mitgelieferte unter `backend/` oder ein anderer
+Dienst, der 3D Tiles ausliefert und unter
 `GET /assets/` eine Liste davon führt. Erwartet werden je Modell `job_id`,
 `name`, `content_type` (`ifc` · `pointcloud` · `splat` · `mesh`) und
 `tileset_url`. Der Viewer nutzt darüber hinaus optional
@@ -207,9 +229,17 @@ einbindet, und ob die beiden Anmeldewege benutzbar geblieben sind.
 
 ## Lizenz
 
-© 2026 Philipp Schäfer — [PolyForm Noncommercial 1.0.0](LICENSE.md).
-Nutzung, Änderung und Weitergabe für nichtkommerzielle Zwecke frei; für eine
-kommerzielle Nutzung wird eine gesonderte Vereinbarung gebraucht.
+| Teil | Lizenz | Datei |
+|---|---|---|
+| `frontend/`, Dokumentation | PolyForm Noncommercial 1.0.0 — Nutzung, Änderung und Weitergabe für nichtkommerzielle Zwecke, Forschung und Lehre frei | [`LICENSE.md`](LICENSE.md) |
+| `backend/` | GNU Affero General Public License 3.0 | [`backend/LICENSE`](backend/LICENSE) |
+
+Required Notice: Copyright © 2026 Philipp Schäfer
+
+Für eine kommerzielle Nutzung des Frontends wird eine gesonderte Vereinbarung
+gebraucht. Frontend und Backend sind getrennte Programme, die ausschließlich
+über HTTP miteinander sprechen. Das Backend steht unter AGPL-3.0, weil es
+Bibliotheken unter GPL/AGPL einbindet (PyMuPDF, plyfile, jax-fem, gmsh).
 
 Fremdsoftware und ihre Lizenzen stehen in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). CesiumJS steht unter

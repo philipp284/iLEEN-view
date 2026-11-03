@@ -23,6 +23,9 @@
 
   <link rel="stylesheet" href="style.css">
 
+  <!-- Startbild — Logo auf Schwarz, bis die Welt steht -->
+  <link rel="stylesheet" href="startbild.css">
+
   <!-- Annotationen — verankerte Beschriftungen zu den Notizen aus tags.js -->
   <link rel="stylesheet" href="annotations.css">
 
@@ -54,17 +57,86 @@
        beide bauen auf dessen Marken auf -->
   <link rel="stylesheet" href="hinweise.css">
   <link rel="stylesheet" href="hilfe.css">
+  <link rel="stylesheet" href="tastenkuerzel.css">
   <link rel="stylesheet" href="sensor-panel.css">
+  <link rel="stylesheet" href="sortiert.css">
   <!-- Raumansicht: Räume als Körper, Steckbrief, Geschossfilter, Einfärben -->
   <link rel="stylesheet" href="room-concept.css">
 </head>
 
 <body>
 
+  <!-- Startbild: nur der Schriftzug auf Schwarz, bis die Welt darunter steht
+       (startbild.js, startbild.css). Die Umrisse stammen aus dem Originallogo
+       (LOGO/LOGO_1st_Ai.png, dieselben Konturen wie tools/make-ileen-logo.py):
+       Strichstärke 18, Versalhöhe 144; Cyan sind der i-Punkt und die
+       Mittelstriche der beiden E. Der Aufbau (Buchstabe für Buchstabe, ~3 s)
+       ist so lang, dass das Überblenden in die Welt unmittelbar nach dem
+       letzten Buchstaben einsetzt — Zeiten in startbild.css und minMs in
+       startbild.js gehören zusammen. Steht VOR allem anderen im Body, damit
+       es im ersten gezeichneten Bild da ist. -->
+  <div id="ileenStart" role="img" aria-label="iLEEN">
+    <!-- Jeder Buchstabe ein eigenes <svg> im HTML-Fluss, nicht eine Gruppe in EINEM svg:
+         CSS-Animationen auf Elementen INNERHALB eines svg laufen im Hauptthread und
+         ruckeln, solange dort die Skripte laden; auf dem svg-Element selbst läuft sie
+         auf dem Compositor. Lage und Breite je Buchstabe (%) und viewBox leiten sich aus
+         den Konturen ab (Gesamtraum x 160…1105, y 8…166). -->
+    <div class="sb-block">
+    <div class="sb-wort">
+      <svg class="sb-b" style="--i:0; left:0.3175%; width:2.751%" viewBox="163 8 26 158" aria-hidden="true">
+        <rect class="sb-c" x="167" y="15" width="18" height="28"/>
+        <rect x="167" y="55" width="18" height="104"/>
+      </svg>
+      <svg class="sb-b" style="--i:1; left:11.429%; width:14.815%" viewBox="268 8 140 158" aria-hidden="true">
+        <path d="M272 15h18v126h114v18H272z"/>
+      </svg>
+      <svg class="sb-b" style="--i:2; left:34.603%; width:15.026%" viewBox="487 8 142 158" aria-hidden="true">
+        <rect x="491" y="15" width="134" height="18"/>
+        <rect class="sb-c" x="491" y="78" width="134" height="18"/>
+        <rect x="491" y="141" width="134" height="18"/>
+      </svg>
+      <svg class="sb-b" style="--i:3; left:57.884%; width:15.026%" viewBox="707 8 142 158" aria-hidden="true">
+        <rect x="711" y="15" width="134" height="18"/>
+        <rect class="sb-c" x="711" y="78" width="134" height="18"/>
+        <rect x="711" y="141" width="134" height="18"/>
+      </svg>
+      <svg class="sb-b" style="--i:4; left:81.164%; width:18.519%" viewBox="927 8 175 158" aria-hidden="true">
+        <path d="M931 15h18l131 118V15h18v144h-18L949 41v118h-18z"/>
+      </svg>
+    </div>
+    <!-- Untertitel wie im Originallogo: Großbuchstaben, weit gesperrt, die Anfangsbuchstaben
+         I · L · E in Cyan. textLength spannt ihn exakt von der Kante des i bis zur Kante des N. -->
+    <svg class="sb-sub" viewBox="160 0 945 40" aria-hidden="true">
+      <text x="167" y="30" textLength="931" lengthAdjust="spacing" font-size="31"><tspan class="sb-c2">I</tspan>MMERSIVE <tspan class="sb-c2">L</tspan>EARNING <tspan class="sb-c2">E</tspan>NVIRONMENT</text>
+    </svg>
+    </div>
+  </div>
+  <script>
+    // Aus bei Automatisierung (die Prüfsteine klicken und messen sofort), mit
+    // ?startbild=aus und mit localStorage.ileen_startbild = 'aus'.
+    // ?startbild=an erzwingt es auch dort. Der Notausgang gibt die Szene nach
+    // 15 s in jedem Fall frei — fehlt startbild.js oder bricht ein Modul vorher
+    // ab, bliebe das Logo sonst für immer stehen.
+    (function () {
+      var el = document.getElementById('ileenStart');
+      var aus = false;
+      try {
+        var p = new URLSearchParams(location.search).get('startbild');
+        aus = p === 'aus' || (p !== 'an' && (navigator.webdriver || localStorage.getItem('ileen_startbild') === 'aus'));
+      } catch (e) { /* privates Fenster: dann mit Startbild */ }
+      if (aus) { el.remove(); return; }
+      setTimeout(function () {
+        if (!el.parentNode) return;
+        el.className += ' geht';
+        setTimeout(function () { if (el.parentNode) el.remove(); }, 2300);
+      }, 15000);
+    })();
+  </script>
+
   <div id="cesiumContainer"></div>
 
-  <!-- Holt die eingeklappte Seitenleiste zurück (Taste M) -->
-  <button id="sidebarToggle" class="sidebar-toggle" title="Seitenleiste zeigen (M)">☰</button>
+  <!-- Holt die eingeklappte Seitenleiste zurück (Taste B) -->
+  <button id="sidebarToggle" class="sidebar-toggle" title="Seitenleiste zeigen (B)">☰</button>
 
   <!-- Linke Leiste: Aktivitätsleiste und Panels (ui.js) -->
   <div id="toolbar"></div>
@@ -112,6 +184,12 @@
        (in dieser Fassung etwa der Bauplaner), liefert sein Anmelder nichts. -->
   <script src="zustand.js"></script>
   <script src="zustand-anmelder.js"></script>
+  <!-- Nutzungsprotokoll fürs Backend (welche Modelle, welche Menüs, welche
+       Tasten) — früh, damit es die Ladefunktionen aus core.js umhüllt, bevor
+       jemand sie aufruft. Dann die Tastenkürzel (X P I G M V ?): vor allen
+       Werkzeugen, die eigene Kürzel anmelden (room-concept-panel.js → R). -->
+  <script src="nutzung.js"></script>
+  <script src="tastenkuerzel.js"></script>
   <!-- Untergrund-Modus mit Nullebene — hängt sich an BimViewer.Untergrund -->
   <script src="untergrund.js"></script>
   <!-- Der Shader-Verbund: mehrere Werkzeuge an EINEM `customShader`.
@@ -162,6 +240,7 @@
   <script src="layerManager.js"></script>
   <!-- Vektorkarte: basemap.de als Vektorkacheln auf dem Gelände -->
   <script src="vektorkacheln.js"></script>
+  <script src="zwilling.js"></script>
 
   <!-- 4. Oberfläche und was vor ihr stehen muss -->
   <!-- IFC Filter Pro — vor ui.js (getIFCContent nutzt IFCFilterPro) -->
@@ -176,6 +255,9 @@
   <script src="ui.js"></script>
   <!-- meldet sich über BimViewerUI.gruppeAnmelden('ifc', …) ein, also nach ui.js -->
   <script src="room-concept-panel.js"></script>
+  <!-- Vorlagen: gespeicherte Ansichten (Szene + Kamera), Gruppe im Bereich
+       „Ansicht", Taste V und ⇧1…⇧9. Nach ui.js (meldet eine Gruppe an). -->
+  <script src="vorlagen.js"></script>
 
   <!-- Vereinheitlichung der Bedienelemente — nach ui.js, damit der
        Beobachter die Panel-Container schon vorfindet -->
@@ -259,6 +341,9 @@
   <script src="geschossplaene.js"></script>
   <script src="bildebenen.js"></script>
   <script src="bildprojektion.js"></script>
+  <!-- Bauteile sortiert: alle Türen, Fenster … freigestellt nebeneinander (Gruppe im Bereich Ansicht) -->
+  <script src="sortiert.js"></script>
+  <script src="sortiert-panel.js"></script>
 
   <!-- iLEEN-Logo als Körper im Orbit — steht beim Öffnen in der Startansicht -->
   <script src="ileen-logo.js"></script>
@@ -284,6 +369,12 @@
   <script src="splat-leistung.js"></script>
   <!-- in Bewegung gröber zeichnen, im Stand scharf (IFC, Punktwolken) -->
   <script src="bewegungsguete.js"></script>
+  <!-- Flüge und Sprünge: in Fahrt weniger Detail anfordern (Bildschirmfehler von
+       Globus und Modell-Kacheln), nach der Landung schrittweise zurück (nach
+       bewegungsguete.js: beide lesen die Kameralage, keines fasst das Andere an) -->
+  <script src="bewegungsweich.js"></script>
+  <!-- Startbild: Logo bis die Welt steht, dann kurz Glühen (Markup oben im Body) -->
+  <script src="startbild.js"></script>
   <!-- Splat-Farbe linearisieren, solange HDR an ist (sonst doppelt aufgehellt) -->
   <script src="splat-farbe.js"></script>
 

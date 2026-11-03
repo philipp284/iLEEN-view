@@ -239,10 +239,15 @@ try {
     });
   };
 
-  // Reiter „Karte“ liegt bei x ≈ 595, y ≈ 52
-  const treffer = await zielenAuf(595, 52);
+  // Der Reiter „Karte“: seine Lage liest der Test aus dem Tablet, statt sie festzuschreiben —
+  // mit jedem Reiter mehr (zuletzt „Leistung“) werden die übrigen schmaler und rücken
+  const [kx, ky] = await seite.evaluate(() => {
+    const r = ILeenVR.ui.regionen.find(x => x.id === 'reiter:karte');
+    return r ? [r.x + r.w / 2, r.y + r.h / 2] : [0, 0];
+  });
+  const treffer = await zielenAuf(kx, ky);
   pruefe('rechter Strahl trifft das Tablet', !!treffer, JSON.stringify(treffer));
-  if (treffer) console.log(`      bei ${treffer.map(v => Math.round(v)).join(' / ')} px (Ziel 595 / 52)`);
+  if (treffer) console.log(`      bei ${treffer.map(v => Math.round(v)).join(' / ')} px (Ziel ${Math.round(kx)} / ${Math.round(ky)})`);
   const hover = await seite.evaluate(() => ILeenVR.ui.hoverId);
   pruefe('Reiter unter dem Strahl ist hervorgehoben', hover === 'reiter:karte', hover);
   await seite.evaluate(() => __brille.controllers.right.updateButtonValue('trigger', 1));

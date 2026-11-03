@@ -505,6 +505,100 @@ BV.ShaderVerbund = verbund;
   pruefe('ein Meter bleibt ein Meter', I.hoeheText(2.5) === '2.500 m', I.hoeheText(2.5));
 }
 
+{
+  // Gaussian Splats: die Regler im Menü müssen am Tileset ankommen. Vorher
+  // gab es für die Splat-Detailstufe gar keinen Regler — die Automatik in
+  // splat-leistung.js zog sie bis 64 px hoch und danach die Auflösung auf
+  // 50 %, und im Menü stand davon nichts.
+  vm.runInThisContext(fs.readFileSync(path.join(WURZEL, 'splat-leistung.js'), 'utf8'),
+                      { filename: 'splat-leistung.js' });
+  const L = globalThis.SplatLeistung;
+
+  const splat = () => ({ _isGaussianSplat: true, show: true, maximumScreenSpaceError: 16 });
+  const tilesets = [splat(), splat()];
+  let nachBild = null;
+  const viewer = {
+    resolutionScale: 1,
+    scene: {
+      primitives: { get length() { return tilesets.length; }, get: (i) => tilesets[i] },
+      postRender: { addEventListener(f) { nachBild = f; return () => { nachBild = null; }; } },
+    },
+  };
+  const alterViewer = BV.viewer;
+  BV.viewer = viewer;
+  const sse = () => tilesets.map((t) => t.maximumScreenSpaceError);
+
+  pruefe('Splat-Vorgaben: 16 px, Automatik an, Auflösung bis 50 %',
+    BV.pointCloudSettings.splatDetail === 16 && BV.pointCloudSettings.splatAuto === true &&
+    BV.pointCloudSettings.splatAufloesungMin === 0.5);
+
+  // Ohne Automatik: fester Wert an jedem Tileset, Regler aus.
+  BV.setSplatAuto(false);
+  BV.setSplatDetail(3);
+  pruefe('ohne Automatik steht jedes Splat-Tileset auf dem festen Wert',
+    sse().every((v) => v === 3), sse().join(','));
+  pruefe('ohne Automatik läuft der Regler nicht', !L.aktiv());
+
+  // Mit Automatik: Detail ist die Obergrenze, die Hälfte die Untergrenze.
+  BV.setSplatAuto(true);
+  pruefe('mit Automatik läuft der Regler', L.aktiv());
+  BV.setSplatDetail(24);
+  // Der laufende Wert wird nur in die neuen Grenzen [12, 24] geklemmt, nicht
+  // auf den Startwert zurückgesetzt — das gäbe bei jedem Reglerzug einen Ruck.
+  pruefe('ein laufender Wert wird in die neuen Grenzen geklemmt',
+    sse().every((v) => v >= 12 && v <= 24), sse().join(','));
+
+  // Die Automatik darf nie über die Obergrenze hinaus vergröbern.
+  // Langsame Bilder: 100 ms je Bild = 10 fps, weit unter dem Ziel.
+  let jetzt = 0;
+  const echteUhr = globalThis.performance;
+  Object.defineProperty(globalThis, 'performance', { value: { now: () => jetzt }, configurable: true });
+  const bilderLaufen = (sekunden, dt) => {
+    const n = Math.round(sekunden / dt);
+    for (let i = 0; i < n; i++) { jetzt += dt * 1000; nachBild(); }
+  };
+  bilderLaufen(60, 0.1);
+  pruefe('bei 10 fps vergröbert die Automatik bis zur Obergrenze und nicht weiter',
+    sse().every((v) => v === 24), sse().join(','));
+  pruefe('danach geht sie an die Auflösung, aber nicht unter das Minimum',
+    viewer.resolutionScale >= BV.pointCloudSettings.splatAufloesungMin - 1e-9 &&
+    viewer.resolutionScale < 1, String(viewer.resolutionScale));
+
+  // Mindestauflösung hochsetzen: wirkt sofort, auch gegen die laufende Automatik.
+  BV.setSplatAufloesungMin(0.9);
+  pruefe('höhere Mindestauflösung hebt die aktuelle Auflösung sofort an',
+    viewer.resolutionScale >= 0.9 - 1e-9, String(viewer.resolutionScale));
+  bilderLaufen(60, 0.1);
+  pruefe('und die Automatik unterschreitet sie nicht mehr',
+    viewer.resolutionScale >= 0.9 - 1e-9, String(viewer.resolutionScale));
+
+  // Obergrenze senken: wirkt sofort.
+  BV.setSplatDetail(4);
+  pruefe('niedrigere Obergrenze holt den Bildschirmfehler sofort herunter',
+    sse().every((v) => v <= 4), sse().join(','));
+
+  // Ausschalten gibt alles zurück.
+  BV.setSplatAuto(false);
+  pruefe('Automatik aus gibt die Auflösung zurück', viewer.resolutionScale === 1,
+    String(viewer.resolutionScale));
+  pruefe('Automatik aus setzt den festen Wert', sse().every((v) => v === 4), sse().join(','));
+
+  // Grenzen des Reglers.
+  BV.setSplatDetail(999);
+  pruefe('Detail wird auf 64 px begrenzt', BV.pointCloudSettings.splatDetail === 64);
+  BV.setSplatDetail(0.2);
+  pruefe('Detail fällt nicht unter 1 px', BV.pointCloudSettings.splatDetail >= 1);
+
+  BV.resetPointCloudSettings();
+  pruefe('Zurücksetzen bringt Splat-Vorgaben und Regler zurück',
+    BV.pointCloudSettings.splatDetail === 16 && BV.pointCloudSettings.splatAuto === true &&
+    L.aktiv());
+
+  if (echteUhr) Object.defineProperty(globalThis, 'performance', { value: echteUhr, configurable: true });
+  L.aus();
+  BV.viewer = alterViewer;
+}
+
 // ══ Ergebnis ═════════════════════════════════════════════════════════════
 
 console.log(fehler ? `\n${fehler} Prüfung(en) fehlgeschlagen.` : '\nAlle Prüfungen bestanden.');

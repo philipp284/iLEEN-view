@@ -1,0 +1,177 @@
+{
+  "baseline": {
+    "beschreibung": "Stand vor #8: ADD-Octree mit Zufallsauswahl, 250k je Tile, nur SH0",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_LOD": "add",
+      "SPLAT_BOX_SIGMA": 0,
+      "SPLAT_MORTON": 0,
+      "SPLAT_JSON_KOMPAKT": 0,
+      "SPLAT_SH_GRAD": 0
+    }
+  },
+  "p1_boxen": {
+    "beschreibung": "Phase 1.1: Hüllkasten mit 3σ-Ausdehnung der Splats (PCA-Orientierung gemessen und verworfen)",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_LOD": "add",
+      "SPLAT_MORTON": 0,
+      "SPLAT_JSON_KOMPAKT": 0
+    }
+  },
+  "p1_ge": {
+    "beschreibung": "Phase 1.2 (verworfen): geometricError aus gemessenem Nachbarabstand — Code entfernt, Ergebnis in ergebnisse/",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_LOD": "add",
+      "SPLAT_MORTON": 0,
+      "SPLAT_JSON_KOMPAKT": 0
+    },
+    "verworfen": true
+  },
+  "p1_morton": {
+    "beschreibung": "Phase 1.5: 3σ-Kästen + Morton-Reihenfolge je Tile",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_LOD": "add",
+      "SPLAT_JSON_KOMPAKT": 0
+    }
+  },
+  "p1_sh1": {
+    "beschreibung": "Phase 1.3: wie p1_morton, SH bis Grad 1 für das ganze Tileset",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_SH_GRAD": 1,
+      "SPLAT_LOD": "add",
+      "SPLAT_JSON_KOMPAKT": 0
+    }
+  },
+  "p1_sh3": {
+    "beschreibung": "Phase 1.3: wie p1_morton, SH bis Grad 3 für das ganze Tileset",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_SH_GRAD": 3,
+      "SPLAT_LOD": "add",
+      "SPLAT_JSON_KOMPAKT": 0
+    }
+  },
+  "p1_json": {
+    "beschreibung": "Phase 1.6: wie p1_morton, tileset.json ohne Einrückung",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_TILE_POINTS": 250000,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_JSON_KOMPAKT": 1,
+      "SPLAT_LOD": "add"
+    }
+  },
+  "p2_hlod": {
+    "beschreibung": "Phase 2: zusammengeführte Eltern, REPLACE, 200k je Tile, Faktor 4",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_JSON_KOMPAKT": 1,
+      "SPLAT_LOD": "hlod",
+      "SPLAT_MERGE_FAKTOR": 4,
+      "SPLAT_HLOD_TILE_POINTS": 200000
+    }
+  },
+  "p2_t50": {
+    "beschreibung": "Phase 2: HLOD mit 50k Splats je Tile",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_JSON_KOMPAKT": 1,
+      "SPLAT_LOD": "hlod",
+      "SPLAT_MERGE_FAKTOR": 4,
+      "SPLAT_HLOD_TILE_POINTS": 50000
+    }
+  },
+  "p2_t100": {
+    "beschreibung": "Phase 2: HLOD mit 100k Splats je Tile",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_JSON_KOMPAKT": 1,
+      "SPLAT_LOD": "hlod",
+      "SPLAT_MERGE_FAKTOR": 4,
+      "SPLAT_HLOD_TILE_POINTS": 100000
+    }
+  },
+  "p2_f8": {
+    "beschreibung": "Phase 2: HLOD, Reduktion 8× je Ebene",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_JSON_KOMPAKT": 1,
+      "SPLAT_LOD": "hlod",
+      "SPLAT_MERGE_FAKTOR": 8,
+      "SPLAT_HLOD_TILE_POINTS": 200000
+    }
+  },
+  "p2_licht": {
+    "beschreibung": "Phase 2: HLOD + Auslichten (Deckkraft < 0,02, Schwebeteilchen > 8× Median d16)",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8,
+      "SPLAT_BOX_SIGMA": 3,
+      "SPLAT_MORTON": 1,
+      "SPLAT_JSON_KOMPAKT": 1,
+      "SPLAT_LOD": "hlod",
+      "SPLAT_MERGE_FAKTOR": 4,
+      "SPLAT_MIN_OPACITY": 0.02,
+      "SPLAT_FLOATER": 8,
+      "SPLAT_HLOD_TILE_POINTS": 200000
+    }
+  },
+  "standard": {
+    "beschreibung": "Voreinstellung seit #8: HLOD, 100k je Tile, Faktor 4, 3σ-Kästen, Morton, kompakte JSON, SH0 — ohne SPLAT_*-Angaben außer den alten Filtern",
+    "env": {
+      "SPLAT_MAX_POINTS": 0,
+      "SPLAT_MAX_SCALE_RATIO": 0.05,
+      "SPLAT_MAX_SCALE_MEDIANS": 8
+    }
+  }
+}

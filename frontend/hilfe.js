@@ -62,7 +62,7 @@ const ILeenHilfe = (() => {
             <strong>Modelle</strong>, <strong>Ansicht</strong>, <strong>Bauteile</strong>,
             <strong>Werkzeuge</strong>, <strong>Notizen</strong>, <strong>Einstellungen</strong>
             und <strong>Info</strong>. Ein zweiter Klick auf dasselbe Symbol klappt das Panel wieder zu,
-            <kbd>M</kbd> fährt die ganze Leiste ein.</p>
+            <kbd>B</kbd> fährt die ganze Leiste ein.</p>
             <p>Kein Bereich ist fest verdrahtet: Werkzeuge melden sich selbst an. Deshalb
             erscheinen je nach geladenen Modulen zusätzliche Symbole, etwa <strong>📈</strong> für
             die Sensoren — ein solcher Knopf schaltet ein Panel über der Szene, statt die Leiste
@@ -290,9 +290,9 @@ const ILeenHilfe = (() => {
         },
         {
           titel: 'Ausblenden und Isolieren',
-          wo: 'Tasten H · ⇧H · I',
+          wo: 'Tasten H · ⇧H · ⇧I',
           text: `<p><kbd>H</kbd> blendet das angeklickte Bauteil aus, <kbd>⇧H</kbd> holt alle
-            ausgeblendeten zurück. <kbd>I</kbd> isoliert stattdessen: alles außer der Auswahl
+            ausgeblendeten zurück. <kbd>⇧I</kbd> isoliert stattdessen: alles außer der Auswahl
             verschwindet. Die Google-Freistellung räumt zusätzlich die Weltkulisse um die
             eigenen Modelle frei.</p>`
         },
@@ -336,8 +336,13 @@ const ILeenHilfe = (() => {
           titel: 'Fang',
           wo: 'Links › Werkzeuge › Messen',
           text: `<p>Der Fang zieht den Messpunkt auf Ecken, Kanten und Flächen des getroffenen
-            Bauteils. Ohne ihn liegt der Punkt genau dort, wo der Strahl auftrifft — was bei
-            Punktwolken oft die bessere Wahl ist.</p>`
+            Bauteils. Er greift im Umkreis von rund einem Zentimeter am Schirm: eine Kante oder
+            Ecke in dieser Nähe zieht den Punkt an sich, eine Ecke bevorzugt.</p>
+            <p>Gefangen wird erst, wenn der Zeiger kurz ruht, und beim Klick — solange er sich
+            bewegt, bleibt er der gewohnte Systemzeiger. Was der Klick fangen würde, zeigt das
+            Ablesefeld unten links (Fangart und Bauteil); eine Kante erscheint als blaue Strecke,
+            eine Ecke als Ring. Ohne Fang liegt der Punkt genau dort, wo der Strahl auftrifft —
+            was bei Punktwolken oft die bessere Wahl ist.</p>`
         },
         {
           titel: 'Topografisches Aufmaß',
@@ -847,9 +852,18 @@ const ILeenHilfe = (() => {
           titel: 'Übersicht',
           wo: 'global',
           text: `<table class="ileen-hilfe__tasten">
-            <tr><td>Seitenleiste ein- und ausfahren</td><td><kbd>M</kbd></td></tr>
+            <tr><td>Explosion — Menü auf, ein/aus</td><td><kbd>X</kbd></td></tr>
+            <tr><td>Punktwolken — Menü auf, ein-/ausblenden</td><td><kbd>P</kbd></td></tr>
+            <tr><td>IFC-Modelle — Menü auf, ein-/ausblenden</td><td><kbd>I</kbd></td></tr>
+            <tr><td>Gaussian Splats — Menü auf, ein-/ausblenden</td><td><kbd>G</kbd></td></tr>
+            <tr><td>Messen (Aufmaß) — Menü auf, ein/aus</td><td><kbd>M</kbd></td></tr>
+            <tr><td>Raumansicht — Menü auf, ein/aus</td><td><kbd>R</kbd></td></tr>
+            <tr><td>Vorlagen — Liste, zuletzt geladene oben</td><td><kbd>V</kbd></td></tr>
+            <tr><td>Vorlage 1 … 9 laden</td><td><kbd>⇧1</kbd> … <kbd>⇧9</kbd></td></tr>
+            <tr><td>Alle Kürzel auf einen Blick</td><td><kbd>?</kbd></td></tr>
+            <tr><td>Seitenleiste ein- und ausfahren</td><td><kbd>B</kbd></td></tr>
             <tr><td>Bauteil ausblenden · alle zurückholen</td><td><kbd>H</kbd> · <kbd>⇧H</kbd></td></tr>
-            <tr><td>Auswahl isolieren</td><td><kbd>I</kbd></td></tr>
+            <tr><td>Auswahl isolieren</td><td><kbd>⇧I</kbd></td></tr>
             <tr><td>Notizmodus</td><td><kbd>C</kbd></td></tr>
             <tr><td>Fliegen · Gehen</td><td><kbd>F</kbd> · <kbd>⇧F</kbd></td></tr>
             <tr><td>Bewegen im Flug- und Gehmodus</td><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td></tr>

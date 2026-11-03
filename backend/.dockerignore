@@ -1,0 +1,45 @@
+# ============================================================
+# Was NICHT in den Build-Kontext gehört
+# ============================================================
+#
+# Ohne diese Datei sendet `docker compose build api` das gesamte `backend/`
+# an den Daemon — gemessen am 2026-09-21: **32 GB**, davon 31 GB allein
+# `data/uploads` mit den hochgeladenen IFC-Dateien. Der Bauvorgang lädt sie
+# vollständig, bevor die erste Zeile des Dockerfile läuft, und wirft sie
+# danach weg: keine einzige `COPY`-Zeile fasst sie an.
+#
+# Das Dockerfile kopiert genau: requirements.txt, api/, tiling/, scan2bim/,
+# semantic/, storage/, ileen/, panorama_tour.py und data/*.csv.
+# Alles Übrige darf draußen bleiben.
+
+# ── Laufzeitdaten ───────────────────────────────────────────
+# Hochgeladene Modelle, gekachelte Ergebnisse, Vektorindex, Themenablage.
+# Sie liegen im Betrieb auf Volumes (siehe docker-compose.yml) und haben im
+# Image nichts verloren.
+data/*
+# ...ausgenommen das Sensorregister: wenige Kilobyte, und `ileen/zeitreihe.py`
+# liest sie beim ersten Zugriff aus dem Image (Dockerfile: COPY data/*.csv).
+!data/*.csv
+
+# ── Nichts davon wird kopiert ───────────────────────────────
+tests/
+notebooks/
+scripts/
+docker/
+docker-compose.yml
+CLAUDE.md
+LICENSE
+
+# ── Bytecode und Zwischenstände ─────────────────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.db
+*.db-wal
+*.db-shm
+
+# ── Zugangsdaten und Systemkram ─────────────────────────────
+.env
+.venv/
+.DS_Store
+**/.DS_Store

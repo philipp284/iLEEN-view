@@ -1,0 +1,39 @@
+/**
+ * iLEEN — Bauteile sortiert
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ *
+ * Untergruppe „Bauteile sortiert" im Bereich Ansicht (sortiert-panel.js).
+ * Baut auf design-system.css auf (section, row, select, btn, --ds-*).
+ */
+
+.so .select.so-kurz { max-width: 150px; }
+
+.so-schnell { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.so-chip {
+  font: inherit; font-size: 11px; font-weight: 600; color: #a9aea9; background: none;
+  border: 1px solid #2a2f2c; border-radius: var(--ds-radius-sm, 4px); padding: 4px 8px; cursor: pointer;
+}
+.so-chip:hover:not(:disabled) { color: #e8e8e8; border-color: #3a403c; }
+.so-chip:disabled { opacity: .35; cursor: default; }
+
+.so-typen {
+  max-height: 168px; overflow-y: auto; border: 1px solid #1f2321;
+  border-radius: var(--ds-radius-sm, 4px); padding: 2px 0;
+}
+.so-typ {
+  display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 12px; color: #c9cec9; cursor: pointer;
+}
+.so-typ:hover { background: rgba(255,255,255,.04); }
+.so-typ span { flex: 1; }
+.so-typ b { font-weight: 500; color: #8b918d; font-variant-numeric: tabular-nums; }
+.so-leer { padding: 8px; font-size: 11px; color: #8b918d; }
+
+.so-status { margin-top: 8px; font-size: 11px; line-height: 1.45; color: #8b918d; min-height: 1em; }
+.so-status--busy { color: var(--ds-info, #4ea3ff); }
+.so-status--error { color: var(--ds-danger, #e05c5c); }
+
+.so-zahlen { font-size: 12px; color: #c9cec9; margin-bottom: 8px; }
+.so-zahlen b { color: #f0f0f0; font-weight: 600; }
+.so-warn { margin-top: 4px; font-size: 11px; color: #d9a441; }
+.so-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

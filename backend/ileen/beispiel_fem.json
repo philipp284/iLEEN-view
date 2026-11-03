@@ -1,0 +1,447 @@
+{
+  "schema": "ileen.plan.fem/1.0",
+  "erzeugt": "2026-08-14T18:31:21.485Z",
+  "einheiten": {
+    "laenge": "m",
+    "kraft": "kN",
+    "flaechenlast": "kN/m2",
+    "spannung": "kN/m2"
+  },
+  "plan": {
+    "job_id": "testjob",
+    "titel": "Grundriss EG — Testmodell",
+    "modell": null,
+    "mode": "grundriss",
+    "ansicht": "aufsicht",
+    "massstab": 100,
+    "ebene_ursprung": [
+      0,
+      0,
+      3.2
+    ],
+    "bounds": [
+      -0.25,
+      -0.25,
+      6.25,
+      4.25
+    ]
+  },
+  "system": [
+    {
+      "id": "P1",
+      "umriss": [
+        [
+          0,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "flaeche_m2": 24,
+      "dicke_m": 0.2,
+      "material": {
+        "name": "C25/30",
+        "E_kNm2": 31000000,
+        "nu": 0.2,
+        "wichte_kNm3": 25
+      },
+      "bezug": {
+        "raum": "R1",
+        "name": "Büro Nord"
+      }
+    }
+  ],
+  "lastfaelle": [
+    {
+      "id": "g2",
+      "name": "Ausbaulast",
+      "art": "G",
+      "farbe": "#6f9ac8",
+      "gamma": 1.35,
+      "gammaInf": 1,
+      "psi0": 1,
+      "psi1": 1,
+      "psi2": 1
+    },
+    {
+      "id": "q1",
+      "name": "Nutzlast",
+      "art": "Q",
+      "kategorie": "B1",
+      "farbe": "#c0392b",
+      "gamma": 1.5,
+      "gammaInf": 0,
+      "psi0": 0.7,
+      "psi1": 0.5,
+      "psi2": 0.3
+    }
+  ],
+  "lasten": [
+    {
+      "id": "L1",
+      "typ": "flaeche",
+      "lastfall": "q1",
+      "wert": 2,
+      "einheit": "kN/m2",
+      "richtung": [
+        0,
+        0,
+        -1
+      ],
+      "bezug": {
+        "raum": "R1",
+        "name": "Büro Nord"
+      },
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "kategorie": "B1"
+    },
+    {
+      "id": "L2",
+      "typ": "linie",
+      "lastfall": "g2",
+      "wert": 4.5,
+      "einheit": "kN/m",
+      "richtung": [
+        0,
+        0,
+        -1
+      ],
+      "bezug": null,
+      "polylinie": [
+        [
+          0.5,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          5.5,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "L3",
+      "typ": "punkt",
+      "lastfall": "q1",
+      "wert": 35,
+      "einheit": "kN",
+      "richtung": [
+        0,
+        0,
+        -1
+      ],
+      "bezug": null,
+      "p": [
+        4.5,
+        3
+      ]
+    }
+  ],
+  "auflager": [
+    {
+      "id": "A1",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          0,
+          0
+        ],
+        [
+          6,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "A2",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "A3",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          6,
+          4
+        ],
+        [
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "A4",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "positionen": [
+    {
+      "id": "S1",
+      "kuerzel": "S",
+      "nummer": 1,
+      "querschnitt": "b/h = 30/30 cm",
+      "material": "C30/37",
+      "beschreibung": "Stütze durchlaufend bis Fundament, Übergreifung im UG <Alt> & \"geprüft\"",
+      "anker": [
+        3,
+        2
+      ],
+      "bauteile": [
+        "W1",
+        "S1"
+      ]
+    }
+  ],
+  "bauteile": [
+    {
+      "global_id": "W1",
+      "ifc_type": "IfcWall",
+      "name": "Außenwand Süd",
+      "material": "Beton",
+      "signatur": "beton",
+      "marker": "#7ee081",
+      "marker_bedeutung": "tragend",
+      "rings": [
+        [
+          [
+            -0.25,
+            -0.25
+          ],
+          [
+            6.25,
+            -0.25
+          ],
+          [
+            6.25,
+            0
+          ],
+          [
+            -0.25,
+            0
+          ],
+          [
+            -0.25,
+            -0.25
+          ]
+        ]
+      ]
+    },
+    {
+      "global_id": "W2",
+      "ifc_type": "IfcWall",
+      "name": "Außenwand Nord",
+      "material": "Beton",
+      "signatur": "beton",
+      "marker": "#7ee081",
+      "marker_bedeutung": "tragend",
+      "rings": [
+        [
+          [
+            -0.25,
+            4
+          ],
+          [
+            6.25,
+            4
+          ],
+          [
+            6.25,
+            4.25
+          ],
+          [
+            -0.25,
+            4.25
+          ],
+          [
+            -0.25,
+            4
+          ]
+        ]
+      ]
+    },
+    {
+      "global_id": "W3",
+      "ifc_type": "IfcWall",
+      "name": "Außenwand West",
+      "material": "Beton",
+      "signatur": "beton",
+      "marker": "#7ee081",
+      "marker_bedeutung": "tragend",
+      "rings": [
+        [
+          [
+            -0.25,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            -0.25,
+            4
+          ],
+          [
+            -0.25,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "global_id": "W4",
+      "ifc_type": "IfcWall",
+      "name": "Außenwand Ost",
+      "material": "Beton",
+      "signatur": "beton",
+      "marker": "#7ee081",
+      "marker_bedeutung": "tragend",
+      "rings": [
+        [
+          [
+            6,
+            0
+          ],
+          [
+            6.25,
+            0
+          ],
+          [
+            6.25,
+            4
+          ],
+          [
+            6,
+            4
+          ],
+          [
+            6,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "global_id": "S1",
+      "ifc_type": "IfcColumn",
+      "name": "Stütze A1",
+      "material": "Beton",
+      "signatur": "beton",
+      "marker": null,
+      "marker_bedeutung": null,
+      "rings": [
+        [
+          [
+            2.85,
+            1.85
+          ],
+          [
+            3.15,
+            1.85
+          ],
+          [
+            3.15,
+            2.15
+          ],
+          [
+            2.85,
+            2.15
+          ],
+          [
+            2.85,
+            1.85
+          ]
+        ]
+      ]
+    }
+  ],
+  "raeume": [
+    {
+      "global_id": "R1",
+      "name": "0.01",
+      "nutzung": "Büro Nord",
+      "flaeche_m2": 24,
+      "hoehe_m": 2.75,
+      "kategorie": "B1",
+      "qk_kNm2": 2,
+      "bestaetigt": false
+    }
+  ],
+  "netz": {
+    "elementgroesse_m": 0.25,
+    "lagen_ueber_dicke": 2,
+    "elementtyp": "HEX8"
+  },
+  "hinweise": []
+}

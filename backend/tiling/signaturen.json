@@ -1,0 +1,182 @@
+{
+  "_hinweis": [
+    "Signaturkatalog für Bauzeichnungen, angelehnt an DIN 1356-1 (Bauzeichnungen)",
+    "und DIN ISO 128 (Linienarten). Alle Maße sind Papiermaße in Millimetern und",
+    "gelten für den unter 'massstab' genannten Bezugsmaßstab — eine Schraffur ist",
+    "im Plan definiert, nicht am Bauwerk. Wer in 1:50 zeichnet, verdoppelt die",
+    "Abstände am Bauwerk, nicht auf dem Blatt.",
+    "",
+    "Die Datei lässt sich über die Umgebungsvariable SIGNATUR_KATALOG durch eine",
+    "eigene ersetzen. Für Bauleitpläne wäre hier stattdessen ein Auszug aus der",
+    "Planzeichenverordnung zu hinterlegen; der Code kennt nur die Struktur, nicht",
+    "die Vorschrift.",
+    "",
+    "'lagen' beschreibt ein Muster als Stapel: jede Lage wird über die vorige",
+    "gezeichnet. Damit ist die Kreuzschraffur des Stahlbetons einfach zweimal",
+    "'linien' und braucht keinen eigenen Mustertyp."
+  ],
+
+  "massstab": 100,
+  "standard": "ohne",
+
+  "linien": {
+    "_hinweis": "Linienbreiten nach DIN 1356-1, Stufung nach DIN ISO 128.",
+    "schnittkante": { "breite_mm": 0.5, "farbe": "#000000" },
+    "ansichtskante": { "breite_mm": 0.25, "farbe": "#000000" },
+    "schraffur": { "breite_mm": 0.13, "farbe": "#000000" }
+  },
+
+  "muster": {
+    "ohne": {
+      "bezeichnung": "ohne Schraffur",
+      "lagen": []
+    },
+    "stahlbeton": {
+      "bezeichnung": "Stahlbeton",
+      "lagen": [
+        { "art": "linien", "winkel": 45, "abstand_mm": 3.0, "breite_mm": 0.13 },
+        { "art": "linien", "winkel": -45, "abstand_mm": 3.0, "breite_mm": 0.13 }
+      ]
+    },
+    "beton": {
+      "bezeichnung": "Beton, unbewehrt",
+      "lagen": [
+        { "art": "linien", "winkel": 45, "abstand_mm": 4.0, "breite_mm": 0.13 },
+        { "art": "punkte", "abstand_mm": 2.0, "radius_mm": 0.2 }
+      ]
+    },
+    "estrich": {
+      "bezeichnung": "Estrich / Mörtel",
+      "lagen": [{ "art": "punkte", "abstand_mm": 1.2, "radius_mm": 0.15 }]
+    },
+    "mauerwerk": {
+      "bezeichnung": "Mauerwerk",
+      "lagen": [{ "art": "linien", "winkel": 45, "abstand_mm": 2.0, "breite_mm": 0.13 }]
+    },
+    "naturstein": {
+      "bezeichnung": "Naturstein",
+      "lagen": [
+        { "art": "linien", "winkel": 45, "abstand_mm": 2.5, "breite_mm": 0.13 },
+        { "art": "linien", "winkel": 45, "abstand_mm": 2.5, "breite_mm": 0.13, "versatz_mm": 0.6 }
+      ]
+    },
+    "daemmung": {
+      "bezeichnung": "Dämmstoff",
+      "lagen": [{ "art": "welle", "abstand_mm": 2.0, "amplitude_mm": 0.6, "breite_mm": 0.13 }]
+    },
+    "putz": {
+      "bezeichnung": "Putz / Gipskarton",
+      "lagen": [{ "art": "linien", "winkel": 45, "abstand_mm": 6.0, "breite_mm": 0.13 }]
+    },
+    "holz_quer": {
+      "bezeichnung": "Holz, Querschnitt",
+      "lagen": [{ "art": "maserung", "abstand_mm": 1.0, "breite_mm": 0.13 }]
+    },
+    "holz_laengs": {
+      "bezeichnung": "Holz, Längsschnitt",
+      "lagen": [{ "art": "linien", "winkel": 0, "abstand_mm": 1.5, "breite_mm": 0.13 }]
+    },
+    "metall": {
+      "bezeichnung": "Metall / Stahl",
+      "lagen": [{ "art": "voll", "farbe": "#000000" }]
+    },
+    "belag": {
+      "bezeichnung": "Bodenbelag",
+      "lagen": [{ "art": "linien", "winkel": 90, "abstand_mm": 2.0, "breite_mm": 0.13 }]
+    },
+    "abdichtung": {
+      "bezeichnung": "Abdichtung / Bitumen",
+      "lagen": [{ "art": "voll", "farbe": "#000000" }]
+    },
+    "glas": {
+      "bezeichnung": "Glas",
+      "lagen": [],
+      "flaeche": "#e8f4f8"
+    },
+    "erdreich": {
+      "bezeichnung": "Erdreich, gewachsen",
+      "lagen": [{ "art": "linien", "winkel": -45, "abstand_mm": 3.0, "breite_mm": 0.13 }]
+    },
+    "schuettung": {
+      "bezeichnung": "Schüttung / Kies",
+      "lagen": [{ "art": "punkte", "abstand_mm": 1.5, "radius_mm": 0.25 }]
+    }
+  },
+
+  "nach_kategorie": {
+    "_hinweis": "Texturkategorie aus tiling/textures.py → Muster. Die Kategorie kommt aus materials.suggest_category(), also aus dem Materialnamen des Bauteils.",
+
+    "concrete": "stahlbeton",
+    "concrete_smooth": "stahlbeton",
+    "concrete_rough": "beton",
+    "screed": "estrich",
+
+    "brick": "mauerwerk",
+    "brick_clinker": "mauerwerk",
+    "sandstone": "naturstein",
+    "marble": "naturstein",
+    "granite": "naturstein",
+    "terrazzo": "estrich",
+
+    "insulation": "daemmung",
+
+    "plaster": "putz",
+    "plaster_rough": "putz",
+    "gypsum": "putz",
+    "ceiling_acoustic": "putz",
+
+    "wood": "holz_quer",
+    "wood_oak": "holz_quer",
+    "wood_planks": "holz_laengs",
+    "plywood": "holz_laengs",
+    "wood_parquet": "belag",
+
+    "metal": "metall",
+    "steel_brushed": "metall",
+    "aluminium": "metall",
+    "copper": "metall",
+    "metal_corrugated": "metall",
+    "metal_rusty": "metall",
+
+    "bitumen": "abdichtung",
+    "roof_tiles": "mauerwerk",
+    "roof_slate": "naturstein",
+    "facade_panel": "belag",
+
+    "linoleum": "belag",
+    "carpet": "belag",
+    "tiles_ceramic": "belag",
+
+    "asphalt": "abdichtung",
+    "paving": "naturstein",
+    "gravel": "schuettung",
+    "soil": "erdreich",
+    "grass": "erdreich"
+  },
+
+  "nach_typ": {
+    "_hinweis": "Rückfallebene, wenn das Bauteil kein auswertbares Material trägt. Nach IFC-Klasse, nicht nach Material — deshalb bewusst grob: eine Wand ohne Materialangabe wird als Mauerwerk gezeichnet, weil das im Zweifel weniger falsch ist als Stahlbeton.",
+
+    "IfcWall": "mauerwerk",
+    "IfcWallStandardCase": "mauerwerk",
+    "IfcColumn": "stahlbeton",
+    "IfcBeam": "stahlbeton",
+    "IfcSlab": "stahlbeton",
+    "IfcFooting": "stahlbeton",
+    "IfcPile": "stahlbeton",
+    "IfcStair": "stahlbeton",
+    "IfcStairFlight": "stahlbeton",
+    "IfcRamp": "stahlbeton",
+    "IfcRampFlight": "stahlbeton",
+    "IfcRoof": "holz_laengs",
+    "IfcMember": "metall",
+    "IfcPlate": "metall",
+    "IfcRailing": "metall",
+    "IfcWindow": "glas",
+    "IfcCurtainWall": "glas",
+    "IfcDoor": "holz_laengs",
+    "IfcCovering": "putz",
+    "IfcFurnishingElement": "ohne",
+    "IfcBuildingElementProxy": "ohne"
+  }
+}

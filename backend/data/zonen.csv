@@ -1,0 +1,8 @@
+"zone_id","bezeichnung","anker_guid","anker_typ"
+"Z-SITE","Umgebung, Gesamtgebäude, Rohbau","20FpTZCqJy2vhVJYtjuIce","IfcSite"
+"Z-UG","Untergeschoss","0w1cPvZL1eFfo96rM6Bmzv","IfcSlab"
+"Z-EG","Erdgeschoss","3SUH1CDZmsK5eBrASO8UdL","IfcSlab"
+"Z-OG1","1. Obergeschoss","3H8801XPtoG8UOlEqgfs46","IfcSlab"
+"Z-OG2","2. Obergeschoss","0vu6Lt4in9eO17$wEx_xc4","IfcRoof"
+"Z-OG3","3. Obergeschoss","10p3$jA$NcoJGUmmxUHSMt","IfcSlab"
+"Z-DACH","Dachfläche (PV)","0xGtk$Xo5FKhcFT3k0GTWG","IfcRoof"
