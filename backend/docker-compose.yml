@@ -5,9 +5,15 @@ name: ileen
 services:
 
   # ── MinIO: S3-kompatibler File Storage ──────────────────────────────────────
+  # minio/minio und minio/mc gibt es seit September 2026 weder auf Docker Hub
+  # noch anonym auf quay.io (MinIO veröffentlicht keine Images mehr). Chainguard
+  # baut denselben Server aus den Quellen; die -dev-Fassung bringt sh, mc und
+  # wget mit, die der Healthcheck und die Bucket-Anlage brauchen. Als root, weil
+  # bestehende Volumes noch dem root des alten Images gehören.
   minio:
-    image: minio/minio:latest
+    image: chainguard/minio:latest-dev
     container_name: cesium-minio
+    user: "0:0"
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -18,14 +24,14 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # ── MinIO Setup: Buckets anlegen ─────────────────────────────────────────────
   minio-setup:
-    image: minio/mc:latest
+    image: chainguard/minio-client:latest-dev
     container_name: cesium-minio-setup
     depends_on:
       minio:
