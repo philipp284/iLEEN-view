@@ -32,6 +32,15 @@
 .pano-spot__name { flex: 1 1 auto; }
 .pano-spot__n { font-size: 11px; opacity: 0.6; }
 
+.pano-backend { display: flex; flex-direction: column; gap: 4px; }
+
+/* Der ↻-Knopf sitzt rechts im Kopf der Backend-Gruppe. Eng auf diese Gruppe
+   begrenzt, damit die übrigen panel-group-Köpfe unberührt bleiben. */
+#panoBackendGruppe > .panel-group__header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+#panoBackendGruppe > .panel-group__header .btn { min-width: 28px; }
+
 .pano-steuer {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   margin-top: 12px;

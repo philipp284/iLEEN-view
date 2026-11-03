@@ -48,24 +48,42 @@ function pruefe(name, bedingung, hinweis) {
 const ERWARTET = [
   'BimViewer', 'BimViewerUI', 'ILeenI18n', 'WalkMode', 'FlugTrackpad', 'Greifweite',
   'AufmassFang', 'AufmassPanel', 'SplatPick', 'LayerManager', 'Tags',
-  'FpsAnzeige',
+  'FpsAnzeige', 'ILeenGaecoBruecke',
+  // Schnitt, Sensoren, Präsentation, Erklärtexte und Handbuch (Oktober 2026)
+  'SchnittRechnen', 'SchnittKarte', 'SensorStore', 'SensorFarben', 'SensorPanel',
+  'PraesentationText', 'Praesentation', 'PraesentationPanel', 'ILeenHinweise', 'ILeenHilfe',
+  // Raumansicht (seit 2026-11-01 links, also Viewer), Bewegung weich, Sortiert, Zwilling
+  'RoomConcept', 'Bewegungsweich', 'SortiertPanel', 'Zwilling',
 ];
 
 // Dieselbe Frage für die Module, die sich unter `BimViewer` anmelden statt
-// unter `window`.
-const ERWARTET_BV = ['Aufmass', 'SectionBox', 'Explosion', 'Bildebenen', 'Untergrund', 'Licht'];
+// unter `window`. `SectionBox` ist seit dem Schnitt-Umbau nur noch die alte
+// Schnittstelle, die `schnitt.js` weiterführt — andere Module sprechen sie an.
+const ERWARTET_BV = ['Aufmass', 'Schnitt', 'SectionBox', 'Explosion', 'Bildebenen',
+                     'Untergrund', 'Licht', 'Zustand', 'lageInsBackend', 'Startbild', 'Sortiert'];
 
 // Und die Gegenprobe: was hier steht, darf es NICHT geben. Ohne sie fiele
 // nicht auf, wenn ein Analysewerkzeug über eine vergessene Einbindung
 // zurückkommt — und dann läge es im öffentlichen Repo.
+//
+// Geprüft wird über `typeof <Name>` im Seitenkontext und nicht über
+// `window[name]`: die Anmelde-Dateien legen ihren Namen als `const` im
+// Skriptbereich an (`const SolarPanel = …`), und der steht nicht auf `window`.
+// Über `window` geprüft, war diese Liste für genau diese Namen immer grün.
 const VERBOTEN = [
   'SolarAnalysis', 'IFClash', 'FlugTracker', 'Bauplaner', 'KonzeptPanel',
-  'Konzept4D', 'Sim4DHud', 'IFC4D', 'Stage4D', 'AufmassRDF', 'AufmassMengen',
+  'Konzept4D', 'Sim4D', 'Sim4DHud', 'IFC4D', 'IFC4DPanel', 'Stage4D',
+  'AufmassRDF', 'AufmassMengen', 'BauplanerPanel', 'IssueManager',
   // Die Anmelde-Dateien der Auswertungen. Sie sind der eigentliche Zuschnitt
   // seit der Trennung: das Panelgerüst links wie rechts ist in beiden
   // Fassungen dieselbe Datei, verschieden ist nur, wer sich anmeldet.
-  'SolarPanel', 'BimLpPanel', 'IFClashPanel', 'RoomConceptPanel',
+  'SolarPanel', 'BimLpPanel', 'IFClashPanel',
 ];
+
+// Dasselbe für die Auswertungen, die sich an `BimViewer` hängen.
+const VERBOTEN_BV = ['Tragwerk', 'TragwerkEingriffe', 'Volumen', 'FeBrowser', 'GegTool',
+                     'StaLiteTool', 'Bericht', 'EinsturzPanel', 'Plan2D', 'PlanPanel',
+                     'PlanBauteil'];
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
@@ -146,10 +164,17 @@ try {
   pruefe('jedes Werkzeug hängt an BimViewer', vorhandenBV.length === 0,
     'fehlt: ' + vorhandenBV.join(', '));
 
-  const uebrig = await seite.evaluate((namen) =>
-    namen.filter((n) => typeof window[n] !== 'undefined'), VERBOTEN);
+  // Als Zeichenkette ausgewertet, damit `typeof` auch die `const`-Namen des
+  // Skriptbereichs sieht (oben bei VERBOTEN).
+  const uebrig = await seite.evaluate('[' + VERBOTEN.map((n) =>
+    `typeof ${n} !== 'undefined' ? '${n}' : null`).join(',') + '].filter(Boolean)');
   pruefe('kein Analysewerkzeug ist übrig geblieben', uebrig.length === 0,
     'gefunden: ' + uebrig.join(', '));
+
+  const uebrigBV = await seite.evaluate((namen) =>
+    namen.filter((n) => typeof window.BimViewer[n] !== 'undefined'), VERBOTEN_BV);
+  pruefe('keine Auswertung hängt an BimViewer', uebrigBV.length === 0,
+    'gefunden: ' + uebrigBV.join(', '));
 
   // ── 3 · Die Szene zeichnet ──────────────────────────────────────────────
 
@@ -223,7 +248,7 @@ try {
     'gefunden: ' + trennung.bruecken.join(', '));
 
   // Links die Gegenprobe: die Gruppen der Auswertungen dürfen nicht auftauchen.
-  const VERBOTENE_GRUPPEN = ['group-rooms', 'group-clash'];
+  const VERBOTENE_GRUPPEN = ['group-clash'];
   const fremdeGruppen = VERBOTENE_GRUPPEN.filter((g) => trennung.gruppen.includes(g));
   pruefe('links steht keine Auswertungs-Gruppe', fremdeGruppen.length === 0,
     'gefunden: ' + fremdeGruppen.join(', '));
@@ -239,6 +264,65 @@ try {
   pruefe('der 360°-Rundgang hängt im Asset-Browser',
     trennung.gruppen.includes('group-panotour') && !trennung.bereiche.includes('panotour'),
     'Gruppen: ' + trennung.gruppen.join(', ') + ' — Bereiche: ' + trennung.bereiche.join(', '));
+
+  // ── 4c · Was im Oktober 2026 aus der Vollfassung dazukam ───────────────
+  //
+  // Schnitt, Sensoren, Präsentation, Handbuch. Jedes davon fragt nach
+  // Werkzeugen, die es hier nicht gibt (Zeichenmodus, Bauplaner, die Reiter
+  // rechts) — die Prüfung ist, dass es das ohne Fehler und ohne tote Knöpfe tut.
+
+  const neu = await seite.evaluate(() => {
+    const fehlerVorher = console.error;
+    const zustandFehler = [];
+    console.error = (...a) => zustandFehler.push(a.map(String).join(' '));
+    let zustand = null;
+    try { zustand = window.BimViewer.Zustand.lesen(); } catch (e) { zustandFehler.push(String(e)); }
+    console.error = fehlerVorher;
+
+    window.BimViewerUI.activateSection('tools');
+    window.BimViewerUI.showToolsTab('clipping');
+    const schnitte = document.getElementById('toolsPane-clipping');
+
+    const sensorKnopf = document.querySelector('#activityBar .activity-btn[data-section="sensoren"]');
+
+    window.ILeenHilfe.oeffnen();
+    const hilfeNav = [...document.querySelectorAll('#ileenHilfe .ileen-hilfe__navknopf')]
+      .map((b) => b.dataset.ziel);
+    window.ILeenHilfe.schliessen();
+
+    return {
+      zustandFehler, bereiche: zustand ? Object.keys(zustand) : [],
+      schnittStart: !!(schnitte && schnitte.querySelector('#snStart')),
+      schnittZeichnen: !!(schnitte && schnitte.querySelector('#snAnteil, .snp-plansatz')),
+      sensorKnopf: !!sensorKnopf,
+      sensorAktion: !!(sensorKnopf && sensorKnopf.classList.contains('activity-btn--aktion')),
+      praesentation: !!document.getElementById('group-praesentation'),
+      hilfeSichtbar: window.ILeenHilfe.sichtbar, hilfeNav,
+    };
+  });
+
+  pruefe('die Zustands-Registry liest die Szene ohne Fehler', neu.zustandFehler.length === 0,
+    neu.zustandFehler.slice(0, 3).join('\n      '));
+  pruefe('und kennt Modelle, Schnitt und Notizen',
+    ['modelle', 'schnitt', 'notizen'].every((b) => neu.bereiche.includes(b)),
+    'gelesen: ' + neu.bereiche.join(', '));
+  pruefe('der Reiter „Schnitte" trägt das Schnittwerkzeug', neu.schnittStart);
+  pruefe('ohne Zeichenmodus steht dort kein „Als Detail zeichnen"', !neu.schnittZeichnen,
+    'Regler oder Plansatz-Knopf gefunden — sie täten hier nichts');
+  pruefe('der Sensorknopf steht in der Leiste und schaltet, statt ein Panel zu öffnen',
+    neu.sensorKnopf && neu.sensorAktion);
+  pruefe('die Präsentation hängt im Bereich „Ansicht"', neu.praesentation);
+
+  const AUSWERTUNGS_KAPITEL = ['plan', 'tragwerk', 'energie', 'konzept', 'bericht'];
+  const fremdeKapitel = AUSWERTUNGS_KAPITEL.filter((k) => neu.hilfeSichtbar.includes(k));
+  pruefe('das Handbuch beschreibt keine Auswertung', fremdeKapitel.length === 0,
+    'Kapitel: ' + fremdeKapitel.join(', '));
+  pruefe('aber alles, was hier links steht',
+    ['start', 'ansicht', 'schnitte', 'sensoren', 'notizen'].every((k) => neu.hilfeSichtbar.includes(k)),
+    'sichtbar: ' + neu.hilfeSichtbar.join(', '));
+  pruefe('und seine Navigation folgt derselben Auswahl',
+    JSON.stringify(neu.hilfeNav) === JSON.stringify(neu.hilfeSichtbar),
+    'Navigation: ' + neu.hilfeNav.join(', '));
 
   // ── 5 · Keine unaufgelösten Übersetzungsschlüssel ───────────────────────
   //

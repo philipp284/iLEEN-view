@@ -323,7 +323,10 @@
 
     B.loadedAssets.forEach(function (asset) {
       var ts = asset.tileset;
-      if (ts && !ts._isGaussianSplat && !asset.isPointCloud) ziele.push(ts);
+      // Ein Mesh aus Fotos (World Labs splats2Mesh) trägt gemessene Farben in der Textur:
+      // das Backend schreibt es als `extras.ileen_quelle` ins Tileset.
+      var foto = !!(ts && ts.extras && ts.extras.ileen_quelle === 'photogrammetrie');
+      if (ts && !ts._isGaussianSplat && !asset.isPointCloud && !foto) ziele.push(ts);
       else if (asset.isGLB && asset.model) ziele.push(asset.model);
     });
     return ziele;
@@ -334,7 +337,8 @@
     var ziele = traegerModelle();
     var B = window.BimViewer;
     if (!B) return ziele;
-    if (B.osmBuildings && B.osmBuildings.tileset) ziele.push(B.osmBuildings.tileset);
+    var LM = window.LayerManager;
+    (LM && LM.tilesetLayers || []).forEach(function (e) { if (e.tileset) ziele.push(e.tileset); });
     if (B.googleTiles && B.googleTiles.tileset) ziele.push(B.googleTiles.tileset);
     return ziele;
   }

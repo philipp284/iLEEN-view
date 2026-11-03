@@ -1,0 +1,392 @@
+/**
+ * iLEEN
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ *
+ * Präsentation: das Label über der Szene, die Leiste der Vorführung und das
+ * Panel. Das Label ist aus splides übernommen (src/style.css, .pres-caption) —
+ * seine Maße spiegeln die Konstanten in praesentation-text.js, damit das
+ * Overlay und die Video-Bilder dieselbe Zeile setzen.
+ */
+
+/* ── Das Label über der Szene ────────────────────────────────────────────── */
+
+.praes-label {
+  --cap-scale: 1;
+  --cap-width: 0.62;
+  --cap-accent: #8dd7ff;
+  --cap-accent-soft: rgb(141 215 255 / 28%);
+  --cap-accent-line: rgb(141 215 255 / 55%);
+
+  position: fixed;
+  left: 50%;
+  top: 80%;
+  /* Über der Szene, unter den Panels (100–102): im Bearbeiten liegt es hinter
+     dem Panel, in der Vorführung sind die Panels ohnehin weg. */
+  z-index: 90;
+  box-sizing: content-box;
+  max-width: calc(var(--cap-width) * 100vw);
+  padding: 0.55em 0.9em;
+  border-radius: 0.55em;
+  transform: translate(-50%, -50%);
+  color: #ffffff;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: max(12px, calc(3vh * var(--cap-scale)));
+  font-weight: 500;
+  line-height: 1.35;
+  text-shadow: 0 2px 14px rgb(0 0 0 / 45%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms linear;
+}
+
+.praes-label.is-theme-glass {
+  border: 1px solid rgb(255 255 255 / 34%);
+  background: rgb(255 255 255 / 12%);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 42%), inset 0 1px 0 rgb(255 255 255 / 20%);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
+
+.praes-label.is-theme-solid {
+  border: 1px solid var(--cap-accent-soft);
+  background: rgb(9 11 15 / 86%);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 45%);
+}
+
+.praes-label.is-theme-outline {
+  border: 0.07em solid var(--cap-accent-line);
+  background: rgb(9 11 15 / 28%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.praes-label.is-theme-bar {
+  padding-left: 1.61em;
+  border-radius: 0;
+  text-shadow: 0 2px 16px rgb(0 0 0 / 70%);
+}
+
+.praes-label.is-theme-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.16em;
+  border-radius: 0.08em;
+  background: var(--cap-accent);
+}
+
+.praes-label.is-theme-plain {
+  padding: 0;
+  text-shadow: 0 2px 16px rgb(0 0 0 / 70%);
+}
+
+.praes-label.is-align-left { text-align: left; }
+.praes-label.is-align-center { text-align: center; }
+.praes-label.is-align-right { text-align: right; }
+
+/* Im Bearbeiten ist das Label greifbar und umrandet — es liest sich als Objekt. */
+.praes-label.is-editing {
+  opacity: 1 !important;
+  pointer-events: auto;
+  cursor: grab;
+  outline: 1.5px dashed rgb(141 215 255 / 65%);
+  outline-offset: 5px;
+  transition: none;
+}
+
+.praes-label.is-dragging { cursor: grabbing; outline-color: #fff; }
+
+.praes-label__inhalt { user-select: none; }
+
+/* ── Der Text im Label ───────────────────────────────────────────────────── */
+
+.pmd-line { line-height: 1.35; }
+.pmd-al-left { text-align: left; }
+.pmd-al-center { text-align: center; }
+.pmd-al-right { text-align: right; }
+
+.pmd-h1 { font-size: 1.75em; font-weight: 800; letter-spacing: -0.01em; }
+.pmd-h2 { font-size: 1.45em; font-weight: 750; }
+.pmd-h3 { font-size: 1.25em; font-weight: 700; }
+.pmd-h4 { font-size: 1.12em; font-weight: 700; }
+.pmd-h5 { font-size: 1em; font-weight: 700; letter-spacing: 0.02em; }
+.pmd-h6 { font-size: 0.92em; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.pmd-small { font-size: 0.78em; opacity: 0.75; }
+
+.praes-label strong { font-weight: 800; }
+.praes-label em { font-style: italic; }
+.praes-label del { text-decoration: line-through; opacity: 0.85; }
+.praes-label u { text-decoration: underline; text-underline-offset: 0.18em; }
+.praes-label sub,
+.praes-label sup { font-size: 0.72em; line-height: 0; }
+
+.praes-label code {
+  padding: 0.06em 0.22em;
+  border-radius: 0.22em;
+  background: rgb(255 255 255 / 12%);
+  color: #a5f3fc;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.pmd-mark {
+  padding: 0.06em 0.16em;
+  border-radius: 0.24em;
+  background: var(--cap-accent-soft);
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.pmd-badge {
+  display: inline-block;
+  padding: 0.08em 0.42em;
+  border: 1px solid var(--cap-accent-line);
+  border-radius: 999px;
+  background: rgb(141 215 255 / 22%);
+  font-size: 0.92em;
+  font-weight: 650;
+  line-height: 1.24;
+  white-space: nowrap;
+}
+
+.pmd-link {
+  color: var(--cap-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 0.06em;
+}
+
+.pmd-li { display: flex; gap: 0.5em; }
+
+.pmd-al-center.pmd-li,
+.pmd-al-center.pmd-quote,
+.is-align-center .pmd-li:not(.pmd-al-left):not(.pmd-al-right),
+.is-align-center .pmd-quote:not(.pmd-al-left):not(.pmd-al-right) { justify-content: center; }
+
+.pmd-al-right.pmd-li,
+.pmd-al-right.pmd-quote,
+.is-align-right .pmd-li:not(.pmd-al-left):not(.pmd-al-center),
+.is-align-right .pmd-quote:not(.pmd-al-left):not(.pmd-al-center) { justify-content: flex-end; }
+
+.pmd-marker { flex: 0 0 auto; opacity: 0.62; font-variant-numeric: tabular-nums; }
+.pmd-check.is-checked { color: var(--cap-accent); opacity: 1; }
+
+/* Flex statt absolut: der Balken schmiegt sich bei jeder Ausrichtung an den
+   Text, genau wie ihn der Canvas zeichnet. */
+.pmd-quote { display: flex; gap: 0.5em; font-style: italic; color: rgb(255 255 255 / 82%); }
+
+.pmd-quote::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.13em;
+  margin: 0.12em 0;
+  border-radius: 999px;
+  background: var(--cap-accent);
+}
+
+.pmd-rule-line { display: flex; padding: 0.35em 0; }
+
+.pmd-al-center.pmd-rule-line,
+.is-align-center .pmd-rule-line:not(.pmd-al-left):not(.pmd-al-right) { justify-content: center; }
+
+.pmd-al-right.pmd-rule-line,
+.is-align-right .pmd-rule-line:not(.pmd-al-left):not(.pmd-al-center) { justify-content: flex-end; }
+
+.pmd-rule { display: block; width: 50%; min-width: 3em; height: 0; border-top: 0.05em solid var(--cap-accent-line); }
+.pmd-placeholder { opacity: 0.5; font-style: italic; font-weight: 500; }
+
+/* ── Während der Vorführung ─────────────────────────────────────────────── */
+
+/* Alles Bedienende tritt zurück; übrig bleiben Szene, Label und die Leiste.
+   Die Liste ist die der Elemente, die über der Szene schweben — ein neues
+   Element dieser Art gehört hierher, sonst steht es in jedem Video. */
+body.praes-laeuft #toolbar,
+body.praes-laeuft #roleBar,
+body.praes-laeuft #sidebarToggle,
+body.praes-laeuft #infoBoxPanel,
+body.praes-laeuft #hideModeIndicator,
+body.praes-laeuft #statusIndicator,
+body.praes-laeuft #navHud,
+body.praes-laeuft #fpsAnzeige,
+body.praes-laeuft #flugFadenkreuz,
+body.praes-laeuft #flugTrackpadHinweis,
+body.praes-laeuft #kz4dLeiste,
+body.praes-laeuft .cesium-viewer-toolbar,
+body.praes-laeuft .cesium-viewer-bottom,
+body.praes-laeuft .cesium-viewer-vrContainer,
+body.praes-laeuft .cesium-viewer-fullscreenContainer {
+  display: none !important;
+}
+
+.praes-leiste {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 110;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 12px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 12px;
+  background: rgb(14 16 20 / 72%);
+  color: #fff;
+  font-size: 12px;
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+body.praes-laeuft .praes-leiste { display: flex; }
+
+.praes-leiste__text { min-width: 64px; font-variant-numeric: tabular-nums; }
+
+.praes-leiste__fortschritt {
+  width: 180px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 18%);
+}
+
+.praes-leiste__fortschritt > div {
+  width: 100%;
+  height: 100%;
+  background: #8dd7ff;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.praes-leiste__manuell { display: none; align-items: center; gap: 8px; }
+
+body.praes-manuell .praes-leiste__manuell { display: flex; }
+body.praes-manuell .praes-leiste__fortschritt { display: none; }
+
+.praes-nav {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 8%);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.praes-nav:hover { background: rgb(255 255 255 / 18%); }
+
+.praes-punkte { display: flex; flex-wrap: wrap; gap: 6px; max-width: 320px; }
+
+.praes-punkt {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 30%);
+  cursor: pointer;
+}
+
+.praes-punkt.is-aktiv { background: #8dd7ff; transform: scale(1.3); }
+
+/* ── Das Panel ───────────────────────────────────────────────────────────── */
+
+.praes { display: flex; flex-direction: column; gap: var(--ds-space-3); }
+
+.praes__kopf { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); }
+.praes__zahl { color: var(--text-muted, #888); font-size: var(--ds-text-sm); }
+
+.praes__liste { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+
+.praes-folie {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: 6px var(--ds-space-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  background: var(--ds-surface);
+  cursor: pointer;
+}
+
+.praes-folie:hover { background: var(--ds-surface-hover); }
+.praes-folie.is-selected { border-color: var(--ds-accent); background: rgba(var(--ds-accent-rgb), 0.12); }
+.praes-folie.is-ziel { border-color: var(--ds-info); }
+
+.praes-folie__nr {
+  flex: 0 0 auto;
+  min-width: 18px;
+  color: var(--text-muted, #888);
+  font-size: var(--ds-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.praes-folie__text { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+
+.praes-folie__titel {
+  overflow: hidden;
+  font-size: var(--ds-text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.praes-folie__meta { color: var(--text-muted, #888); font-size: var(--ds-text-sm); }
+.praes-folie__griff { flex: 0 0 auto; color: var(--text-muted, #888); cursor: grab; }
+
+.praes__inspektor { display: flex; flex-direction: column; gap: var(--ds-space-2); }
+
+.praes__werkzeuge { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+
+.praes-wz { min-width: 26px; padding: 0 5px; font-size: 11px; }
+
+.praes-farbe input,
+.praes-akzent {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.praes__text { min-height: 96px; padding: var(--ds-space-2); font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; line-height: 1.4; resize: vertical; }
+
+.praes__gitter { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--ds-space-3); }
+
+.praes__zeile { display: flex; align-items: flex-end; gap: var(--ds-space-4); }
+
+.praes-raster { display: grid; grid-template-columns: repeat(3, 14px); gap: 3px; }
+
+.praes-raster__zelle {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 3px;
+  background: var(--ds-surface);
+  cursor: pointer;
+}
+
+.praes-raster__zelle:hover { background: var(--ds-surface-hover); }
+.praes-raster__zelle.is-aktiv { border-color: var(--ds-accent); background: var(--ds-accent); }
+
+.praes__einstellung { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ds-space-3); }
+.praes__einstellung .field { margin-bottom: 0; }
+
+.praes__werkzeugzeile { display: flex; flex-wrap: wrap; gap: var(--ds-space-1); }
+
+.praes__syntax summary { color: var(--text-muted, #888); font-size: var(--ds-text-sm); cursor: pointer; }
+.praes__syntax code { padding: 0 3px; border-radius: 3px; background: var(--ds-surface-hover); font-size: 10px; }
+
+.praes__szene { display: flex; flex-direction: column; gap: var(--ds-space-1); padding: var(--ds-space-2); border: 1px solid var(--ds-border); border-radius: var(--ds-radius); background: var(--ds-surface); }
+.praes__szene .section__label { margin-bottom: 0; }
+.praes__szene .plan-hint { margin-top: 0; word-break: break-word; }

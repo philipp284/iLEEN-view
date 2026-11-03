@@ -241,6 +241,16 @@ button { font-family: inherit; }
   opacity: 1;
 }
 
+/* Ein Aktionsknopf öffnet kein Panel, sondern schaltet ein schwebendes
+   Werkzeug. Läuft es, sieht der Knopf gedrückt aus — mit Akzentfarbe statt
+   des weißen Randstrichs, damit er nicht mit dem offenen Panel verwechselt
+   wird, das daneben weiter `active` ist. */
+.activity-btn--an {
+  color: var(--c-white);
+  opacity: 1;
+  box-shadow: inset 0 -2px 0 var(--mib-green);
+}
+
 /* ==========================================================================
    SIDEBAR PANEL
    ========================================================================== */

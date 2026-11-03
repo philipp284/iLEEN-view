@@ -1,0 +1,353 @@
+/* © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+   SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+   Die VR-Seite (vr.html). Eigene Datei statt style.css: die Seite lädt keinen
+   Viewer, und style.css bringt dessen ganze Oberfläche mit. Die Farben sind
+   dieselben (style.css → :root, design-system.css → --ds-accent). */
+
+:root {
+  --vr-bg: #0f0f0f;
+  --vr-flaeche: #141414;
+  --vr-panel: #1a1a1a;
+  --vr-rand: rgba(255, 255, 255, 0.11);
+  --vr-rand-stark: rgba(255, 255, 255, 0.2);
+  --vr-text: #e8e8e8;
+  --vr-text-2: #888888;
+  --vr-text-3: #666666;
+  --vr-akzent: #97bf0d;
+  --vr-akzent-rgb: 151, 191, 13;
+  --vr-fehler: #e05c5c;
+  --vr-radius: 10px;
+  --vr-schrift: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--vr-bg);
+  color: var(--vr-text);
+  font-family: var(--vr-schrift);
+  font-size: 14px;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Kopf ─────────────────────────────────────────────────────── */
+
+.vr-kopf {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--vr-rand);
+  background: var(--vr-flaeche);
+  flex: none;
+}
+
+.vr-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vr-text);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.vr-kopf__titel { color: var(--vr-text-2); }
+
+.vr-status {
+  margin-left: auto;
+  color: var(--vr-text-2);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.vr-status[data-art="fehler"] { color: var(--vr-fehler); }
+
+/* ── Raster ───────────────────────────────────────────────────── */
+
+.vr-raster {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 270px 1fr minmax(380px, 520px);
+}
+
+.vr-seite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-right: 1px solid var(--vr-rand);
+  background: var(--vr-flaeche);
+  min-height: 0;
+}
+
+.vr-suche {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--vr-rand);
+  border-radius: var(--vr-radius);
+  background: var(--vr-panel);
+  color: var(--vr-text);
+  font: inherit;
+}
+.vr-suche:focus { outline: none; border-color: var(--vr-akzent); }
+
+.vr-liste {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--vr-text-2);
+}
+
+/* Groß genug für den Strahl des Controllers */
+.vr-modell {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--vr-radius);
+  background: transparent;
+  color: var(--vr-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vr-modell:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+.vr-modell.aktiv {
+  border-color: var(--vr-akzent);
+  background: rgba(var(--vr-akzent-rgb), 0.12);
+}
+.vr-modell:disabled { cursor: default; opacity: 0.45; }
+
+.vr-modell__symbol { grid-row: 1 / 3; font-size: 18px; text-align: center; }
+.vr-modell__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vr-modell__art { color: var(--vr-text-2); font-size: 12px; }
+
+/* ── Bühne ────────────────────────────────────────────────────── */
+
+.vr-buehne {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vr-szene {
+  position: absolute;
+  inset: 0;
+}
+.vr-szene canvas { display: block; width: 100%; height: 100%; }
+
+.vr-ueber {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+.vr-titel {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+}
+
+.vr-ladebalken {
+  width: 200px;
+  max-width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  transition: opacity 400ms;
+}
+.vr-ladebalken.fertig { opacity: 0; }
+.vr-ladebalken > div {
+  width: 0;
+  height: 100%;
+  background: var(--vr-akzent);
+  transition: width 300ms;
+}
+
+.vr-start {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(640px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.vr-hinweis {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--vr-radius);
+  background: rgba(20, 20, 20, 0.9);
+  color: var(--vr-text);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+.vr-hinweis[hidden] { display: none; }
+
+/* Am Mac: Adresse für die Brille im aktuellen Netz */
+.vr-verbinden {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--vr-rand-stark);
+  border-left: 4px solid var(--vr-akzent);
+  border-radius: var(--vr-radius);
+  background: rgba(20, 20, 20, 0.94);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.vr-verbinden[hidden] { display: none; }
+.vr-verbinden__kopf { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.vr-verbinden__kopf strong { font-size: 15px; }
+.vr-verbinden__dienst { margin-left: auto; color: var(--vr-text-2); font-size: 12px; white-space: nowrap; }
+.vr-verbinden__dienst::before { content: '●'; margin-right: 5px; color: var(--vr-akzent); }
+.vr-verbinden__dienst[data-aus]::before { color: var(--vr-fehler); }
+.vr-verbinden__adresse {
+  display: block;
+  margin: 2px 0 4px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--vr-text);
+  user-select: all;
+}
+.vr-verbinden p { margin: 2px 0; color: var(--vr-text-2); }
+.vr-verbinden b { color: var(--vr-text); font-weight: 600; }
+.vr-verbinden__da { color: var(--vr-akzent) !important; }
+.vr-verbinden code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--vr-text); }
+
+.vr-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.vr-knopf {
+  min-height: 52px;
+  padding: 0 22px;
+  border: 1px solid var(--vr-rand-stark);
+  border-radius: 26px;
+  background: rgba(20, 20, 20, 0.92);
+  color: var(--vr-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vr-knopf:hover:not(:disabled) { border-color: var(--vr-akzent); }
+.vr-knopf--haupt:not(:disabled) {
+  background: var(--vr-akzent);
+  border-color: var(--vr-akzent);
+  color: #10140a;
+}
+.vr-knopf:disabled { opacity: 0.4; cursor: default; }
+
+.vr-schalter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 26px;
+  background: rgba(20, 20, 20, 0.92);
+  cursor: pointer;
+}
+.vr-schalter input { width: 18px; height: 18px; accent-color: var(--vr-akzent); }
+
+.vr-bedienung {
+  width: 100%;
+  border-radius: var(--vr-radius);
+  background: rgba(20, 20, 20, 0.9);
+  font-size: 13px;
+}
+.vr-bedienung summary {
+  padding: 8px 14px;
+  color: var(--vr-text-2);
+  cursor: pointer;
+}
+.vr-bedienung__spalten {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 14px 12px;
+}
+.vr-bedienung dl { margin: 0; }
+.vr-bedienung dt { margin-bottom: 4px; color: var(--vr-akzent); font-weight: 600; }
+.vr-bedienung dd { margin: 0 0 3px; color: var(--vr-text-2); line-height: 1.4; }
+.vr-bedienung b { color: var(--vr-text); font-weight: 600; }
+
+/* ── Tablet ───────────────────────────────────────────────────── */
+
+.vr-tablet {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px;
+  border-left: 1px solid var(--vr-rand);
+  background: var(--vr-flaeche);
+  min-height: 0;
+  overflow-y: auto;
+}
+.vr-tablet__leinwand {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1024 / 704;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* ── Schmal: Liste über der Bühne ─────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .vr-raster { grid-template-columns: 240px 1fr 340px; }
+}
+
+@media (max-width: 760px) {
+  .vr-raster {
+    grid-template-columns: 1fr;
+    grid-template-rows: 160px 1fr auto;
+  }
+  .vr-tablet { border-left: none; border-top: 1px solid var(--vr-rand); max-height: 300px; }
+  .vr-seite { border-right: none; border-bottom: 1px solid var(--vr-rand); }
+  .vr-bedienung__spalten { grid-template-columns: 1fr; }
+  .vr-kopf__titel { display: none; }
+}
+
+/* In iLEEN eingebettet: Platz für den ✕ der Ebene, die Marke führt nirgends hin */
+.eingebettet .vr-kopf { padding-right: 56px; }
+.eingebettet .vr-marke { pointer-events: none; }

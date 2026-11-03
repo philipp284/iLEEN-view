@@ -16,8 +16,8 @@
  * flight-tracker.js), braucht keinen Eintrag in dieser Datei.
  *
  * Die Reiter im Werkzeuge-Panel laufen ebenso generisch über
- * `#section-tools .tabs [data-tab]` und `#toolsPane-<name>` (section-box.js
- * und plan-panel.js ergänzen dort ihre Reiter).
+ * `#section-tools .tabs [data-tab]` und `#toolsPane-<name>` (plan-panel.js
+ * ergänzt dort seinen Reiter).
  */
 'use strict';
 
@@ -41,14 +41,8 @@ const VALID_ASSET_IDS = new Set([
   3390684,  // 3D_FBX_Oberstein_OPTIMIERT_reduced
   1415196,  // Aerometrex San Francisco High Resolution 3D Model
   69380,    // Melbourne Photogrammetry
-  // Infrastruktur (immer verfügbar)
-  2275207,  // Google Photorealistic 3D Tiles
-  96188,    // Cesium OSM Buildings
-  // Imagery
-  3830186, 3830185, 3830184, 3830183, 3830182,  // Google Maps 2D
-  3827, 4, 3, 2,                                  // Bing Maps
-  // Terrain
-  1         // Cesium World Terrain
+  // Keine Basisdienste mehr (Weltgelände, Bing, OSM Buildings, Google über
+  // ion): Karte, Gelände und Gebäude kommen ohne ion — kartenquellen.js.
 ]);
 
 function uiEsc(text) {
@@ -110,6 +104,20 @@ const BimViewerUI = {
   // sollten es sein, wo `t()` im Spiel ist: der Sprachwechsel baut die Leiste
   // neu auf und wertet sie dabei erneut aus. Als fester String eingetragen,
   // bliebe die Beschriftung in der Sprache des Anmeldezeitpunkts stehen.
+  //
+  // Ein Werkzeug, das über der Szene schwebt statt im Seitenpanel zu stehen,
+  // meldet statt `inhalt` eine `aktion` an — der Knopf schaltet dann, ohne ein
+  // Panel zu öffnen, und `an` sagt, ob er gedrückt aussehen soll:
+  //
+  //     BimViewerUI.bereichAnmelden({
+  //       id: 'sensoren', symbol: '📈', ordnung: 60,
+  //       titel: () => t('panel.sensoren'),
+  //       aktion: () => SensorPanel.umschalten(),
+  //       an: () => SensorPanel.offen,
+  //     });
+  //
+  // Wer seinen Zustand selbst ändert (etwa über ein ✕ im schwebenden Panel),
+  // ruft danach `BimViewerUI.aktionenAktualisieren()`.
   //
   // `ordnung` bestimmt die Reihenfolge in der Leiste, nicht der Zeitpunkt der
   // Anmeldung — sonst hinge die Anordnung der Symbole an der Reihenfolge der
@@ -197,7 +205,42 @@ const BimViewerUI = {
       this.createModernToolbar();
       this.initEventHandlers();
       if (aktiv) this.activateSection(aktiv);
+      this._nachNeuaufbauFuellen();
     });
+  },
+
+  /**
+   * Füllt nach jedem Neuaufbau der Leiste, was im Markup nur als leerer
+   * Behälter steht. Gilt für den Sprachwechsel UND für eine späte Anmeldung
+   * eines Bereichs: Die zweite ließ bis 2026-11-01 Karten-, Gelände- und
+   * Ebenenliste leer zurück — ein Modul, das sich nach dem Start anmeldete
+   * (Mainz-Zwilling), räumte damit das Layer-Panel aus.
+   */
+  _nachNeuaufbauFuellen() {
+    // Die Liste der geladenen Modelle steht im Markup nur als leerer
+    // Behälter. Die Einträge entstehen sonst nur beim Laden eines Modells,
+    // wären nach einem Neuaufbau also verschwunden, obwohl die Modelle in der
+    // Szene liegen.
+    this.closeAssetTransform();
+    BimViewer.loadedAssets?.forEach((_asset, assetId) => this.createAssetControls(assetId));
+
+    // Dasselbe gilt für die Vorschlagsliste der Ion-Assets: sie steht im
+    // Markup nur als leere `<datalist>`. Neu abgefragt wird nichts — die
+    // Namen liegen seit dem ersten Antippen des Feldes in `_ionAssetNames`.
+    this.fillIonSuggestions();
+    if (window.LayerManager && LayerManager.viewer) LayerManager.populateUI();
+    window.Vektorkacheln?.panelZeichnen();
+
+    if (window.ILeenUINormalize) ILeenUINormalize.run();
+  },
+
+  /** Bewertet `an` aller Aktionsknöpfe neu — nach einer Zustandsänderung von außen. */
+  aktionenAktualisieren() {
+    for (const b of this._bereiche) {
+      if (typeof b.aktion !== 'function') continue;
+      const knopf = document.querySelector(`.activity-btn[data-section="${b.id}"]`);
+      if (knopf) knopf.classList.toggle('activity-btn--an', !!this._wert(b.an));
+    }
   },
 
   /** `titel`/`inhalt`/`label` dürfen Funktion oder fertiger Wert sein. */
@@ -251,6 +294,25 @@ const BimViewerUI = {
       knopf.dataset.section = bereich.id;
       knopf.title = this._wert(bereich.hinweis) || titel;
       knopf.innerHTML = `<span class="modern-section-icon">${bereich.symbol}</span>`;
+
+      // Ein Aktionsknopf schaltet etwas, das über der Szene schwebt, und hat
+      // kein Seitenpanel. Er wird deshalb nie `active` — das hieße „dieses
+      // Panel ist offen" —, sondern zeigt mit `--an`, dass sein Werkzeug läuft.
+      if (typeof bereich.aktion === 'function') {
+        knopf.classList.add('activity-btn--aktion');
+        knopf.classList.toggle('activity-btn--an', !!this._wert(bereich.an));
+        knopf.addEventListener('click', () => {
+          try {
+            bereich.aktion();
+          } catch (e) {
+            console.error('[BimViewerUI] Aktion fehlgeschlagen:', bereich.id, e);
+          }
+          this.aktionenAktualisieren();
+        });
+        leiste.appendChild(knopf);
+        continue;
+      }
+
       // `beimOeffnen` ruft `activateSection()` — auch bei programmatischem
       // Öffnen, nicht nur beim Klick.
       knopf.addEventListener('click', () => this.activateSection(bereich.id));
@@ -299,13 +361,14 @@ const BimViewerUI = {
     const unten = document.createElement('div');
     unten.className = 'activity-btn activity-btn--collapse';
     unten.style.marginTop = 'auto';
-    unten.title = 'Seitenleiste einklappen (M)';
+    unten.title = 'Seitenleiste einklappen (B)';
     unten.innerHTML = '<span class="modern-section-icon">⇤</span>';
     unten.addEventListener('click', () => this.toggleSidebar());
     leiste.appendChild(unten);
 
     this._leisteBereit = true;
-    this.activateSection(bereiche.length ? bereiche[0].id : 'models');
+    const erster = bereiche.find((b) => typeof b.aktion !== 'function');
+    this.activateSection(erster ? erster.id : 'models');
 
     // Die Untergruppen eines Panels verhalten sich wie ein Akkordeon: wer eine
     // öffnet, schließt damit die übrigen desselben Panels. Sonst stehen nach
@@ -352,22 +415,7 @@ const BimViewerUI = {
         this.createModernToolbar();
         this.initEventHandlers();
         if (active) this.activateSection(active);
-
-        // Die Liste der geladenen Modelle wird beim Neuaufbau geleert — sie
-        // steht im Markup nur als leerer Behälter. Die Einträge entstehen
-        // sonst nur beim Laden eines Modells, wären nach einem Sprachwechsel
-        // also verschwunden, obwohl die Modelle in der Szene liegen.
-        this.closeAssetTransform();
-        BimViewer.loadedAssets?.forEach((_asset, assetId) => this.createAssetControls(assetId));
-
-        // Dasselbe gilt für die Vorschlagsliste der Ion-Assets: sie steht im
-        // Markup nur als leere `<datalist>`. Neu abgefragt wird nichts — die
-        // Namen liegen seit dem Start in `_ionAssetNames`.
-        this.fillIonSuggestions();
-        if (window.LayerManager && LayerManager.viewer) LayerManager.populateUI();
-        window.Vektorkacheln?.panelZeichnen();
-
-        if (window.ILeenUINormalize) ILeenUINormalize.run();
+        this._nachNeuaufbauFuellen();
       });
     }
   },
@@ -422,8 +470,8 @@ const BimViewerUI = {
       ],
     });
 
-    // Werkzeuge: Reiter, keine Unterebene. Weitere Reiter (Schnittbox, Plan)
-    // hängen die zugehörigen Module selbst an.
+    // Werkzeuge: Reiter, keine Unterebene. Weitere Reiter (Plan) hängen die
+    // zugehörigen Module selbst an.
     this.bereichAnmelden({
       id: 'tools', symbol: '📐', ordnung: 40,
       titel: () => t('panel.tools'), inhalt: () => this.getToolsContent(),
@@ -523,7 +571,7 @@ const BimViewerUI = {
     catch (e) { console.error('[BimViewerUI] beimOeffnen "' + wo + '"', e); }
   },
 
-  /** Die ganze linke Leiste ein- oder ausfahren (Taste M). */
+  /** Die ganze linke Leiste ein- oder ausfahren (Taste B). */
   toggleSidebar(einklappen) {
     const toolbar = document.getElementById('toolbar');
     const toggle = document.getElementById('sidebarToggle');
@@ -659,7 +707,7 @@ const BimViewerUI = {
           </div>
           <datalist id="ionAssetOptions"></datalist>
         </div>
-        <div id="ionAssetsStatus" class="hint">${t('state.loading')}</div>
+        <div id="ionAssetsStatus" class="hint">${t('models.ionLazy')}</div>
       </div>
     `;
   },
@@ -810,7 +858,19 @@ const BimViewerUI = {
     } else if (!sichtbar.length) {
       listEl.innerHTML = '<div class="modern-empty-state">Kein Modell passt zu Filter und Suche</div>';
     } else {
-      listEl.innerHTML = sichtbar.map(asset => this.getBackendAssetHTML(asset)).join('');
+      // Zuletzt geladene oben (nutzung.js merkt sie sich, lokal und im
+      // Backend), höchstens acht — danach die Reihenfolge des Servers. Wer
+      // jeden Tag dieselben drei Modelle öffnet, soll sie nicht zwischen
+      // dreißig anderen suchen.
+      const N = BimViewer.Nutzung;
+      const wann = (a) => (N && a.job_id ? N.zuletztGeladen(a.job_id) : 0);
+      const oben = sichtbar.filter(wann).sort((a, b) => wann(b) - wann(a)).slice(0, 8);
+      const rest = sichtbar.filter(a => !oben.includes(a));
+      const trenner = (text) => `<div class="asset-liste__trenner">${text}</div>`;
+      listEl.innerHTML = oben.length
+        ? trenner('Zuletzt geladen') + oben.map(asset => this.getBackendAssetHTML(asset)).join('') +
+          (rest.length ? trenner('Alle') + rest.map(asset => this.getBackendAssetHTML(asset)).join('') : '')
+        : sichtbar.map(asset => this.getBackendAssetHTML(asset)).join('');
     }
   },
 
@@ -850,13 +910,6 @@ const BimViewerUI = {
 
       <div class="section">
         <div class="section__label">${t('layer.tiles3d')}</div>
-        <div class="row">
-          <span class="row__label">OSM Buildings</span>
-          <label class="switch">
-            <input type="checkbox" id="toggleOSMBuildings">
-            <span class="switch__track"></span>
-          </label>
-        </div>
         <div class="row">
           <span class="row__label">Google 3D Tiles</span>
           <label class="switch">
@@ -906,10 +959,43 @@ const BimViewerUI = {
       dynamicError: true,
       autoLeistung: true,
       heightWindow: null,
-      heightOutside: 'klemmen'
+      heightOutside: 'klemmen',
+      splatDetail: 16,
+      splatAuto: true,
+      splatAufloesungMin: 0.5
     };
 
     return `
+      <div class="section">
+        <div class="section__label">✨ ${t('pc.splats')}</div>
+        <div class="slider-row" title="${t('pc.splatDetailHint')}">
+          <span class="slider-row__label">${t('pc.splatDetail')}</span>
+          <input type="range" id="splatDetailSlider" class="slider" min="1" max="64" step="1"
+                 value="${s.splatDetail}"
+                 oninput="document.getElementById('splatDetailValue').textContent = this.value + ' px'"
+                 onchange="BimViewer.setSplatDetail(this.value)">
+          <span id="splatDetailValue" class="slider-row__value">${s.splatDetail} px</span>
+        </div>
+        <div class="row" title="${t('pc.splatAutoHint')}">
+          <span class="row__label">${t('pc.auto')}</span>
+          <label class="switch">
+            <input type="checkbox" id="toggleSplatAuto" ${s.splatAuto ? 'checked' : ''}
+                   onchange="BimViewer.setSplatAuto(this.checked)">
+            <span class="switch__track"></span>
+          </label>
+        </div>
+        <div id="splatAufloesungGroup" class="slider-row ${s.splatAuto ? '' : 'disabled'}" title="${t('pc.splatResHint')}">
+          <span class="slider-row__label">${t('pc.splatRes')}</span>
+          <input type="range" id="splatAufloesungSlider" class="slider" min="0.25" max="1" step="0.05"
+                 value="${s.splatAufloesungMin}"
+                 oninput="document.getElementById('splatAufloesungValue').textContent = Math.round(this.value * 100) + ' %'"
+                 onchange="BimViewer.setSplatAufloesungMin(this.value)"
+                 ${s.splatAuto ? '' : 'disabled'}>
+          <span id="splatAufloesungValue" class="slider-row__value">${Math.round(s.splatAufloesungMin * 100)} %</span>
+        </div>
+        <div class="row"><span class="row__label" id="splatAutoWert"></span></div>
+      </div>
+
       <div class="section">
         <div class="section__label">${t('pc.presets')}</div>
         <div class="btn-group">
@@ -1085,9 +1171,8 @@ const BimViewerUI = {
   // ─────────────────────────────────────────────────────────────────
 
   /**
-   * Werkzeuge-Panel: Reiter Messen und Schnitte. Die Schnittbox
-   * (section-box.js) und der Zeichenmodus (plan-panel.js) ergänzen ihre
-   * eigenen Reiter.
+   * Werkzeuge-Panel: Reiter Messen und Schnitte. Der Zeichenmodus
+   * (plan-panel.js) ergänzt seinen eigenen Reiter.
    */
   getToolsContent() {
     return `
@@ -1106,20 +1191,14 @@ const BimViewerUI = {
   /**
    * Reiter „Schnitte".
    *
-   * Der Reiter gehört ui.js, sein Inhalt kommt aus den Modulen: `schnitte-xyz.js`
-   * setzt die drei Achsschnitte davor, `ui-new-features-extension.js` hängt die
-   * Google-Freistellung an. Hier steht nur der Verweis dazwischen — auf die
-   * Schnittbox (eigener Reiter) für den Ausschnitt um ein einzelnes Bauteil.
+   * Der Reiter gehört ui.js, sein Inhalt kommt aus den Modulen: `schnitt-karte.js`
+   * setzt das Schnittwerkzeug davor (Box über alle Modelle, Scheiben,
+   * Schnittkarte), `ui-new-features-extension.js` hängt die Google-Freistellung
+   * an. Hier selbst steht nichts mehr — der Verweis auf die Schnittbox, der hier
+   * stand, ist mit ihr aufgegangen.
    */
   getDrawingContent() {
-    return `
-      <div class="section">
-        <p class="hint">
-          Einen Ausschnitt durch ein Bauteil legt die <strong>Schnittbox</strong>
-          (Reiter daneben). Hier wird die Weltkulisse um die eigenen Modelle freigestellt.
-        </p>
-      </div>
-    `;
+    return '';
   },
 
   /**
@@ -1709,6 +1788,7 @@ const BimViewerUI = {
   getSettingsContent() {
     const language = window.ILeenI18n ? ILeenI18n.getLanguage() : 'de';
     const hatToken = !!(window.BimViewer && BimViewer.getIonToken && BimViewer.getIonToken());
+    const hatGoogle = !!(window.ILeenKarten && ILeenKarten.googleKey());
 
     return `
       <div class="section">
@@ -1743,17 +1823,30 @@ const BimViewerUI = {
         ${this.getFarbenContent()}
       </div>
 
+      <!--
+        Kartendienste: Karte, Gelände, Gebäude und Suche laufen ohne Schlüssel
+        (kartenquellen.js, gelaende.js). Google ist eine Wahl, keine Voraussetzung.
+      -->
       <div class="section">
-        <div class="section__label">Cesium ion</div>
+        <div class="section__label">${t('group.mapServices')}</div>
         <div class="field">
-          <label class="field__label" for="ionTokenInput">Zugriffsschlüssel</label>
+          <label class="field__label" for="googleKeyInput">${t('settings.googleKey')}</label>
           <div class="input-row">
-            <input id="ionTokenInput" type="password" class="input" autocomplete="off"
-                   placeholder="${hatToken ? 'gesetzt' : 'nicht gesetzt'}">
-            <button id="ionTokenSave" class="btn btn--icon" title="Speichern">✓</button>
+            <input id="googleKeyInput" type="password" class="input" autocomplete="off"
+                   placeholder="${hatGoogle ? t('settings.keySet') : t('settings.keyUnset')}">
+            <button id="googleKeySave" class="btn btn--icon" title="${t('action.save')}">✓</button>
           </div>
         </div>
-        <p class="hint">Gilt nach dem Neuladen der Seite für Gelände, Luftbild und ion-Assets.</p>
+        <p class="hint">${t('settings.googleHint')}</p>
+        <div class="field">
+          <label class="field__label" for="ionTokenInput">${t('settings.ionToken')}</label>
+          <div class="input-row">
+            <input id="ionTokenInput" type="password" class="input" autocomplete="off"
+                   placeholder="${hatToken ? t('settings.keySet') : t('settings.keyUnset')}">
+            <button id="ionTokenSave" class="btn btn--icon" title="${t('action.save')}">✓</button>
+          </div>
+        </div>
+        <p class="hint">${t('settings.ionHint')}</p>
       </div>
 
       <!-- Verborgene Anker für nav-hud.js / core.js (Walk- und Flugmodus) -->
@@ -1856,10 +1949,12 @@ const BimViewerUI = {
   getAboutContent() {
     return `
       <div class="section">
-        <div class="section__label">iLEEN</div>
+        <div class="section__label">Handbuch</div>
+        <button class="btn btn--primary btn--block"
+                onclick="window.ILeenHilfe && ILeenHilfe.oeffnen()">📖 Handbuch öffnen</button>
         <p class="hint">
-          Viewer, Statik und Bauantrag am digitalen Gebäudemodell —
-          BIM-Labor der Hochschule Mainz.
+          Alle Werkzeuge, nach Bereichen geordnet. Die Erklärung zu einer
+          einzelnen Einstellung erscheint, sobald der Mauszeiger darauf liegt.
         </p>
       </div>
 
@@ -1867,20 +1962,20 @@ const BimViewerUI = {
         <div class="section__label">Tasten</div>
         <div class="row"><span class="row__label">Seitenleiste ein/aus</span><span class="row__value">M</span></div>
         <div class="row"><span class="row__label">Bauteile ausblenden · alle zurück</span><span class="row__value">H · ⇧H</span></div>
+        <div class="row"><span class="row__label">Auswahl isolieren</span><span class="row__value">I</span></div>
         <div class="row"><span class="row__label">Notizmodus</span><span class="row__value">C</span></div>
         <div class="row"><span class="row__label">Fliegen · Gehen</span><span class="row__value">F · ⇧F</span></div>
+        <div class="row"><span class="row__label">Kunstlicht · Taschenlampe</span><span class="row__value">L</span></div>
         <div class="row"><span class="row__label">Nach Norden ausrichten</span><span class="row__value">N</span></div>
         <div class="row"><span class="row__label">Bildrate</span><span class="row__value">Strg/⌘ + Alt + F</span></div>
       </div>
 
       <div class="section">
         <div class="section__label">Lizenz</div>
-        <p class="hint">
-          © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0.
-          Nutzung für nichtkommerzielle Zwecke, Forschung und Lehre frei;
-          alles Weitere nach Absprache. Verwendete Fremdsoftware, allen voran
-          CesiumJS (Apache-2.0), steht in THIRD-PARTY-NOTICES.md.
-        </p>
+        <div class="row"><span class="row__label">iLEEN</span><span class="row__value">PolyForm NC 1.0.0</span></div>
+        <div class="row"><span class="row__label">Herkunft</span><span class="row__value">BIM-Labor HS Mainz</span></div>
+        <button class="btn btn--block"
+                onclick="window.ILeenHilfe && ILeenHilfe.oeffnen('rechtliches')">Lizenz im Handbuch</button>
       </div>
     `;
   },
@@ -1956,8 +2051,9 @@ const BimViewerUI = {
 
       document.getElementById('sidebarToggle')?.addEventListener('click', () => this.toggleSidebar(false));
 
+      // B, nicht mehr M: M ist seit 2026-10-19 Messen (tastenkuerzel.js).
       document.addEventListener('keydown', (e) => {
-        if (e.key !== 'm' && e.key !== 'M') return;
+        if (e.key !== 'b' && e.key !== 'B') return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
         const ziel = e.target;
         if (ziel && (ziel.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ziel.tagName))) return;
@@ -1986,6 +2082,9 @@ const BimViewerUI = {
       input.value = '';
     };
     an('loadIonAsset', 'click', loadIonAsset);
+    // Das Konto wird erst gefragt, wenn jemand ins Feld will — nicht beim
+    // Start. So geht ohne ion-Modell keine einzige Anfrage an Cesium ion.
+    an('ionAssetInput', 'focus', () => this.autoLoadIonAssets());
     an('ionAssetInput', 'keydown', (e) => {
       if (e.key === 'Enter') loadIonAsset();
     });
@@ -2043,9 +2142,6 @@ const BimViewerUI = {
     an('toggleDurchblick', 'change', (e) => BimViewer.Untergrund?.durchblickSetzen(e.target.checked));
 
     // ── Weltkulisse ───────────────────────────────────────────────────
-    const osm = an('toggleOSMBuildings', 'change', (e) => BimViewer.toggleOSMBuildings(e.target.checked));
-    if (osm && window.BimViewer) osm.checked = !!BimViewer.osmBuildings.enabled;
-
     const google = an('toggleGoogle3DTiles', 'change', async (e) => {
       await BimViewer.toggleGoogle3DTiles();
 
@@ -2059,7 +2155,7 @@ const BimViewerUI = {
     });
     if (google && window.BimViewer) google.checked = !!BimViewer.googleTiles.enabled;
 
-    // Amtliche Gebäudeebenen (RLP LoD2 …) — Schalter, wie die beiden Zeilen
+    // Amtliche Gebäudeebenen (LoD2 Deutschland …) — Schalter, wie die Zeile
     // darüber. `change` und nicht `click`: bei einem Kontrollkästchen ist der
     // Zustand erst im change-Ereignis gültig.
     an('tilesetLayersList', 'change', (e) => {
@@ -2167,8 +2263,18 @@ const BimViewerUI = {
     an('ionTokenSave', 'click', () => {
       const feld = document.getElementById('ionTokenInput');
       const gesetzt = BimViewer.setIonToken(feld ? feld.value : '');
-      if (feld) { feld.value = ''; feld.placeholder = gesetzt ? 'gesetzt' : 'nicht gesetzt'; }
-      BimViewer.updateStatus(gesetzt ? 'ion-Token gespeichert — Seite neu laden' : 'ion-Token entfernt', 'success');
+      if (feld) { feld.value = ''; feld.placeholder = gesetzt ? t('settings.keySet') : t('settings.keyUnset'); }
+      // Die Vorschlagsliste gehört zum alten Konto
+      this._ionAssetNames = null;
+      this._ionAbruf = null;
+      BimViewer.updateStatus(gesetzt ? 'ion-Token gespeichert' : 'ion-Token entfernt', 'success');
+    });
+    an('googleKeySave', 'click', () => {
+      const feld = document.getElementById('googleKeyInput');
+      const gesetzt = window.ILeenKarten ? ILeenKarten.setGoogleKey(feld ? feld.value : '') : '';
+      if (feld) { feld.value = ''; feld.placeholder = gesetzt ? t('settings.keySet') : t('settings.keyUnset'); }
+      if (window.LayerManager && LayerManager.viewer) LayerManager.updateBasemapUI();
+      BimViewer.updateStatus(gesetzt ? 'Google-Schlüssel gespeichert' : 'Google-Schlüssel entfernt', 'success');
     });
 
     // ── Darstellung ───────────────────────────────────────────────────
@@ -2268,7 +2374,7 @@ const BimViewerUI = {
     // Ein Eintrag = eine Zeile, und in der Zeile steht nur, was es **nur
     // hier** gibt: hinfliegen, ausrichten, entfernen. Notizen (eigenes
     // Panel „Notizen & Prüfung“), Baustufen (Bauzeit, Spalte „Baustufen“)
-    // und die Schnittbox (Werkzeuge › Reiter „Schnittbox“) hatten hier
+    // und die Schnittbox (heute Werkzeuge › Reiter „Schnitte“) hatten hier
     // jeweils einen zweiten Einstieg — dieselbe Sache an zwei Stellen, und
     // die Zeile wurde mit jedem Symbol enger. Alles zum Ausrichten
     // (Deckkraft, Verschieben, Drehen) liegt im Flyout, das seitlich neben
@@ -2447,6 +2553,10 @@ const BimViewerUI = {
 
         <button class="btn btn--block btn--sm" style="margin-top:12px;"
                 onclick="BimViewerUI.resetAssetTransform('${assetId}')">${t('asset.resetAll')}</button>
+        ${BimViewer.lageBackendMoeglich && BimViewer.lageBackendMoeglich(assetId) ? `
+        <button class="btn btn--block btn--sm btn--primary" style="margin-top:6px;"
+                onclick="BimViewerUI.syncAssetPosition('${assetId}', this)"
+                title="${t('asset.syncBackendHint')}">📍 ${t('asset.syncBackend')}</button>` : ''}
       </div>`;
   },
 
@@ -2512,12 +2622,41 @@ const BimViewerUI = {
     BimViewer.resetAssetTranslation(assetId);
     BimViewer.resetAssetZOffset(assetId);
     BimViewer.resetAssetRotation(assetId);
+    this._assetTransformReglerNull(assetId);
+  },
 
+  _assetTransformReglerNull(assetId) {
     for (const axis of ['east', 'north', 'up', 'heading']) {
       const slider = document.getElementById(`${axis}_slider_${assetId}`);
       const input = document.getElementById(`${axis}_input_${assetId}`);
       if (slider) slider.value = 0;
       if (input) input.value = axis === 'heading' ? '0' : '0.00';
+    }
+  },
+
+  /**
+   * Schreibt Verschiebung und Drehung als Platzierung ins Backend
+   * (lage-backend.js). Danach steckt die Lage in der Platzierung, und die
+   * Regler stehen wieder auf null — das Modell bleibt, wo es ist.
+   */
+  async syncAssetPosition(assetId, button) {
+    const zahl = (wert, stellen) => (wert >= 0 ? '+' : '−') + Math.abs(wert).toFixed(stellen);
+    const bestaetigen = ({ asset, versatz }) => confirm(t('asset.syncConfirm', {
+      name: asset.name,
+      versatz: [
+        `${t('asset.east')} ${zahl(versatz.east, 2)} m`,
+        `${t('asset.north')} ${zahl(versatz.north, 2)} m`,
+        `${t('asset.up')} ${zahl(versatz.up, 2)} m`,
+        `${t('asset.rotation')} ${zahl(versatz.heading, 1)}°`,
+      ].join(' · '),
+    }));
+
+    if (button) button.disabled = true;
+    try {
+      const ergebnis = await BimViewer.lageInsBackend(assetId, { bestaetigen });
+      if (ergebnis) this._assetTransformReglerNull(assetId);
+    } finally {
+      if (button) button.disabled = false;
     }
   },
 
@@ -2538,22 +2677,22 @@ const BimViewerUI = {
    */
   async autoLoadIonAssets() {
     const statusEl = document.getElementById('ionAssetsStatus');
-    const listEl = document.getElementById('ionAssetOptions');
-
-    if (!listEl) {
-      // Das Panel wird von createModernToolbar() gebaut; beim Start kann der
-      // Aufruf davor liegen.
-      setTimeout(() => this.autoLoadIonAssets(), 1000);
-      return;
-    }
 
     if (!BimViewer.getIonToken()) {
-      if (statusEl) statusEl.textContent = 'Kein ion-Token — unter Einstellungen eintragen';
+      if (statusEl) statusEl.textContent = t('models.ionNoToken');
       return;
     }
+    // Einmal je Konto; ein Sprachwechsel füllt über fillIonSuggestions() nach
+    if (this._ionAbruf) return this._ionAbruf;
 
     this._ionAssetNames = this._ionAssetNames || new Map();
+    if (statusEl) statusEl.textContent = t('state.loading');
 
+    this._ionAbruf = this._ionKontoLesen();
+    return this._ionAbruf;
+  },
+
+  async _ionKontoLesen() {
     try {
       const allAssets = await BimViewer.fetchAvailableAssets();
       allAssets
@@ -2561,10 +2700,11 @@ const BimViewerUI = {
         .forEach(a => this._ionAssetNames.set(a.id, a.name));
       this.fillIonSuggestions();
       console.log(`${this._ionAssetNames.size} Ion-Assets in der Vorschlagsliste`);
-
     } catch (error) {
       console.error('Failed to load Ion assets:', error);
-      if (statusEl) statusEl.textContent = t('models.ionFailed');
+      this._ionAbruf = null;   // beim nächsten Antippen erneut versuchen
+      const el = document.getElementById('ionAssetsStatus');
+      if (el) el.textContent = t('models.ionFailed');
     }
   },
 

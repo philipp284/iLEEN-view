@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!--
+  © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+  SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+  iLEEN in der Brille. Dieselben Kacheln wie im Viewer, in three.js mit WebXR
+  — Erklärung in vr.js und in CLAUDE.md, Abschnitt „VR in der Brille".
+-->
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iLEEN VR</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script src="config.js"></script>
+  <!-- EGM96-Undulation: Gelände und LoD2 kommen in NHN, Modelle stehen auf dem Ellipsoid -->
+  <script src="geoid.js"></script>
+  <!-- Für die nackten Importe innerhalb der Bibliotheken. vr.js nennt volle
+       Adressen (Vite); die Versionen hier und dort müssen gleich sein. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+    }
+  }
+  </script>
+  <link rel="stylesheet" href="vr.css">
+  <!-- Fehleranzeige, die ohne vr.js auskommt: in der Brille gibt es keine
+       Konsole. Startet das Modul nicht (Bibliothek vom CDN nicht erreichbar,
+       Skriptfehler), steht der Grund sonst nirgends. -->
+  <script>
+    (function () {
+      var fehler = [];
+      function melde(text) {
+        fehler.push(String(text).slice(0, 220));
+        var p = document.getElementById('vrHinweis');
+        if (!p) return;
+        p.hidden = false;
+        p.style.whiteSpace = 'pre-wrap';
+        p.style.textAlign = 'left';
+        p.textContent = 'Fehler beim Start:\n' + fehler.slice(-4).join('\n');
+      }
+      window.addEventListener('error', function (e) {
+        var ziel = e.target && (e.target.src || e.target.href);
+        melde(ziel ? 'nicht ladbar: ' + ziel : (e.message || 'Fehler') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        melde('abgelehnt: ' + (e.reason && (e.reason.message || e.reason)));
+      });
+      // Module scheitern an einem Import lautlos: nach 10 s ohne ILeenVR nachsehen.
+      setTimeout(function () {
+        if (window.ILeenVR) return;
+        melde('vr.js ist nicht gestartet — vermutlich ist https://cdn.jsdelivr.net aus diesem Netz nicht erreichbar.');
+        fetch('https://cdn.jsdelivr.net/npm/three@0.186.1/package.json', { mode: 'no-cors' })
+          .then(function () { melde('CDN antwortet — dann hat ein Skript einen Fehler (siehe oben).'); })
+          .catch(function () { melde('CDN nicht erreichbar.'); });
+      }, 10000);
+    })();
+  </script>
+  <script type="module" src="vr.js"></script>
+</head>
+<body>
+  <header class="vr-kopf">
+    <a class="vr-marke" href="./" title="Zurück zu iLEEN">
+      <img src="ileen-marke.svg" alt="" width="22" height="22">
+      <span>iLEEN</span>
+    </a>
+    <span class="vr-kopf__titel">in der Brille</span>
+    <span id="vrStatus" class="vr-status" role="status"></span>
+  </header>
+
+  <main class="vr-raster">
+    <aside class="vr-seite">
+      <input id="vrSuche" class="vr-suche" type="search" placeholder="Modell suchen …" autocomplete="off">
+      <div id="vrListe" class="vr-liste">Lade Modelle …</div>
+    </aside>
+
+    <section class="vr-buehne">
+      <div id="vrSzene" class="vr-szene"></div>
+
+      <div class="vr-ueber">
+        <h1 id="vrTitel" class="vr-titel">Kein Modell gewählt</h1>
+        <div class="vr-ladebalken"><div id="vrFortschritt"></div></div>
+      </div>
+
+      <div class="vr-start">
+        <!-- Am Mac: wie die Brille hierher kommt (vr.js → verbindenZeigen) -->
+        <div id="vrVerbinden" class="vr-verbinden" hidden aria-live="polite"></div>
+        <p id="vrHinweis" class="vr-hinweis" hidden></p>
+        <div class="vr-knoepfe">
+          <button id="vrKnopfVR" class="vr-knopf vr-knopf--haupt" type="button" disabled>🥽 1:1 begehen</button>
+          <button id="vrKnopfTisch" class="vr-knopf" type="button" disabled
+                  title="Verkleinert auf Tischhöhe, der Raum bleibt sichtbar (Quest 3)">🪑 Tischmodell</button>
+          <label class="vr-schalter" title="Rasterboden auf Höhe der Sohle"><input id="vrBoden" type="checkbox" checked> Raster</label>
+        </div>
+        <details class="vr-bedienung">
+          <summary>Bedienung</summary>
+          <div class="vr-bedienung__spalten">
+            <dl>
+              <dt>1:1 begehen</dt>
+              <dd><b>Linker Stick</b> gehen, drücken = schneller</dd>
+              <dd><b>Rechter Stick</b> ◀ ▶ drehen in 30°-Schritten, ▲ ▼ schweben</dd>
+              <dd><b>Abzug</b> auf Boden, Decke, Treppe: hinspringen · auf Bauteil: Info</dd>
+              <dd><b>Griff</b> Info zum Bauteil, auch zu Decken</dd>
+              <dd><b>A / X</b> zurück zum Start · <b>B / Y</b> Tablet aus/an</dd>
+              <dd><b>Strahl aufs Tablet</b> Abzug tippt, rechter Stick rollt</dd>
+            </dl>
+            <dl>
+              <dt>Tischmodell</dt>
+              <dd><b>Griff</b> Modell greifen, verschieben, drehen</dd>
+              <dd><b>Linker Stick</b> ◀ ▶ Modell drehen</dd>
+              <dd><b>Rechter Stick</b> ▲ ▼ größer / kleiner</dd>
+              <dd><b>Abzug</b> Info zum Bauteil</dd>
+              <dd><b>A / X</b> Modell wieder vor dich stellen · <b>B / Y</b> Tablet</dd>
+            </dl>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Dasselbe Tablet wie in der Brille, hier mit der Maus (vr-tablet.js) -->
+    <aside id="vrTablet" class="vr-tablet" aria-label="Tablet: Info, Ebenen, Welt, Karte, Werkzeuge"></aside>
+  </main>
+</body>
+</html>

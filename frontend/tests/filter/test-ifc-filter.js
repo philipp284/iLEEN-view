@@ -32,7 +32,10 @@ globalThis.document = {
   body: { appendChild() {} },
 };
 globalThis.Cesium = {
-  Color: Object.assign(class { }, { YELLOW: {}, fromCssColorString: () => ({}) }),
+  // LIME: features.js legt die Auswahlfarbe beim Laden an (`LIME.withAlpha`).
+  Color: Object.assign(class { }, {
+    YELLOW: {}, LIME: { withAlpha: () => ({}) }, fromCssColorString: () => ({}),
+  }),
   Cesium3DTileStyle: class { constructor(def) { this.definition = def; stile.push(def); } },
   ScreenSpaceEventHandler: class { setInputAction() {} destroy() {} },
   ScreenSpaceEventType: { LEFT_CLICK: 0, MOUSE_MOVE: 1 },

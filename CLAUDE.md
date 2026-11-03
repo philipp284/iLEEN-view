@@ -30,11 +30,13 @@ kann. Die Frage ist immer dieselbe: **steht das Werkzeug links oder rechts?**
 Daraus folgt für jede Aufgabe:
 
 * **Ein Viewer-Werkzeug ändern** (Messen, Punktwolke, Bildebenen, Rundgang,
-  Schnittbox, Explosion, Navigation) → in `~/Projekte/iLEEN` ändern, dann
-  hierher übernehmen. Die Datei ist in beiden Fassungen dieselbe.
+  Schnitt, Explosion, Navigation, Sensoren, Präsentation, Handbuch) → in
+  `~/Projekte/iLEEN` ändern, dann hierher übernehmen. Die Datei ist in beiden
+  Fassungen dieselbe.
 * **Ein Analysewerkzeug ändern oder neu bauen** (Tragwerk, GEG, Bericht,
   StaLite, Solar, Kollision, Bauplaner, Bauzeitsimulation, Flugverkehr,
-  Raumkonzept, Volumen) → **nur** `~/Projekte/iLEEN`. Es kommt nie hierher.
+  Raumkonzept, Volumen, Einsturz, Issue-Manager) → **nur** `~/Projekte/iLEEN`.
+  Es kommt nie hierher.
 * **Am Panelgerüst selbst arbeiten** (`ui.js`, `right-panel.js`) → in der
   Vollfassung, dann übernehmen. Diese beiden Dateien sind byte-identisch, und
   das ist Absicht: sie kennen kein einziges Werkzeug.
@@ -60,6 +62,7 @@ Was hier **nicht** liegt, und zwar mit Absicht:
 | Bauablauf | `konzept-*.js`, `sim4d-*.js`, `ifc-4d*.js`, `sequencing.js` |
 | Entwurf | `bauplaner-*.js`, `room-concept.js` |
 | Weiteres | `solar.js`, `stalite-tool.js`, `bericht.js`, `ifclash.js`, `flight-tracker.js` |
+| Rechts seit September | `einsturz.js`, `einsturz-panel.js` (💥), `issue-manager.js` (ISS) |
 | Aufmaß-Anhänge | `aufmass-rdf.js` (Turtle-Graph), `aufmass-mengen.js` (Mengen, CO₂) |
 
 Die beiden letzten hängen am Bauteilverzeichnis des Backends. `aufmass.js`
@@ -102,6 +105,23 @@ Server gar nicht — und der Browser-Prüfstein bekommt HTTP 200 von der
 Genau das ist beim Aufsetzen zweimal passiert (einmal die Vollfassung, einmal
 eine fremde React-App auf 5182). `tests/start/test-start.mjs` prüft deshalb als
 Erstes den Seitentitel.
+
+## Das Backend (`backend/`)
+
+Seit dem 2026-11-03 liegt das Backend **vollständig** hier — dieselben Dateien
+wie `~/Projekte/iLEEN/backend`, ohne Zuschnitt, unter AGPL-3.0
+(`backend/LICENSE`). Auch hier gilt: **geändert wird in der Vollfassung**,
+übernommen wird hierher, und zwar genau das, was dort getrackt ist:
+
+```bash
+cd ~/Projekte && git -C iLEEN archive HEAD backend | tar -x -C iLEEN-view
+```
+
+`backend/data/` ist bis auf die Demo-CSVs ausgeschlossen (`backend/.gitignore`),
+ebenso `.env`. Vor jedem Übernehmen nach Zugangsdaten suchen — das Repo ist
+öffentlich. `docker-compose.yml` bindet `../projekte/2026_1031_mainz_zwilling/…`
+als DGM1-Quelle ein; den Ordner gibt es hier nicht, Docker legt ihn leer an und
+die Route `/gelaende/dgm1` antwortet dann ohne Daten.
 
 ## Wie ein Werkzeug dazukommt
 
@@ -181,7 +201,7 @@ Die ausführliche Herleitung jedes Moduls steht in der CLAUDE.md der
 Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
 
 * **`tileset.customShader` wird nie direkt gesetzt**, immer über
-  `BimViewer.ShaderVerbund`. Rückseitenschnitt, Explosion, Schnittbox,
+  `BimViewer.ShaderVerbund`. Rückseitenschnitt, Explosion, Schnitt,
   Bildprojektion und das Kunstlicht wollen denselben einen Steckplatz.
 * **Licht kommt bei Cesium nur von der Sonne** — `scene.light` ist ein
   einzelner Steckplatz, Schattenkarten gibt es nur für ihn, und innen kommt
@@ -202,12 +222,39 @@ Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
   am `DynamicEnvironmentMapManager` sind Felder ohne Setzer — ohne
   `manager.reset()` bleibt jede Änderung stumm. Herleitung und Messwerte in der
   CLAUDE.md der Vollfassung.
-* **Der Reiter „Schnitte“ gehört ui.js, sein Inhalt den Modulen.**
-  `schnitte-xyz.js` setzt die drei Achsschnitte (Ost/Nord/Höhe durch **alle**
-  Modelle) davor, `ui-new-features-extension.js` hängt die Google-Freistellung
-  an — beide, indem sie `BimViewerUI.getDrawingContent` umschließen. Die
-  Ladereihenfolge in `index.html` bestimmt damit die Reihenfolge im Panel.
-  Der Einzelbauteil-Ausschnitt bleibt die Schnittbox im Reiter daneben.
+* **Der Reiter „Schnitte“ gehört ui.js, sein Inhalt den Modulen.** Seit
+  Oktober 2026 setzt `schnitt-karte.js` das Schnittwerkzeug davor (eine Box über
+  **alle** Modelle, beliebig viele Scheiben, die Schnittkarte oben rechts),
+  `ui-new-features-extension.js` hängt die Google-Freistellung an — beide, indem
+  sie `BimViewerUI.getDrawingContent` umschließen. `schnitt.js` hat
+  `schnitte-xyz.js` und `section-box.js` abgelöst und führt
+  `BimViewer.SectionBox` als alte Schnittstelle weiter. „Als Detail zeichnen"
+  und ◫ je Scheibe brauchen den Zeichenmodus (`plan-*.js`) und erscheinen hier
+  deshalb nicht — `schnitt-karte.js` fragt beim Aufbau des Reiters nach
+  `BimViewer.Plan2D`.
+* **Sensoren** (`sensor-store.js`, `sensor-farben.js`, `sensor-panel.js`):
+  Messwerte aus `/sensoren/stand` des Backends, Geschosse nach Messwert
+  eingefärbt. Der Knopf 📈 nutzt den Steckplatz **`aktion`** der Leiste: er
+  schaltet ein Panel über der Szene, statt die Seitenleiste aufzuklappen.
+  `sensor-farben.js` setzt keinen eigenen Stil, sondern liefert Bedingungen,
+  die `features.js` in den einen Stil des Tilesets einreiht. Ohne Backend
+  bleibt die Ablage still (eine Warnung, keine Wiederholung).
+* **Präsentation und Zustands-Registry** (`praesentation*.js`, `zustand.js`,
+  `zustand-anmelder.js`): Folien aus Kamerapose, Markdown-Text und der Szene,
+  Untergruppe im Bereich 📷 Ansicht. Die Anmelder fragen fehlende Werkzeuge
+  erst beim Aufruf ab und liefern dann nichts — der Zuschnitt ändert an ihnen
+  nichts.
+* **Erklärtexte und Handbuch** (`hinweise.js`, `hilfe.js`). Das Handbuch ist in
+  beiden Fassungen dieselbe Datei: Einträge mit **`braucht`** erscheinen nur,
+  wenn ihr Werkzeug geladen ist, und ein Kapitel ohne Einträge fällt samt
+  Navigation weg. Hier fehlen deshalb Plan, Tragwerk, Energie, Konzept und
+  Bericht, und der Anfang erklärt die rechte Leiste als Rollen statt als
+  Analysepanel. Ein neues Auswertungskapitel in der Vollfassung braucht ein
+  `braucht` — sonst steht es hier im Handbuch.
+* **📍 Lage ins Backend** (`lage-backend.js`) schreibt Verschiebung und Drehung
+  aus dem ✥-Flyout als Platzierung ins Backend — nur für Modelle mit Job-ID
+  aus dem eigenen Backend. Sein Prüfstein (`tests/lage-backend/`) bleibt in der
+  Vollfassung: er ruft die echte Placement-Route aus `backend/` auf.
 * **In der Modellzeile stehen nur 🎯, ✥ und ✕.** Notizen, Baustufen und
   Schnittbox hatten dort einen zweiten Einstieg; seit 2026-09-19 sind sie
   heraus. Baustufen gibt es in dieser Fassung ohnehin nicht (`sequencing.js`
@@ -215,6 +262,22 @@ Vollfassung — hier nur, was ohne sie nicht zu erraten ist:
 * **Bauteileigenschaften nur über `feature.getProperty()`**, nie über einen
   eigenen IFC-Parser, und nie exakt verglichen — Revit, Allplan, ArchiCAD und
   Tekla benennen dieselbe Angabe unterschiedlich und in zwei Sprachen.
+* **In gaeco läuft dieser Viewer im Rahmen.** `gaeco-bruecke.js` spricht das
+  Protokoll `ileen-gaeco/1` mit dem gaeco-Modul (das Modul selbst, der Export
+  und die Einrichtung liegen nur in der Vollfassung: `gaeco/`; der Export
+  steht im mitgelieferten `backend/`).
+  Angenommen wird nur, was vom Elternfenster kommt und von einem Origin aus
+  `ILEEN_CONFIG.gaecoOrigins`. Gebaut auf drei Stellen, die jedes Panel nutzen
+  kann: die Ereignisse `ileen:auswahl` (features.js) und `ileen:modelle`
+  (core.js) und `BimViewer.bauteilAnfliegen()`. Allein geöffnet tut die Brücke
+  nichts. In gaeco ist dieser Stand das Modul **„iLEEN-view"** (Route `/ileen-view`),
+  und zwar **ohne Vite**: der Container `ileen-view-viewer` (Compose-Projekt
+  `ileen-gaeco` in der Vollfassung, `gaeco/compose.yml`) liefert dieses
+  `frontend/` unverändert auf http://localhost:5194 aus. Deshalb gilt hier
+  weiter: kein Code, der nur unter dem Vite-Server läuft (`import.meta`,
+  npm-Importe im Browser) — sonst ist iLEEN-view in gaeco kaputt, ohne dass der
+  Dev-Server es zeigt. Prüfen: `VIEWER_URL=http://localhost:5194/ node
+  tests/start/test-start.mjs`. Beschreibung: `GAECO-INTEGRATION.md` der Vollfassung.
 * **Jede neue Datei trägt den Lizenzkopf** (`PolyForm-Noncommercial-1.0.0`).
 * **Kein Code aus `~/Projekte/CesiumJS`** — das Repo enthält Code unter fremder
   Lizenz. Die einzige Gemeinsamkeit mit anderen Cesium-Anwendungen ist
@@ -266,7 +329,29 @@ node tests/start/test-start.mjs
 
 # 4 · Das Kunstlicht — braucht denselben Dev-Server
 VIEWER_URL=http://localhost:5190/ node tests/licht/test-browser.mjs
+
+# 5 · Präsentation und Szene je Folie — derselbe Dev-Server
+node tests/zustand/test-browser.mjs
+node tests/praesentation/test-browser.mjs
+
+# 6 · Derselbe Start ohne Vite, wie gaeco ihn ausliefert (Container)
+VIEWER_URL=http://localhost:5194/ node tests/start/test-start.mjs
+
+# 7 · Die Brille (vr.html) mit nachgebildeter Quest 3 — braucht Backend + Internet
+node tests/vr/test-vr-rechnen.mjs
+VIEWER_URL=http://localhost:5194/ node tests/vr/test-vr.mjs
+VIEWER_URL=http://localhost:5194/ node tests/vr/test-vr-tablet.mjs   # Tablet, Ebenen, Welt, Karte, Werkzeuge
 ```
+
+**`vr.html` ist ein zweiter Einstieg neben `index.html`** — VR in der Brille
+(Meta Quest 3), mit three.js und `3d-tiles-renderer` vom CDN, ohne Build. Der
+Zuschnitt-Prüfstein zählt deshalb auch, was weitere Seiten laden und was deren
+Module relativ importieren (seit 2026-10-21 auch das Tablet mit Ebenen, Welt
+und Minikarte: `vr-tablet.js`, `vr-seiten.js`, `vr-ebenen.js`, `vr-welt.js`). Herleitung und Fallen: CLAUDE.md der Vollfassung,
+Abschnitt „VR in der Brille". In die Brille ohne Entwicklermodus:
+`frontend/tools/quest-wlan.sh` (HTTPS im WLAN, Port 5443). Mit
+Entwicklermodus per USB: `frontend/tools/quest.sh` (`ILEEN_PORT=5190` für den
+Vite-Server dieser Fassung).
 
 `tests/trennung/test-trennung.mjs` liest nur Dateinamen und `index.html`: liegt
 hier eine Datei, die nicht hierhergehört? Bindet `index.html` eine ein? Kennt
@@ -296,7 +381,17 @@ verfehlt.
 Eine Feinheit, die zweimal Zeit gekostet hat: `RightPanel` ist ein `const` im
 Skript-Bereich und steht **nicht** auf `window`. Eine Prüfung über
 `window.RightPanel` ist immer `undefined` und damit immer grün. Im Prüfstein
-steht deshalb der blosse Name.
+steht deshalb der blosse Name. Dieselbe Falle saß bis Oktober 2026 in der Liste
+der verbotenen Namen: `SolarPanel`, `BimLpPanel`, `IFClashPanel` und
+`RoomConceptPanel` sind ebenfalls `const` und wurden über `window[name]`
+geprüft — die Prüfung hätte nie angeschlagen. Sie läuft jetzt als
+`typeof <Name>` im Seitenkontext.
+
+Seit dem Abgleich vom Oktober 2026 prüft der Start-Prüfstein zusätzlich die
+übernommenen Werkzeuge: die Zustands-Registry liest ohne Fehler, der Reiter
+„Schnitte" trägt das Schnittwerkzeug **ohne** „Als Detail zeichnen", der
+Sensorknopf ist ein Aktionsknopf, die Präsentation hängt unter Ansicht, und das
+Handbuch nennt kein Auswertungskapitel.
 
 ## Sprache
 

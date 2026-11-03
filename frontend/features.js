@@ -457,8 +457,15 @@
           `\${${ifcPropertyName}} !== '${entity}'`);
 
         // Farben — die Hervorhebung zuerst, denn Cesium3DTileStyle nimmt die
-        // erste zutreffende Bedingung.
-        const colorConditions = hlBedingungen.slice();
+        // erste zutreffende Bedingung. Danach die Sensorfarben
+        // (`sensor-farben.js`): ein Tileset hat genau einen Stil, also müssen
+        // sie hier einsteigen statt daneben einen zweiten zu setzen — sonst
+        // löschte der nächste Filterlauf sie wieder. Die Abfrage über `window`
+        // hält den Filter lauffähig, wenn es die Datei nicht gibt.
+        const sensorBedingungen = (typeof window !== 'undefined' && window.SensorFarben
+          && typeof SensorFarben.bedingungen === 'function')
+          ? SensorFarben.bedingungen(assetData) : [];
+        const colorConditions = hlBedingungen.concat(sensorBedingungen);
         IFC_ENTITIES.forEach(e => {
           if (this.ifcFilter.enabledEntities.has(e.entity)) {
             // `ifcFarbe()` statt `e.color`: dieselbe Farbe, die auch die
@@ -627,6 +634,11 @@
   // KLICK AUF EIN BAUTEIL
   // ─────────────────────────────────────────────────────────────────────
 
+  // Das gewählte Bauteil wird nur getönt, nicht zugedeckt: liegt die IFC als
+  // halbdurchsichtige Semantikebene über Scan oder Splat, bleibt die Wirklichkeit
+  // dahinter auch am gewählten Bauteil sichtbar.
+  const AUSWAHL_FARBE = Cesium.Color.LIME.withAlpha(0.4);
+
   BimViewer.initClickHandler = function () {
     if (this._klickHandler || !this.viewer) return;
     const handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
@@ -645,9 +657,10 @@
       this._unterZeigerAusblenden(position);
       return;
     }
-    // Solange die Schnittbox auf ihr Bauteil wartet, gehört der Klick ihr:
-    // sonst öffnete derselbe Klick zusätzlich die Eigenschaftsanzeige und
-    // färbte das Bauteil ein, das gleich hinter einer Box verschwindet.
+    // Solange der Schnitt auf sein Bauteil wartet oder ein Boxgriff gezogen
+    // wird, gehört der Klick ihm: sonst öffnete derselbe Klick zusätzlich die
+    // Eigenschaftsanzeige und färbte das Bauteil ein, das gleich hinter einer
+    // Box verschwindet.
     if (this.SectionBox && this.SectionBox.faengtKlick()) {
       return;
     }
@@ -668,6 +681,7 @@
     // Die amtlichen Gebäudeebenen (layerManager.js) beantworten ihren Klick
     // selbst, mit ALKIS-Klartext statt roher Batch Table.
     if (window.LayerManager && LayerManager.tilesetLayers.some((t) => t.tileset === picked.tileset)) {
+      this._auswahlMelden(null);
       return;
     }
 
@@ -679,7 +693,7 @@
     this.selectedFeature = picked;
     try {
       this._auswahlVorher = Cesium.Color.clone(picked.color);
-      picked.color = Cesium.Color.LIME;
+      picked.color = AUSWAHL_FARBE;
     } catch (e) { /* Feature ohne Farbe (Punktwolke) */ }
 
     const properties = {};
@@ -692,6 +706,98 @@
       } catch (e) { /* einzelnes Merkmal nicht lesbar */ }
     });
     this.displayIFCProperties(properties);
+    this._auswahlMelden(this._auswahlBeschreiben(picked, properties));
+  };
+
+  // ─────────────────────────────────────────────────────────────────────
+  // DIE AUSWAHL NACH AUSSEN MELDEN
+  //
+  // Wer wissen muss, welches Bauteil gerade gewählt ist — die gaeco-Brücke
+  // (gaeco-bruecke.js), künftig jedes Panel —, hört auf `ileen:auswahl` am
+  // document, statt displayIFCProperties() zu überschreiben. Überschreiben
+  // ginge genau einmal gut: das zweite Modul, das es tut, schaltet das erste
+  // still ab.
+  //
+  // `detail` ist die Beschreibung aus _auswahlBeschreiben() oder `null`, wenn
+  // die Auswahl aufgehoben wurde. Zwei Aufhebungen hintereinander melden sich
+  // einmal: closeInfoBox() läuft bei jedem Klick ins Leere und beim Entladen
+  // eines Modells, ein Zuhörer bekäme sonst Salven von `null`.
+  // ─────────────────────────────────────────────────────────────────────
+  BimViewer._gemeldeteAuswahl = null;
+
+  BimViewer._auswahlBeschreiben = function (feature, eigenschaften) {
+    let modell = null;
+    this.loadedAssets.forEach((asset, schluessel) => {
+      if (!modell && asset.tileset && asset.tileset === feature.tileset) {
+        modell = { schluessel: String(schluessel), jobId: asset.jobId || null,
+                   name: asset.name, typ: asset.type };
+      }
+    });
+    const erstes = (namen) => {
+      for (const name of namen) {
+        const wert = eigenschaften[name];
+        if (wert !== undefined && wert !== null && wert !== '') return String(wert);
+      }
+      return null;
+    };
+    return {
+      globalId: erstes(GUID_PROPERTY_NAMES),
+      ifcType: erstes(['IfcType', 'className', 'IfcEntity']),
+      name: erstes(['Name', 'name']),
+      geschoss: erstes(['Geschoss', 'Storey', 'storey']),
+      eigenschaften: eigenschaften,
+      modell: modell,
+    };
+  };
+
+  BimViewer._auswahlMelden = function (beschreibung) {
+    const kennung = beschreibung ? (beschreibung.globalId || '') : null;
+    if (kennung === null && this._gemeldeteAuswahl === null) return;
+    this._gemeldeteAuswahl = kennung;
+    document.dispatchEvent(new CustomEvent('ileen:auswahl', { detail: beschreibung }));
+  };
+
+  // ─────────────────────────────────────────────────────────────────────
+  // ZU EINEM BAUTEIL FLIEGEN
+  //
+  // Die Hüllbox kommt aus dem Backend (`…/elements/{gid}/box`) — im Browser
+  // gibt es sie nicht, ein B3DM ist gebatcht, die Ausdehnung eines einzelnen
+  // Bauteils steckt nur verstreut in den Vertices hinter seiner Batch-ID.
+  // Gefragt wird jedes geladene Backend-Modell der Reihe nach; das erste, das
+  // die GlobalId kennt, gewinnt. Zurück kommt der Schlüssel dieses Modells,
+  // oder null, wenn keines sie kennt.
+  //
+  // Die Box ist tile-lokal (dieselbe Zentrierung wie das Tiling), also führt
+  // root.computedTransform sie nach ECEF — samt Verschiebung aus dem
+  // ✥-Flyout, weil die in der modelMatrix steckt und die in computedTransform.
+  // ─────────────────────────────────────────────────────────────────────
+  BimViewer.bauteilAnfliegen = async function (globalId, optionen) {
+    if (!globalId || !this.viewer) return null;
+    const dauer = (optionen && optionen.dauer) || 1.2;
+    const basis = this.getBackendUrl();
+    if (!basis) return null;
+    for (const [schluessel, asset] of this.loadedAssets) {
+      if (!asset.jobId || !asset.tileset || !asset.tileset.root || asset.isPointCloud) continue;
+      let box;
+      try {
+        const antwort = await fetch(basis + '/assets/' + encodeURIComponent(asset.jobId) +
+          '/elements/' + encodeURIComponent(globalId) + '/box');
+        if (!antwort.ok) continue;
+        box = await antwort.json();
+      } catch (e) {
+        continue;
+      }
+      this._disableWalkAndFly();
+      const mitte = Cesium.Matrix4.multiplyByPoint(
+        asset.tileset.root.computedTransform,
+        new Cesium.Cartesian3(box.center[0], box.center[1], box.center[2]),
+        new Cesium.Cartesian3());
+      const halb = Math.max(1.5, 0.75 * Math.hypot(box.size[0], box.size[1], box.size[2]));
+      this.viewer.camera.flyToBoundingSphere(
+        new Cesium.BoundingSphere(mitte, halb), { duration: dauer });
+      return String(schluessel);
+    }
+    return null;
   };
 
   BimViewer._auswahlZuruecksetzen = function () {
@@ -743,6 +849,7 @@
     const panel = document.getElementById('infoBoxPanel');
     if (panel) panel.classList.remove('visible');
     this._auswahlZuruecksetzen();
+    this._auswahlMelden(null);
   };
 
   // ─────────────────────────────────────────────────────────────────────

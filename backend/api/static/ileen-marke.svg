@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="iLEEN">
+  <!--
+    iLEEN — Marke der linken Aktivitätsleiste
+    © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0
+    SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+    Bewusst schwarz auf durchsichtigem Grund: `.activity-logo img` in style.css
+    legt `filter: invert(1)` darüber, damit die Marke auf der dunklen Leiste
+    weiß erscheint. Ein farbiges oder hinterlegtes Zeichen würde dort
+    umschlagen — das ist der Grund, warum dies nicht einfach favicon.svg ist.
+
+    Bis hierher stand an dieser Stelle `bim-labor-logo.png`. Die Datei gab es
+    in keiner der beiden Fassungen; die Leiste holte sich bei jedem Start eine
+    404 und zeigte das Bruchbild des Browsers.
+  -->
+  <!-- Punkt und Stamm des kleinen i -->
+  <rect x="5" y="4" width="4" height="4" rx="1"/>
+  <rect x="5" y="10" width="4" height="18" rx="1"/>
+  <!-- Das L, dessen Fuß die Grundlinie trägt -->
+  <path d="M13 4h4v20h9v4H13z"/>
+</svg>

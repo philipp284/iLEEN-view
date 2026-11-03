@@ -14,8 +14,9 @@
 import { defineConfig } from 'vite';
 import cesium from 'vite-plugin-cesium';
 import { sessionApiPlugin } from './server/session-api.js';
+import { leereKachelnPlugin } from './server/leere-kacheln.js';
 
 export default defineConfig({
   server: { port: 5190, strictPort: true },
-  plugins: [cesium(), sessionApiPlugin()],
+  plugins: [cesium(), sessionApiPlugin(), leereKachelnPlugin()],
 });

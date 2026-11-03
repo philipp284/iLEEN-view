@@ -42,12 +42,17 @@ const VERBOTENE_DATEIEN = [
   'solar-panel.js', 'bimlp-panel.js', 'stalite-tool.js', 'geg-tool.js',
   'bericht.js', 'tragwerk-panel.js', 'volumen-panel.js',
   'tragwerk-ergebnisse.css', 'werkzeuge-auswertung.css',
+  // seit der Trennung dazugekommen: Einsturz (💥) und der Issue-Manager (ISS)
+  'einsturz-panel.js', 'einsturz.js', 'einsturz.css',
+  'issue-manager.js', 'issue-manager.css',
   // linke Seite — Gruppen und eigene Bereiche
-  'ifclash-panel.js', 'room-concept-panel.js', 'bauplaner-panel.js',
-  'konzept-panel.js', 'ifc-4d-panel.js',
+  'ifclash-panel.js', 'bauplaner-panel.js',
+  'konzept-panel.js', 'ifc-4d-panel.js', 'plan-panel.js',
   // Rechenkerne dahinter
-  'solar.js', 'ifclash.js', 'room-concept.js', 'flight-tracker.js',
-  'tragwerk-ergebnisse.js', 'volumen.js', 'plan-bauteil.js',
+  'solar.js', 'ifclash.js', 'flight-tracker.js',
+  'tragwerk-ergebnisse.js', 'tragwerk-eingriffe.js', 'volumen.js', 'plan-2d.js',
+  'plan-bauteil.js', 'fe-browser.js', 'geg-huelle.js', 'sequencing.js',
+  'aufmass-rdf.js', 'aufmass-mengen.js',
 ];
 
 const gefunden = VERBOTENE_DATEIEN.filter((d) => existsSync(join(FRONTEND, d)));
@@ -88,11 +93,29 @@ pruefe('jedes eingebundene Stylesheet liegt hier', fehlendeStyles.length === 0,
 // schadet nicht im Betrieb, liegt aber im öffentlichen Repo — und genau so ist
 // `tragwerk-ergebnisse.css` hier liegengeblieben, nachdem ihr `<link>` schon
 // entfernt war.
+//
+// Eingebunden ist auch, was eine weitere Seite neben index.html lädt (vr.html
+// → vr.js, vr.css) und was ein eingebundenes Modul relativ importiert
+// (vr.js → vr-rechnen.js).
 const AUSNAHMEN = new Set(['vite.config.js', 'config.js', 'config.example.js']);
+const erreicht = new Set([...eingebunden, ...stylesheets]);
+for (const seite of readdirSync(FRONTEND).filter((f) => f.endsWith('.html') && f !== 'index.html')) {
+  const text = readFileSync(join(FRONTEND, seite), 'utf8');
+  for (const m of text.matchAll(/<script[^>]+src="([^"]+)"/g)) erreicht.add(m[1]);
+  for (const m of text.matchAll(/<link[^>]+href="([^"]+)"/g)) erreicht.add(m[1]);
+}
+const offen = [...erreicht].filter((f) => lokal(f) && f.endsWith('.js'));
+while (offen.length) {
+  const datei = join(FRONTEND, offen.pop());
+  if (!existsSync(datei)) continue;
+  for (const m of readFileSync(datei, 'utf8').matchAll(/(?:from|import\s*\()\s*['"]\.\/([^'"]+\.js)['"]/g)) {
+    if (!erreicht.has(m[1])) { erreicht.add(m[1]); offen.push(m[1]); }
+  }
+}
 const verwaist = readdirSync(FRONTEND)
   .filter((f) => /\.(js|css)$/.test(f))
   .filter((f) => !AUSNAHMEN.has(f))
-  .filter((f) => !eingebunden.includes(f) && !stylesheets.includes(f));
+  .filter((f) => !erreicht.has(f));
 pruefe('keine verwaiste Datei im Frontend', verwaist.length === 0,
   'bindet niemand ein: ' + verwaist.join(', '));
 

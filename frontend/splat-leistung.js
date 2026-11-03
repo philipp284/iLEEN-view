@@ -38,6 +38,10 @@
 //
 // Bedienung:
 //   SplatLeistung.an(viewer, { zielFps: 60 })  /  .aus()  /  .stand()
+//   SplatLeistung.einstellen({ sseMax, sseMin, sseStart, aufloesungMin })
+//     — wirkt sofort und gilt auch für ein späteres an(); so hängt das
+//     Punktwolken-Menü seine Regler daran (BimViewer.applySplatSettings).
+//   SplatLeistung.festsetzen(viewer, sse) — fester Bildschirmfehler ohne Regler
 //
 // Gemessen in #8 (frontend/tests/splat-bench/, Konfiguration „adaptiv").
 // ===============================
@@ -60,6 +64,10 @@
   };
 
   var zustand = null;
+  // Was der Nutzer gestellt hat. Steht außerhalb von `zustand`, weil das Menü
+  // einstellt, bevor das erste Splat-Tileset geladen ist — und `an()` ruft
+  // `aus()`, das den Zustand verwirft.
+  var eingestellt = {};
 
   function splatTilesets(viewer) {
     var liste = [];
@@ -113,6 +121,7 @@
     var fps = z.bilder / z.summe;
     z.fps = fps;
     z.summe = 0; z.bilder = 0;
+    if (typeof window.SplatLeistung.beiMessung === 'function') window.SplatLeistung.beiMessung(stand());
     if (t < z.gesperrtBis) return;
     if (!splatTilesets(z.viewer).length) {
       // Kein Splat mehr in der Szene: zurückgeben, was genommen wurde.
@@ -131,7 +140,7 @@
 
   function an(viewer, optionen) {
     aus();
-    var o = Object.assign({}, VORGABE, optionen || {});
+    var o = Object.assign({}, VORGABE, eingestellt, optionen || {});
     var z = {
       viewer: viewer, o: o, sse: o.sseStart, aufloesungMax: viewer.resolutionScale,
       letztes: null, summe: 0, bilder: 0, jetzt: 0, gesperrtBis: 0,
@@ -159,6 +168,29 @@
   }
 
   /**
+   * Stellschrauben ändern, während der Regler läuft oder bevor er läuft.
+   * Die Grenzen werden sofort durchgesetzt: sinkt `sseMax` unter den
+   * aktuellen Wert, geht der Bildschirmfehler gleich dorthin zurück, und
+   * steigt `aufloesungMin` über die aktuelle Auflösung, steigt sie mit.
+   */
+  function einstellen(teil) {
+    Object.assign(eingestellt, teil || {});
+    if (!zustand) return;
+    var z = zustand;
+    Object.assign(z.o, teil || {});
+    if (z.o.sseMin > z.o.sseMax) z.o.sseMin = z.o.sseMax;
+    sseSetzen(z, z.sse);
+    if (z.viewer.resolutionScale < z.o.aufloesungMin && z.o.aufloesungMin <= z.aufloesungMax) {
+      z.viewer.resolutionScale = z.o.aufloesungMin;
+    }
+  }
+
+  /** Fester Bildschirmfehler an allen Splat-Tilesets (ohne Regler). */
+  function festsetzen(viewer, sse) {
+    splatTilesets(viewer).forEach(function (t) { t.maximumScreenSpaceError = sse; });
+  }
+
+  /**
    * Neue Obergrenze für resolutionScale — wenn die Darstellungsstufe
    * wechselt (core.js → applyPerformanceSettings). Sonst gäbe `aus()` später
    * den Wert der alten Stufe zurück.
@@ -183,6 +215,7 @@
 
   window.SplatLeistung = {
     an: an, aus: aus, stand: stand, aufloesungBasis: aufloesungBasis, VORGABE: VORGABE,
+    einstellen: einstellen, festsetzen: festsetzen, beiMessung: null,
     aktiv: function () { return !!zustand; },
   };
 })();

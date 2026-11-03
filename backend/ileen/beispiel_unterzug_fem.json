@@ -1,0 +1,375 @@
+{
+  "schema": "ileen.plan.fem/1.0",
+  "erzeugt": "2026-08-17T10:00:00.000Z",
+  "einheiten": {
+    "laenge": "m",
+    "kraft": "kN",
+    "flaechenlast": "kN/m2",
+    "spannung": "kN/m2"
+  },
+  "plan": {
+    "job_id": "beispiel-unterzug",
+    "titel": "Hallendecke mit Unterzug — Beispiel",
+    "modell": "beispiel_unterzug.ifc",
+    "mode": "grundriss",
+    "ansicht": "aufsicht",
+    "massstab": 100,
+    "ebene_ursprung": [
+      0,
+      0,
+      3.6
+    ],
+    "bounds": [
+      -0.5,
+      -0.5,
+      12.5,
+      8.5
+    ]
+  },
+  "system": [
+    {
+      "id": "P1",
+      "umriss": [
+        [
+          0,
+          0
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          8
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "flaeche_m2": 96.0,
+      "dicke_m": 0.2,
+      "material": {
+        "name": "C30/37",
+        "E_kNm2": 33000000,
+        "nu": 0.2,
+        "wichte_kNm3": 25
+      },
+      "bezug": {
+        "raum": null,
+        "name": "Hallendecke über EG"
+      }
+    }
+  ],
+  "lastfaelle": [
+    {
+      "id": "g1",
+      "name": "Eigenlast Tragwerk",
+      "art": "G",
+      "farbe": "#3f6fa8",
+      "gamma": 1.35,
+      "gammaInf": 1.0,
+      "psi0": 1.0,
+      "psi1": 1.0,
+      "psi2": 1.0
+    },
+    {
+      "id": "g2",
+      "name": "Ausbaulast",
+      "art": "G",
+      "farbe": "#6f9ac8",
+      "gamma": 1.35,
+      "gammaInf": 1.0,
+      "psi0": 1.0,
+      "psi1": 1.0,
+      "psi2": 1.0
+    },
+    {
+      "id": "q1",
+      "name": "Nutzlast Lager",
+      "art": "Q",
+      "kategorie": "E1",
+      "farbe": "#c0392b",
+      "gamma": 1.5,
+      "gammaInf": 0,
+      "psi0": 1.0,
+      "psi1": 0.9,
+      "psi2": 0.8
+    }
+  ],
+  "lasten": [
+    {
+      "id": "L1",
+      "typ": "flaeche",
+      "lastfall": "g2",
+      "wert": 1.5,
+      "richtung": [
+        0,
+        0,
+        -1
+      ],
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          8
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "L2",
+      "typ": "flaeche",
+      "lastfall": "q1",
+      "wert": 5.0,
+      "richtung": [
+        0,
+        0,
+        -1
+      ],
+      "kategorie": "E1",
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          4
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "L3",
+      "typ": "flaeche",
+      "lastfall": "q1",
+      "wert": 5.0,
+      "richtung": [
+        0,
+        0,
+        -1
+      ],
+      "kategorie": "E1",
+      "polygon": [
+        [
+          0,
+          4
+        ],
+        [
+          12,
+          4
+        ],
+        [
+          12,
+          8
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          4
+        ]
+      ]
+    }
+  ],
+  "auflager": [
+    {
+      "id": "AW1",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          0,
+          0
+        ],
+        [
+          12,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "AW2",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "AW3",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          12,
+          8
+        ],
+        [
+          0,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "AW4",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "IW1",
+      "typ": "linie",
+      "art": "gelenkig",
+      "federsteifigkeit_kNm2": null,
+      "polylinie": [
+        [
+          6,
+          3.4
+        ],
+        [
+          6,
+          4.6
+        ]
+      ]
+    }
+  ],
+  "unterzuege": [
+    {
+      "id": "U1",
+      "polylinie": [
+        [
+          0,
+          4
+        ],
+        [
+          12,
+          4
+        ]
+      ],
+      "breite_m": 0.3,
+      "hoehe_m": 0.6,
+      "richtung": "unten"
+    }
+  ],
+  "positionen": [
+    {
+      "id": "D1",
+      "querschnitt": "d = 20 cm",
+      "material": "C30/37",
+      "beschreibung": "Hallendecke, einachsig auf den Unterzug gespannt",
+      "anker": [
+        3.0,
+        2.0
+      ],
+      "bauteile": [
+        "4Ab7Cd9Ef2Gh5Ij8Kl3Mn"
+      ]
+    },
+    {
+      "id": "U1",
+      "querschnitt": "b/h = 30/60 cm",
+      "material": "C30/37",
+      "beschreibung": "Unterzug in Deckenmitte, zweifeldrig über die Mittelwand",
+      "anker": [
+        6.0,
+        4.35
+      ],
+      "bauteile": [
+        "7Zx6Yw5Vu4Ts3Rq2Po1Nm"
+      ]
+    },
+    {
+      "id": "W1",
+      "querschnitt": "b/h = 24/120 cm",
+      "material": "C30/37",
+      "beschreibung": "Wandscheibe unter dem Unterzug, Mittelauflager",
+      "anker": [
+        6.0,
+        3.55
+      ],
+      "bauteile": [
+        "5Qr4St3Uv2Wx1Yz0Ab9Cd"
+      ]
+    }
+  ],
+  "bauteile": [
+    {
+      "global_id": "4Ab7Cd9Ef2Gh5Ij8Kl3Mn",
+      "typ": "IfcSlab",
+      "name": "Hallendecke über EG",
+      "geschoss": "EG"
+    },
+    {
+      "global_id": "7Zx6Yw5Vu4Ts3Rq2Po1Nm",
+      "typ": "IfcBeam",
+      "name": "Unterzug UZ-01",
+      "geschoss": "EG"
+    },
+    {
+      "global_id": "5Qr4St3Uv2Wx1Yz0Ab9Cd",
+      "typ": "IfcWall",
+      "name": "Innenwand IW-01",
+      "geschoss": "EG"
+    }
+  ],
+  "netz": {
+    "elementgroesse_m": 0.1,
+    "lagen_ueber_dicke": 2
+  },
+  "hinweise": [
+    "Beispielmodell des Repos für Abschnitt 19 — ein Unterzug über zwei Felder. Wind und Schiefstellung werden im Notebook ergänzt."
+  ]
+}

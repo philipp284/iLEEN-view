@@ -1,0 +1,87 @@
+# Web Framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.20
+
+# MinIO S3 Client
+minio==7.2.15
+
+# Semantic Extraction
+lancedb==0.22.0
+sentence-transformers==3.4.1
+httpx==0.28.1
+# ohne [all]: easyocr/tesseract werden hier nicht gebraucht, da nur
+# textbasierte Formate (IFC/OBJ/GLTF) indexiert werden — spart ~2 GB Image
+kreuzberg==4.9.5
+
+# Tiling — IFC
+ifcopenshell==0.8.5
+
+# Tiling — Punktwolken (LAS/LAZ via laspy, PLY via plyfile — kein open3d nötig)
+py3dtiles[las,ply]==12.1.1
+
+# Tiling — Mesh (leichtgewichtig, kein GDAL nötig)
+trimesh==4.6.10
+numpy==2.2.5
+
+# Bauzeichnungen (tiling/section.py) — Flächenverschnitt der Schnittfiguren.
+# Kam bisher nur als transitive Abhängigkeit herein; seit die Schnittebene
+# Polygone mit Löchern liefert, wird sie direkt benutzt und gehört gepinnt.
+shapely==2.1.2
+
+# Tiling — IFC-Materialtexturen (Bilder verkleinern in scripts/fetch_textures.py)
+Pillow==11.1.0
+
+# Scan2BIM — Umrisse der erkannten Objekte (`measure.find_contours`) und die
+# Achse des Bauzauns (`morphology.skeletonize`). Beides ließe sich von Hand
+# nachbauen; ein Marching-Squares und eine Skelettierung selbst zu schreiben,
+# nur um ein Standardpaket zu sparen, wäre aber der falsche Tausch.
+scikit-image==0.25.2
+
+# PLY lesen (für 3DGS-Splats)
+plyfile==1.1.0
+
+# PDF-Import im Zeichenmodus (tiling/pdf2svg.py) — nur zum Vermessen der
+# Seite (MediaBox), die eigentliche Umwandlung macht das apt-Paket `pdf2svg`
+# (poppler + cairo, siehe docker/Dockerfile.api).
+pymupdf==1.26.4
+
+# Statik aus dem Zeichenmodus (ileen/) — Plattenberechnung nach EC2.
+# jax-fem liefert Elementkerne und Assemblierung, JAX rechnet sie; gelöst wird
+# mit SciPy (eine Zerlegung, viele Lastfälle — siehe ileen/loeser.py).
+# jax[cpu]: im Container gibt es keine GPU, und die CUDA-Wheels sind ~2 GB.
+# jax-fem ist GPL-3 und wird deshalb als Abhängigkeit installiert, nicht in
+# dieses Repository kopiert.
+# Zur Version: 0.0.11 ist der Stand, gegen den `ileen` entwickelt wurde; 0.0.12
+# hat `gauss_order` in `quadrature_order` umbenannt und einen Teil der
+# Geometriegrößen von NumPy auf JAX umgestellt. `loeser.Loeser` übergibt keinen
+# der beiden Namen und rührt die Geometriegrößen nicht an, deshalb tragen beide
+# Stände — geprüft mit einem vollständigen Lauf gegen 0.0.12. Beim Anheben der
+# Version die Signatur von `Problem` und die Felder `I/J/V` prüfen.
+jax[cpu]==0.6.2
+jax-fem==0.0.12
+scipy==1.15.3
+# jax-fem deklariert im Wheel *keine* Requires-Dist — sämtliche Abhängigkeiten
+# stehen deshalb hier, sonst scheitert erst der erste Rechenlauf am Import.
+# basix, gmsh und meshio zieht `jax_fem.generate_mesh` auf Modulebene herein,
+# pyfiglet das Paket selbst (es druckt beim Import ein Banner).
+fenics-basix==0.10.0
+meshio==5.3.5
+pyfiglet==1.0.4
+# gmsh gibt es auf PyPI nur für Linux-x86_64 und macOS-arm64 — für
+# Linux-arm64 (Apple Silicon, Graviton) existiert kein Wheel. Der Rechenweg
+# braucht es nicht (siehe ileen/shims/gmsh.py); wo es Wheels gibt, wird es
+# trotzdem installiert, damit plate.vernetze_gmsh() dort funktioniert.
+gmsh==4.15.2; platform_machine == "x86_64"
+# Ergebnisbilder (ileen/zeichnen.py); Agg-Backend, kein Display nötig
+matplotlib==3.10.8
+
+# Sensorstrom über gaecos Kafka-Broker (ileen/sensor_kafka.py). Reines
+# asyncio, keine C-Bibliothek — auf arm64 ohne Bauwerkzeuge installierbar.
+aiokafka==0.12.0
+
+# Utilities
+python-dotenv==1.1.0
+pydantic==2.11.4
+aiofiles==24.1.0
+pyarrow==19.0.1

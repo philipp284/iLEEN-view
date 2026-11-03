@@ -7,6 +7,9 @@
  * Gelände trägt sie, und welche amtliche Gebäudekulisse steht darauf. Das
  * Panel dazu baut ui.js (`getLayerManagerContent`); diese Datei füllt dessen
  * Behälter `#basemapList`, `#terrainList` und `#tilesetLayersList`.
+ *
+ * Keine der drei Listen braucht Cesium ion. Woher die Quellen kommen, steht
+ * in kartenquellen.js (Karten, Gebäude, Suche) und gelaende.js (Gelände).
  */
 'use strict';
 
@@ -22,19 +25,17 @@
 
     // ── Amtliche Gebäudekulisse ────────────────────────────────────────
     //
-    // Die Liste ist leer, und das ist eine Entscheidung, keine Lücke.
+    // Seit Oktober 2026 steht hier LoD2 Deutschland aus basemap.de 3D — die
+    // LoD2-Gebäude aller Länder als ein Dienst, Ersatz für OSM Buildings aus
+    // Cesium ion. Der Eintrag kommt aus kartenquellen.js (`lod2Deutschland()`)
+    // und wird in `init()` angehängt.
     //
     // Bis September 2026 stand hier die selbst gerechnete LoD2-Kachel von
     // Mainz (`data/rlp-lod2/`, erzeugt mit `backend/scripts/citygml2tiles.py`).
-    // Sie ist herausgenommen worden: die Kachel deckt zwei Quadratkilometer ab,
-    // liegt als 9 MB im Auslieferungsstand und zeigt überall sonst nichts —
-    // eine Gebäudekulisse, die nur an einer Stelle Gebäude hat, ist für einen
-    // ausgelieferten Viewer eine Fehlbedienung mit Ansage. OSM Buildings und
-    // Google 3D Tiles darüber beantworten dieselbe Frage flächendeckend.
-    //
-    // Die Maschinerie bleibt vollständig: `enableTileset()` lädt jedes
-    // 3D-Tiles-Gebäudeset, `ALKIS_DACHFORM` übersetzt die Dachform, und der
-    // Klick liest die Batch Table. Ein neuer Datensatz ist ein Eintrag hier:
+    // Sie deckte zwei Quadratkilometer ab und ist herausgenommen; die
+    // Maschinerie bleibt: `enableTileset()` lädt jedes 3D-Tiles-Gebäudeset,
+    // `ALKIS_DACHFORM` übersetzt die Dachform, und der Klick liest die
+    // Eigenschaften. Ein weiterer Datensatz ist ein Eintrag hier:
     //
     //   { id: 'rlp-lod2', name: 'RLP LoD2', nameEN: 'RLP LoD2 Buildings',
     //     description: 'Gebäudemodelle Rheinland-Pfalz (CityGML, Open Data)',
@@ -43,73 +44,92 @@
     //     credit: 'Landesamt für Vermessung und Geobasisinformation '
     //           + 'Rheinland-Pfalz — dl-de/by-2-0' }
     //
-    // `heightOffset` ist dabei 0, wenn der Konverter die Normalhöhen schon
-    // über die EGM96-Undulation auf den Ellipsoid gerechnet hat (das tut
-    // citygml2tiles.py). Ein Dienst, der Normalhöhen ausliefert, braucht dort
-    // einen Aufschlag.
+    // Höhenbezug: `heightOffset: 0`, wenn die Kacheln schon auf dem Ellipsoid
+    // stehen (citygml2tiles.py rechnet die Undulation ein). Ein Dienst mit
+    // Normalhöhen bekommt `hoehenbezug: 'nhn'` — dann führt
+    // `ILeenKarten.geoidNachfuehren()` die Undulation am Blickpunkt nach. Ein
+    // pauschaler `heightOffset` in Metern bleibt für Dienste mit festem Versatz.
     tilesetLayers: [],
 
     // ── Start ──────────────────────────────────────────────────────────
 
+    /**
+     * Listen füllen und die Grundkarte legen. Gibt das Versprechen der
+     * Grundkarte zurück, damit core.js erst danach „bereit" meldet.
+     */
     init(viewer) {
       this.viewer = viewer;
+      const K = window.ILeenKarten;
 
-      this.basemaps = [
-        { id: 'bing-aerial', name: 'Luftbild (Bing)', laden: () => Cesium.IonImageryProvider.fromAssetId(2) },
-        { id: 'bing-labels', name: 'Luftbild mit Beschriftung', laden: () => Cesium.IonImageryProvider.fromAssetId(3) },
-        { id: 'bing-roads', name: 'Straßenkarte (Bing)', laden: () => Cesium.IonImageryProvider.fromAssetId(4) },
+      this.basemaps = K ? K.grundkarten() : [
         { id: 'osm', name: 'OpenStreetMap',
-          laden: async () => new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }) },
-        { id: 'sentinel', name: 'Sentinel-2', laden: () => Cesium.IonImageryProvider.fromAssetId(3954) },
-        { id: 'none', name: 'Keine Karte', laden: null }
+          laden: async () => [{ anbieter: new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }) }] },
+        { id: 'none', name: 'Keine Karte', laden: async () => [] }
       ];
 
+      // Das Gelände vom Start wird weiterverwendet: es hat seinen Bestand
+      // schon gelesen, ein Wechsel zurück soll nicht erneut beim BKG fragen.
+      const start = viewer.terrainProvider;
+      const eigenes = window.ILeenGelaende && start instanceof window.ILeenGelaende.Provider ? start : null;
+      this._gelaende = eigenes;
       this.terrains = [
-        { id: 'world', name: 'Cesium World Terrain',
-          // `requestWaterMask` wie in core.js — sonst verlöre ein Wechsel des
-          // Geländes das Wasser, das beim Start noch da war.
-          laden: () => Cesium.createWorldTerrainAsync({ requestVertexNormals: true, requestWaterMask: true }) },
+        { id: 'gelaende', name: 'DGM5 Deutschland, sonst Terrain Tiles',
+          laden: async () => this._gelaende || (this._gelaende = await window.ILeenGelaende.erzeugen()) },
         { id: 'ellipsoid', name: 'Ohne Gelände (Ellipsoid)',
           laden: async () => new Cesium.EllipsoidTerrainProvider() }
       ];
+      this.aktivesGelaende = eigenes ? 'gelaende' : 'ellipsoid';
 
-      // Was core.js beim Anlegen des Viewers gesetzt hat
-      this.aktiveKarte = 'bing-aerial';
-      this.aktivesGelaende = viewer.terrainProvider instanceof Cesium.EllipsoidTerrainProvider
-        ? 'ellipsoid' : 'world';
+      if (K && !this.tilesetLayers.some((t) => t.id === 'lod2-de')) {
+        this.tilesetLayers.unshift(K.lod2Deutschland());
+      }
 
+      this.aktiveKarte = null;
       this.populateUI();
+      return this.switchBasemap(this.basemaps[0].id);
     },
 
     // ── Karte ──────────────────────────────────────────────────────────
 
     async switchBasemap(id) {
+      const K = window.ILeenKarten;
+      id = (K && K.KARTE_FRUEHER[id]) || id;   // Zustände aus der ion-Zeit
       const ziel = this.basemaps.find((b) => b.id === id);
       if (!ziel || !this.viewer) return;
       const ebenen = this.viewer.imageryLayers;
       try {
-        // Die Grundkarte ist immer die unterste Ebene; Überlagerungen darüber
-        // bleiben unberührt.
-        if (ebenen.length > 0 && ebenen.get(0)._ileenGrundkarte !== false) {
-          ebenen.remove(ebenen.get(0), true);
+        // Erst laden, dann tauschen: scheitert Google, bleibt die alte Karte stehen
+        const teile = await ziel.laden();
+        for (let i = ebenen.length - 1; i >= 0; i--) {
+          const ebene = ebenen.get(i);
+          if (ebene._ileenGrundkarte) ebenen.remove(ebene, true);
         }
-        if (ziel.laden) {
-          const anbieter = await ziel.laden();
-          const ebene = ebenen.addImageryProvider(anbieter, 0);
+        // Die Grundkarte ist immer unten; Überlagerungen darüber bleiben
+        // unberührt. Eine Grundkarte kann aus mehreren Ebenen bestehen
+        // (Luftbild: Sentinel-2 und die DOP der Länder darüber).
+        teile.forEach((teil, i) => {
+          const ebene = new Cesium.ImageryLayer(teil.anbieter, teil.optionen || {});
           ebene._ileenGrundkarte = true;
-        }
+          ebenen.add(ebene, i);
+        });
         this.aktiveKarte = id;
         this.updateBasemapUI();
         this.viewer.scene.requestRender();
+        // Google-Satellit kommt aus dem EWR nur über ion — das soll man sehen
+        const hinweis = teile.map((teil) => teil.hinweis).find(Boolean);
+        if (hinweis) BimViewer.updateStatus(ziel.name + ' ' + hinweis, 'info');
       } catch (fehler) {
         console.error('Karte nicht verfügbar:', fehler);
-        BimViewer.updateStatus(ziel.name + ' nicht verfügbar', 'error');
+        BimViewer.updateStatus(fehler && /Google/.test(fehler.message) ? fehler.message : ziel.name + ' nicht verfügbar',
+                               'error');
       }
     },
 
     // ── Gelände ────────────────────────────────────────────────────────
 
     async switchTerrain(id) {
+      const K = window.ILeenKarten;
+      id = (K && K.GELAENDE_FRUEHER[id]) || id;
       const ziel = this.terrains.find((g) => g.id === id);
       if (!ziel || !this.viewer) return;
       try {
@@ -133,9 +153,12 @@
     },
 
     _auswahlZeilen(liste, aktiv, name, aufruf) {
+      const ohneSchluessel = !(window.ILeenKarten && ILeenKarten.googleKey());
       return liste.map((eintrag) =>
-        '<label class="row layer-choice">' +
-          '<span class="row__label">' + eintrag.name + '</span>' +
+        '<label class="row layer-choice"' +
+          (eintrag.google && ohneSchluessel ? ' title="Braucht einen Google-Schlüssel (Einstellungen › Kartendienste)"' : '') + '>' +
+          '<span class="row__label">' + eintrag.name +
+            (eintrag.google && ohneSchluessel ? ' <span class="unit">Schlüssel fehlt</span>' : '') + '</span>' +
           '<input type="radio" name="' + name + '" value="' + eintrag.id + '"' +
             (eintrag.id === aktiv ? ' checked' : '') +
             ' onchange="LayerManager.' + aufruf + '(this.value)">' +
@@ -183,6 +206,9 @@
       9999: 'Sonstiges'
     },
 
+    /** `surface` aus basemap.de 3D in Klartext. */
+    FLAECHE: { roof: 'Dach', wall: 'Wand', bridge: 'Brücke' },
+
     /** `3100` → `Satteldach (3100)`; unbekannte Schlüssel bleiben unverändert. */
     alkisKlartext(code, tabelle) {
       if (code === undefined || code === null || code === '') return null;
@@ -210,11 +236,17 @@
         });
         this.viewer.scene.primitives.add(entry.tileset);
 
-        // Pauschaler Höhenaufschlag NHN → Ellipsoid. Nur für Dienste nötig,
-        // die ihre Kacheln mit Normalhöhen ausliefern; die selbst erzeugte
-        // RLP-Ebene bringt den Bezug schon im `root.transform` mit
-        // (heightOffset: 0), siehe backend/scripts/citygml2tiles.py.
-        if (entry.heightOffset) {
+        // Unter Google 3D Tiles stünde dasselbe Haus zweimal im Bild
+        const sichtbar = () => !(BimViewer.googleTiles && BimViewer.googleTiles.enabled);
+
+        // NHN → Ellipsoid. `hoehenbezug: 'nhn'` (basemap.de): die Undulation
+        // wird am Blickpunkt nachgeführt — über Deutschland ändert sie sich um
+        // mehr als zehn Meter, ein fester Wert stimmte nur an einer Stelle.
+        // `heightOffset` bleibt für Dienste mit festem Versatz; die selbst
+        // erzeugte RLP-Ebene bringt den Bezug schon im `root.transform` mit.
+        if (entry.hoehenbezug === 'nhn' && window.ILeenKarten) {
+          entry._geoidAb = ILeenKarten.geoidNachfuehren(this.viewer, entry.tileset, sichtbar);
+        } else if (entry.heightOffset) {
           const mitte = Cesium.Cartographic.fromCartesian(entry.tileset.boundingSphere.center);
           const unten = Cesium.Cartesian3.fromRadians(mitte.longitude, mitte.latitude, 0);
           const oben = Cesium.Cartesian3.fromRadians(mitte.longitude, mitte.latitude, entry.heightOffset);
@@ -222,10 +254,18 @@
           entry.tileset.modelMatrix = Cesium.Matrix4.fromTranslation(translation);
         }
 
-        // Kein `Cesium3DTileStyle` für die Einfärbung nach Flächentyp: die
-        // RLP-Kacheln tragen die Farbe als Vertexfarbe, eine Batch-ID ist dort
-        // das *Gebäude*. Ein Style über `surfaceType` fände nichts und würde
-        // über seinen `true`-Zweig alles einheitlich übermalen.
+        if (entry.hoehenbezug !== 'nhn') entry.tileset.show = sichtbar();
+
+        // Ein Stil nur, wo der Eintrag einen mitbringt. Die RLP-Kacheln tragen
+        // ihre Farbe als Vertexfarbe, eine Batch-ID ist dort das *Gebäude*;
+        // ein Stil über die Fläche fände nichts und übermalte über seinen
+        // `true`-Zweig alles einheitlich. basemap.de führt `surface` je Fläche.
+        if (entry.stil) entry.tileset.style = new Cesium.Cesium3DTileStyle(entry.stil);
+        // Gebäude, die der Bauplaner aus LoD2 übernommen hat, weichen dem geplanten Haus (bauplaner-lod2.js)
+        if (entry.id === 'lod2-de' && window.BauplanerLod2) BauplanerLod2.ausblendenAnwenden();
+        if (BimViewer._currentPerformanceSettings && BimViewer.applySettingsToTileset) {
+          BimViewer.applySettingsToTileset(entry.tileset, BimViewer._currentPerformanceSettings);
+        }
 
         if (entry.credit && this.viewer.creditDisplay && this.viewer.creditDisplay.addStaticCredit) {
           entry._credit = new Cesium.Credit(entry.credit);
@@ -241,6 +281,8 @@
           var picked = self.viewer.scene.pick(movement.position);
           if (!(picked instanceof Cesium.Cesium3DTileFeature)) return;
           if (picked.tileset !== layerTileset) return;
+          // Während der Bauplaner ein Gebäude aus LoD2 übernimmt, ist der Klick eine Auswahl, keine Abfrage
+          if (window.BauplanerLod2 && BauplanerLod2.waehlt()) return;
 
           var lies = function (name) {
             var v = picked.getProperty(name);
@@ -254,9 +296,9 @@
           var hoehe  = lies('measuredHeight');
           var geschosse = lies('storeys');
           var name   = lies('name');
-          var surf   = lies('surfaceType');   // nur bei Diensten mit Flächen-Batches
+          var surf   = lies('surfaceType') || self.FLAECHE[lies('surface')] || lies('surface');
 
-          if (gmlId)     props['ALKIS-ID'] = gmlId;
+          if (gmlId)     props[entry.hoehenbezug === 'nhn' ? 'Gebäude-ID' : 'ALKIS-ID'] = gmlId;
           if (fn)        props['ALKIS-Funktionsschlüssel'] = fn;
           if (roof)      props['Dachform'] = roof;
           if (hoehe)     props['Gebäudehöhe'] = parseFloat(hoehe).toFixed(2) + ' m';
@@ -294,6 +336,10 @@
       if (entry.clickHandler) {
         entry.clickHandler.destroy();
         entry.clickHandler = null;
+      }
+      if (entry._geoidAb) {
+        entry._geoidAb();
+        entry._geoidAb = null;
       }
       if (entry.tileset && this.viewer) {
         this.viewer.scene.primitives.remove(entry.tileset);   // zerstört das Tileset mit

@@ -1,0 +1,232 @@
+# Projektname explizit, nicht aus dem Ordnernamen abgeleitet: der hieße im
+# Monorepo schlicht "backend" und würde damit auch die Volume-Präfixe ändern.
+name: ileen
+
+services:
+
+  # ── MinIO: S3-kompatibler File Storage ──────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: cesium-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO Setup: Buckets anlegen ─────────────────────────────────────────────
+  minio-setup:
+    image: minio/mc:latest
+    container_name: cesium-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+        mc mb --ignore-existing local/uploads;
+        mc mb --ignore-existing local/tiles;
+        mc mb --ignore-existing local/semantic;
+        mc anonymous set download local/tiles;
+        echo 'Buckets ready.';
+      "
+    restart: "no"
+
+  # ── CesiumBackend API (inkl. Kreuzberg direkt im Container) ─────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: cesium-api
+    ports:
+      - "8100:8100"
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_SECURE: "false"
+      LANCE_DB_PATH: /data/lancedb
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      # Standard: Tiles über den API-Proxy ausliefern (CORS ist dort offen).
+      # Für direkten MinIO-Zugriff auf http://localhost:9000/tiles umstellen.
+      TILES_PUBLIC_URL: ${TILES_PUBLIC_URL:-http://localhost:8100/tiles}
+      # Referenzpunkt, an dem lokal koordinierte Modelle verortet werden
+      TILESET_ORIGIN_LON: ${TILESET_ORIGIN_LON:-8.2599}
+      TILESET_ORIGIN_LAT: ${TILESET_ORIGIN_LAT:-49.9929}
+      # Höhenbezug: terrain (über Gelände) | msl (über NHN) | ellipsoid (roh).
+      # Achtung beim Update bestehender Installationen: eine .env, die noch
+      # TILESET_ORIGIN_HEIGHT als Ellipsoidhöhe meint, muss mitgezogen werden.
+      TILESET_ORIGIN_HEIGHT_REFERENCE: ${TILESET_ORIGIN_HEIGHT_REFERENCE:-terrain}
+      TILESET_ORIGIN_HEIGHT: ${TILESET_ORIGIN_HEIGHT:-0}
+      GEOID_UNDULATION_M: ${GEOID_UNDULATION_M:-47.6}
+      ELEVATION_API_URL: ${ELEVATION_API_URL:-https://api.open-meteo.com/v1/elevation}
+      # Optional: CRS der Punktwolken-Quelldaten, z.B. EPSG:25832 (UTM32N).
+      # Gesetzt = py3dtiles georeferenziert selbst, leer = ENU am Referenzpunkt.
+      POINTCLOUD_CRS_IN: ${POINTCLOUD_CRS_IN:-}
+      # Lokale Geländereferenz (siehe tiling/terrain.py): Zellgröße des
+      # Höhenrasters und Obergrenze eingelesener Punkte vor dem Ausdünnen.
+      TERRAIN_GRID_RESOLUTION_M: ${TERRAIN_GRID_RESOLUTION_M:-2.0}
+      TERRAIN_GRID_MAX_POINTS: ${TERRAIN_GRID_MAX_POINTS:-4000000}
+      # Splat-Training: die Warteschlange liegt als Verzeichnis auf dem Host, der Worker
+      # (splatwerk/worker.py) liest und schreibt dort. Siehe CLAUDE.md, „Splat-Training“.
+      ILEEN_TRAINING_DIR: /data/training
+      # Obergrenze der Surfels beim Umrechnen eines Laserscans (Upload mit „als Splat“)
+      SCAN_SPLAT_MAX: ${SCAN_SPLAT_MAX:-6000000}
+      # Gaussian Splats: Gesamtszene und Splats je Tile
+      SPLAT_MAX_POINTS: ${SPLAT_MAX_POINTS:-6000000}
+      SPLAT_TILE_POINTS: ${SPLAT_TILE_POINTS:-250000}
+      SPLAT_MAX_SCALE_RATIO: ${SPLAT_MAX_SCALE_RATIO:-0.05}
+      # Splat-LOD (#8): zusammengeführte Eltern, Tilegröße, Reduktion je Ebene,
+      # Hüllkasten, Reihenfolge, SH-Grad, Auslichten — Werte siehe .env.example
+      SPLAT_LOD: ${SPLAT_LOD:-hlod}
+      SPLAT_HLOD_TILE_POINTS: ${SPLAT_HLOD_TILE_POINTS:-100000}
+      SPLAT_MERGE_FAKTOR: ${SPLAT_MERGE_FAKTOR:-4}
+      SPLAT_BOX_SIGMA: ${SPLAT_BOX_SIGMA:-3}
+      SPLAT_MORTON: ${SPLAT_MORTON:-1}
+      SPLAT_JSON_KOMPAKT: ${SPLAT_JSON_KOMPAKT:-1}
+      SPLAT_SH_GRAD: ${SPLAT_SH_GRAD:-0}
+      SPLAT_MIN_OPACITY: ${SPLAT_MIN_OPACITY:-0}
+      SPLAT_MIN_SCALE: ${SPLAT_MIN_SCALE:-0}
+      SPLAT_FLOATER: ${SPLAT_FLOATER:-0}
+      # IFC: Tile-Größe, Octree-Tiefe, Threads, Welding, Property-Sets
+      IFC_TILE_TRIANGLES: ${IFC_TILE_TRIANGLES:-150000}
+      IFC_MAX_DEPTH: ${IFC_MAX_DEPTH:-8}
+      IFC_JOBS: ${IFC_JOBS:-0}
+      IFC_WELD_VERTICES: ${IFC_WELD_VERTICES:-true}
+      IFC_EXTRACT_PSETS: ${IFC_EXTRACT_PSETS:-true}
+      IFC_EXCLUDE_TYPES: ${IFC_EXCLUDE_TYPES:-IfcOpeningElement,IfcSpace,IfcVirtualElement,IfcAnnotation,IfcGrid}
+      # Lokale Kopien der properties.sqlite für die Bauteilabfrage
+      PROPERTIES_CACHE: /tmp/properties
+      # Flugverkehr (api/routes/flug.py). Ohne Zugangsdaten fragt der Proxy
+      # anonym — dieselben Daten, aber 400 statt 4 000 Credits am Tag.
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
+      OPENSKY_POLL_S: ${OPENSKY_POLL_S:-}
+      OPENSKY_CACHE_TTL_S: ${OPENSKY_CACHE_TTL_S:-}
+      # Themenablage (api/routes/issues.py). Vorläufig SQLite; die Datenhaltung
+      # soll später über Kafka in gaeco liegen.
+      ILEEN_ISSUES_DB: ${ILEEN_ISSUES_DB:-/data/issues/issues.db}
+      # Messwerte der Sensoren (api/routes/sensoren.py). Vorläufig SQLite
+      # (Entscheidung E2); später eine echte Zeitreihen-Datenbank.
+      ILEEN_SENSOR_DB: ${ILEEN_SENSOR_DB:-/data/sensoren/zeitreihe.db}
+      # Sensorstrom über gaecos Broker (ileen/sensor_kafka.py, Entscheidung E8).
+      # Im Containernetz heißt der Broker `gaeco-broker:29092`, von außen
+      # `localhost:9092`.
+      #
+      # Abschalten:  ILEEN_KAFKA_BROKER= docker compose up -d api
+      #
+      # **Ohne Doppelpunkt**, `${…-…}` statt `${…:-…}`: mit Doppelpunkt ersetzt
+      # Compose auch eine *leer gesetzte* Variable durch den Vorgabewert — der
+      # Zuhörer ließe sich dann nicht abschalten, obwohl das Modul es kann. So
+      # greift der Vorgabewert nur, wenn die Variable ganz fehlt.
+      ILEEN_KAFKA_BROKER: ${ILEEN_KAFKA_BROKER-gaeco-broker:29092}
+      ILEEN_KAFKA_TOPIC: ${ILEEN_KAFKA_TOPIC:-ileen.sensor.messwerte}
+      # Modell → gaeco-Graph (api/routes/gaeco.py) über denselben Broker. Der
+      # Index sagt, welche Klassen und Property-Namen gaecos IFC-Guideline
+      # kennt; ohne ihn gehen nur die Attribute mit. Erzeugt von
+      # `python3 gaeco/einrichten.py` (oder scripts/gaeco_guideline_index.py).
+      ILEEN_GAECO_GUIDELINE_INDEX: ${ILEEN_GAECO_GUIDELINE_INDEX:-/data/gaeco/ifc_guideline_index.json}
+      # World Labs Atlas (api/routes/atlas.py). Der Schlüssel kommt aus der Datei,
+      # die `worldlabs auth login` auf dem Mac anlegt (Volume unten) — gelesen bei
+      # jedem Aufruf, eine Anmeldung wirkt also ohne Neustart. WLT_API_KEY in der
+      # .env ginge vor, wie bei der CLI; leer heißt: die Datei gilt.
+      WLT_API_KEY: ${WLT_API_KEY:-}
+      WORLDLABS_API_ORIGIN: ${WORLDLABS_API_ORIGIN:-https://api.atlas-beta.worldlabs.ai}
+      WORLDLABS_CREDENTIALS_DIR: /run/worldlabs
+    volumes:
+      - ./data/lancedb:/data/lancedb
+      - ./data/uploads:/tmp/uploads
+      # Warteschlange des Splat-Trainings. Bind-Mount, weil der Worker auf dem Mac-Host
+      # dieselben Dateien lesen und schreiben muss; ein benanntes Volume wäre für ihn
+      # unsichtbar. Enthält Ergebnisse von Stunden Rechenzeit.
+      - ./data/training:/data/training
+      # Element-, Raum- und Geschossverzeichnisse der Bauzeichnung. Sie zu
+      # verlieren ist teuer: der Aufbau liest die gesamte Modellgeometrie und
+      # dauert beim Campusmodell rund zweieinhalb Minuten. Ohne dieses Volume
+      # läge der Cache im Container-Dateisystem und wäre nach jedem
+      # `docker compose up --build` wieder leer — der erste Grundriss nach
+      # jedem Deploy also erneut minutenlang. Der Inhalt ist klein (wenige MB
+      # je Modell) und jederzeit neu berechenbar.
+      - section_cache:/tmp/section
+      # Themen (BCF-Issues) samt Verlauf. Eine SQLite-Datei, und das einzige
+      # Volume mit Daten, die nirgendwo sonst stehen: Tiles lassen sich neu
+      # rechnen, ein Bautagebuch nicht. Liegt bewusst nicht in MinIO — SQLite
+      # springt in der Datei umher, über S3 ginge das nur mit Range-Requests
+      # je Seite.
+      - ./data/issues:/data/issues
+      # Messwerte. Neu berechenbar, solange sie aus dem Generator stammen —
+      # sobald echte Sensoren liefern, sind sie es nicht mehr.
+      - ./data/sensoren:/data/sensoren
+      # Nutzungsprotokoll und Ansichtsvorlagen des Viewers (api/routes/nutzung.py).
+      # Nicht neu berechenbar. Bis dieses Volume am Container hängt, legt
+      # ileen/nutzung.py unter /data/issues/nutzung ab und zieht danach um.
+      - ./data/nutzung:/data/nutzung
+      # Der Guideline-Index für den gaeco-Export. Abgeleitet aus gaecos
+      # ifc4_3.guideline und deshalb nicht im Repo (data/ ist ignoriert).
+      - ./data/gaeco:/data/gaeco:ro
+      # DGM1 Rheinland-Pfalz für /gelaende/dgm1 (api/routes/gelaende.py), nur lesend: die
+      # 1-m-Originale (31 GB, aus dem Projekt Mainz-Zwilling) und die Übersichten 8/32/128 m
+      # (scripts: projekte/2026_1031_mainz_zwilling/skripte/dgm1_uebersichten.py).
+      - ../projekte/2026_1031_mainz_zwilling/arbeit/dgm1_rlp:/data/dgm1_rlp:ro
+      - ./data/dgm1:/data/dgm1:ro
+      # Schlüssel der World-Labs-CLI (eine Datei je API-Adresse, Modus 600), nur
+      # lesend. Nie ins Repo, nie in den Browser: das Backend ist die einzige
+      # Stelle, die ihn benutzt. Fehlt das Verzeichnis, legt Docker es leer an —
+      # dann meldet /atlas/status „kein Schlüssel", bis man sich anmeldet.
+      - ${HOME}/.config/worldlabs/credentials:/run/worldlabs:ro
+      # Modell-Cache, damit all-MiniLM-L6-v2 nicht bei jedem Neustart lädt
+      - hf_cache:/root/.cache/huggingface
+      # Die Oberfläche des Asset-Managers direkt aus dem Arbeitsverzeichnis.
+      # Sie liegt zwar auch im Image, aber eine Änderung daran wäre sonst erst
+      # nach `docker compose build` zu sehen — und ein Bedienelement, das man
+      # gerade eingebaut hat und im Browser nicht findet, sucht man zuerst im
+      # eigenen Code statt im Bauvorgang. Im Betrieb ohne dieses Repo greift
+      # weiterhin der Stand aus dem Image.
+      - ./api/static:/app/api/static:ro
+    # Zwei Netze: das eigene für MinIO, dazu gaecos `gaeco-local`, in dem der
+    # Broker hängt. Ohne das zweite ist `gaeco-broker:29092` nicht auflösbar —
+    # die beiden Stacks stünden nebeneinander, ohne sich zu sehen. `external`,
+    # weil gaeco das Netz anlegt und besitzt.
+    networks:
+      - default
+      - gaeco-local
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  # Von gaeco angelegt (~/Projekte/gaeco), hier nur mitbenutzt.
+  gaeco-local:
+    external: true
+
+volumes:
+  # Namen fest verdrahtet statt vom Compose-Projekt abgeleitet: das sind die
+  # Bestandsvolumes aus dem alten CesiumBackend-Repo (Stand 2026-08-14: 42,8 GB
+  # Tiles/Uploads). Ohne die Festlegung legte das Monorepo leere Volumes an und
+  # alle Assets wären scheinbar verschwunden. Nicht umbenennen, ohne die Daten
+  # vorher umzukopieren — `docker volume rename` gibt es nicht.
+  # Compose warnt beim Start, die Volumes seien für Projekt "cesiumbackend"
+  # angelegt worden — das ist genau die Absicht und kein Fehler. Nicht auf
+  # `external: true` umstellen: dann würde ein frischer Server sie nicht mehr
+  # selbst anlegen.
+  minio_data:
+    name: cesiumbackend_minio_data
+  hf_cache:
+    name: cesiumbackend_hf_cache
+  section_cache:

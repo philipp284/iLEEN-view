@@ -10,12 +10,25 @@
  * Laufzeit überschreiben, ohne diese Datei anzufassen.
  */
 window.ILEEN_CONFIG = {
-  // Cesium-ion-Zugriffsschlüssel. Ohne ihn fehlen Weltgelände, Luftbild und
-  // die ion-Assets; Modelle aus dem eigenen Backend laden trotzdem.
+  // Cesium-ion-Zugriffsschlüssel — nur noch für Modelle im eigenen ion-Konto.
+  // Karte, Gelände, Gebäude und Suche kommen ohne ion (kartenquellen.js,
+  // gelaende.js); ohne Token fehlt nur das Feld „Cesium Ion" im Modell-Panel.
   // Zur Laufzeit überschreibbar: localStorage 'ileen_ion_token'.
   ionToken: '',
 
+  // Google Maps Platform für Luftbild/Karte (2D Tiles), Photorealistic 3D
+  // Tiles und die Google-Suche. Im Cloud-Projekt des Schlüssels müssen
+  // „Map Tiles API" und „Geocoding API" freigeschaltet sein. Leer → iLEEN-view
+  // läuft mit amtlichen und freien Quellen, die Google-Einträge melden das.
+  // Zur Laufzeit überschreibbar: localStorage 'ileen_google_key'.
+  googleMapsKey: '',
+
   // Eigenes Backend (backend/). Zur Laufzeit im Modelle-Panel überschreibbar
   // (localStorage 'ileen_backend_url'). Leer → Backend-Teil inaktiv.
-  backendUrl: 'http://localhost:8100'
+  backendUrl: 'http://localhost:8100',
+
+  // Wer iLEEN-view als Modul einbetten und fernsteuern darf (gaeco-bruecke.js):
+  // die Origins des gaeco Plugin Host. Zur Laufzeit ergänzbar über
+  // localStorage 'ileen_gaeco_origins' (kommagetrennt).
+  gaecoOrigins: ['http://localhost:5000']
 };

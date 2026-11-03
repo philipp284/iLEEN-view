@@ -1,0 +1,8 @@
+# Zusätzliche Abhängigkeiten für Splat-Umrechnung und -Export. Eigene Datei und eigener
+# Docker-Layer, damit eine Änderung hier nicht den großen Layer aus requirements.txt
+# (JAX, torch, sentence-transformers) neu bauen lässt.
+
+# LAZ-Backend für laspy. Fehlte lange: `py3dtiles[las]` zieht laspy, aber kein
+# Entpackprogramm für .laz, und jeder LAZ-Upload scheiterte erst im Tiling mit
+# „No LazBackend selected“. Rust-Wheel, auch für Linux-arm64.
+lazrs==0.8.2

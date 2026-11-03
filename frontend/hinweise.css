@@ -1,0 +1,67 @@
+/* © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+   SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+   iLEEN — Erklärtexte als Sprechblase
+
+   Die Erklärtexte standen bisher als Absätze zwischen den Bedienelementen.
+   In einem Panel von 320 px Breite kostet jeder dieser Absätze drei bis fünf
+   Zeilen, und beim Suchen nach einem Schalter liest man an ihnen entlang,
+   statt sie zu lesen. `hinweise.js` nimmt sie aus dem Fluss und zeigt sie
+   hier — beim Überfahren des Bedienelements, zu dem sie gehören.
+
+   Wird nach design-system.css geladen und verwendet dessen Marken. */
+
+/* Der ausgeblendete Erklärtext bleibt im DOM: Module, die ihn zur Laufzeit
+   neu beschriften, sollen ihn weiter finden, und die Sprechblase liest ihren
+   Text bei jedem Öffnen frisch daraus. Nur sehen soll man ihn nicht mehr. */
+.ileen-hinweis--verborgen {
+  display: none !important;
+}
+
+.ileen-tip {
+  position: fixed;
+  z-index: 100000;
+  top: 0;
+  left: 0;
+  max-width: 300px;
+  padding: 8px 10px;
+  border: 1px solid var(--ds-border-strong, rgba(255, 255, 255, .2));
+  border-radius: var(--ds-radius, 6px);
+  background: #1c1f22;
+  color: var(--text-primary, #e8e8e8);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-line;   /* mehrere Erklärtexte am selben Ziel: Leerzeile dazwischen */
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+  pointer-events: none;    /* die Blase darf den Zeiger nie abfangen */
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 110ms ease, transform 110ms ease;
+}
+
+.ileen-tip.is-offen {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Auszeichnungen, die in den Erklärtexten vorkommen — <strong>, <code>, <b>.
+   Der Text wird als HTML übernommen, weil viele Hinweise einen Fachbegriff
+   hervorheben; ohne diese Regeln fiele die Hervorhebung in der Blase weg. */
+.ileen-tip strong,
+.ileen-tip b {
+  color: var(--ds-accent, #97BF0D);
+  font-weight: 600;
+}
+
+.ileen-tip code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .08);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+}
+
+.ileen-tip a {
+  color: var(--ds-info, #4ea3ff);
+}

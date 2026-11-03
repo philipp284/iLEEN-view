@@ -23,11 +23,19 @@
  *
  * Was während des Messens passiert
  * ================================
- * - Der Zeiger springt auf Ecken, Kanten und Silhouetten (`aufmass-fang.js`).
- *   Das Fadenkreuz steht auf dem gefangenen Punkt, nicht auf der Maus — der
- *   Systemzeiger wird ausgeblendet, damit man nur einen von beiden sieht.
- * - Jedes Maß steht mittig an seiner Maßlinie und rechnet mit, solange sich
- *   der Zeiger bewegt. Die Fläche steht im Schwerpunkt des Polygons.
+ * - Der Zeiger ist der Systemzeiger und bleibt es. Er wird nicht ausgeblendet
+ *   und nicht nachgezeichnet: ein Zeiger, den die Seite selbst malt, läuft der
+ *   Hand um die Dauer der Rechnung hinterher — im Messmodus waren das 16 bis
+ *   120 ms, und genau das war das „sperrige" Messen.
+ * - Gefangen wird nicht bei jeder Mausbewegung, sondern wenn der Zeiger ruht
+ *   (`RUHE_MS`) und beim Klick. Dazwischen wird nichts gelesen. Was der Fang
+ *   gefunden hat (`aufmass-fang.js`), zeigt das Ablesefeld unten links —
+ *   Ecke, Kante, Fläche, dazu das Bauteil — und die Szene: eine Kante als
+ *   Strecke, eine Ecke als Ring. Im Umkreis von ca. einem Zentimeter am Schirm
+ *   zieht eine Kante oder Ecke den Punkt an sich.
+ * - Jedes Maß steht mittig an seiner Maßlinie. Die Fläche steht im Schwerpunkt
+ *   des Polygons. Die Maße rechnen mit, sobald der Fang einen Punkt gefunden
+ *   hat; während der Zeiger fährt, zeigt die Maßlinie nur die gesetzten Punkte.
  * - Jeder Klick geht als Tripel in den Graphen (`aufmass-rdf.js`): Koordinate,
  *   Fangart, Trefferart und — wenn ein Bauteil getroffen wurde — dessen
  *   GlobalId, IFC-Klasse und Name.
@@ -43,7 +51,8 @@
  *
  * Bedienung
  * =========
- *   Klick          Punkt setzen
+ *   Zeiger ruhen   zeigt, worauf der Klick fangen würde
+ *   Klick          Punkt setzen (fängt an der Stelle, auf die der Zeiger zeigt)
  *   Doppelklick    abschließen
  *   Rechtsklick    abschließen
  *   Enter          abschließen
@@ -60,12 +69,26 @@
   const GRUEN = '#97BF0D';
   const BLAU = '#4DA6FF';
 
-  // Fang und Vorschau kosten je Auswertung fünfundzwanzig Tiefenabfragen.
-  // Wie oft das geht, hängt an der Szene — deshalb wird nicht auf eine feste
-  // Frequenz gedrosselt, sondern auf das Doppelte der zuletzt gemessenen
-  // Dauer. In einer leichten Szene läuft die Vorschau damit mit dem Bild, in
-  // einer schweren wird sie träge, statt das Bild mit herunterzuziehen.
-  const PAUSE_MIN = 16, PAUSE_MAX = 120;
+  // Ein Fang kostet bis zu hundertdreißig Tiefenabfragen und zwei Pick-
+  // Durchgänge. Er läuft deshalb nicht bei jeder Mausbewegung, sondern
+  //   - wenn der Zeiger RUHE_MS stillsteht, oder
+  //   - bei langsamer Fahrt alle `warte` ms, damit das Ablesefeld nicht stehen
+  //     bleibt. `warte` ist das Achtfache der zuletzt gemessenen Dauer — in
+  //     einer schweren Szene wird der Fang seltener, statt das Bild zu bremsen —
+  //     und bleibt zwischen WARTE_MIN und WARTE_MAX.
+  // Während eine Maustaste gedrückt ist (die Kamera wird bewegt) läuft er gar nicht.
+  const RUHE_MS = 90;
+  const WARTE_MIN = 250, WARTE_MAX = 900;
+
+  // So weit darf der Zeiger vom Ort der letzten Auswertung wegrücken, bis ihr
+  // Ergebnis nichts mehr aussagt. Darunter bleibt die Markierung stehen, darüber
+  // verschwindet sie, bis der Fang neu gesehen hat.
+  const ZEIGER_TOL = 6;
+
+  // Länge der Kantenmarke zu jeder Seite des gefangenen Punktes, in Bildpunkten.
+  const MARKE_PX = 60;
+
+  const AMBER = '#FF9F1C';
 
   const Z = {
     aktiv: false,
@@ -84,9 +107,19 @@
     handler: null,
     tastatur: null,
     hud: null,
-    kreuz: null,
-    pause: 24,
-    letzteAuswertung: 0,
+    // Zeiger und Fang. `zeigerPos` ist, wo der Zeiger zuletzt gesehen wurde;
+    // `fangPos` ist, wo er stand, als `fang` ermittelt wurde. Ist `fangPos`
+    // null, gilt `fang` nicht (mehr).
+    zeigerPos: null,
+    fangPos: null,
+    hoverBauteil: null, // das Bauteil unter dem Fang, ohne Mengen (kein HTTP)
+    svg: null,          // Zeichnung der Fangmarkierung über der Leinwand, siehe hoverZeigen()
+    timer: null,        // wartet auf die Ruhe des Zeigers
+    serieStart: 0,      // seit wann der Zeiger in diesem Zug fährt
+    letzteSuche: 0,
+    warte: WARTE_MIN,
+    gedrueckt: false,   // Maustaste unten: die Kamera wird bewegt
+    abbau: [],          // Funktionen, die stop() aufräumen
     schnittAn: false,
     // Ob eine fertige Fläche das topografische Aufmaß (`volume-topo.js`) von
     // selbst anstößt. An, weil die Frage nach dem Volumen bei einer Fläche
@@ -117,10 +150,12 @@
       grundEntities();
     }
     hudAnlegen();
-    viewer.scene.canvas.style.cursor = 'none';
+    // Der Systemzeiger bleibt, nur seine Form ändert sich. Ihn auszublenden und
+    // nachzuzeichnen hieß, ihn der Rechnung hinterherlaufen zu lassen.
+    viewer.scene.canvas.style.cursor = 'crosshair';
 
     Z.handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-    Z.handler.setInputAction((m) => zeiger(m.endPosition), Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+    Z.handler.setInputAction((m) => zeigerBewegt(m.endPosition), Cesium.ScreenSpaceEventType.MOUSE_MOVE);
     Z.handler.setInputAction((e) => klickAn(e.position), Cesium.ScreenSpaceEventType.LEFT_CLICK);
     Z.handler.setInputAction(() => { zurueck(); abschluss(); }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
     Z.handler.setInputAction(() => abschluss(), Cesium.ScreenSpaceEventType.RIGHT_CLICK);
@@ -134,7 +169,27 @@
     };
     window.addEventListener('keydown', Z.tastatur);
 
-    melden('Klicken setzt Punkte · Enter schließt ab · Esc verwirft');
+    // Eine gedrückte Maustaste heißt: die Kamera wird bewegt, und der Fang hat
+    // dann nichts zu suchen. Die Kamera selbst meldet Anfang und Ende ihrer
+    // Fahrt (auch beim Zoomen am Rad, wo keine Taste im Spiel ist): bei
+    // Anfang ist die Markierung falsch, bei Ende wird neu hingesehen.
+    const runter = () => { Z.gedrueckt = true; };
+    const hoch = () => { if (Z.gedrueckt) { Z.gedrueckt = false; suchePlanen(); } };
+    const canvas = viewer.scene.canvas;
+    canvas.addEventListener('pointerdown', runter);
+    window.addEventListener('pointerup', hoch);
+    window.addEventListener('pointercancel', hoch);
+    window.addEventListener('blur', hoch);
+    const ab1 = viewer.camera.moveStart.addEventListener(() => hoverLeeren());
+    const ab2 = viewer.camera.moveEnd.addEventListener(() => { if (Z.zeigerPos) suchePlanen(); });
+    Z.abbau.push(
+      () => canvas.removeEventListener('pointerdown', runter),
+      () => window.removeEventListener('pointerup', hoch),
+      () => window.removeEventListener('pointercancel', hoch),
+      () => window.removeEventListener('blur', hoch),
+      ab1, ab2);
+
+    melden('Klicken setzt Punkte · Zeiger kurz ruhig halten zeigt Ecke oder Kante · Enter schließt ab');
     if (window.BimViewerUI && BimViewerUI.aufmassStand) BimViewerUI.aufmassStand();
     console.log('📐 Aufmaß an');
     return true;
@@ -144,11 +199,15 @@
     if (!Z.aktiv) return;
     Z.aktiv = false;
     abbrechen();
+    if (Z.timer) { clearTimeout(Z.timer); Z.timer = null; }
+    hoverLeeren();
+    Z.abbau.splice(0).forEach((f) => { try { if (typeof f === 'function') f(); } catch (e) { /* schon weg */ } });
+    Z.gedrueckt = false; Z.zeigerPos = null;
+    if (Z.svg) { Z.svg.remove(); Z.svg = null; }
     if (Z.handler) { Z.handler.destroy(); Z.handler = null; }
     if (Z.tastatur) { window.removeEventListener('keydown', Z.tastatur); Z.tastatur = null; }
     if (BimViewer.viewer) BimViewer.viewer.scene.canvas.style.cursor = '';
     if (Z.hud) Z.hud.style.display = 'none';
-    if (Z.kreuz) Z.kreuz.style.display = 'none';
     if (window.BimViewerUI && BimViewerUI.aufmassStand) BimViewerUI.aufmassStand();
     console.log('📐 Aufmaß aus');
   }
@@ -157,22 +216,70 @@
 
   // ══ Zeiger ════════════════════════════════════════════════════════════════
 
-  function zeiger(pos) {
-    if (!Z.aktiv || !pos) return;
-    const jetzt = performance.now();
-    if (jetzt - Z.letzteAuswertung < Z.pause) return;
-    Z.letzteAuswertung = jetzt;
+  /** Was der Fang über die laufende Messung wissen muss. */
+  const fangKontext = () => ({ anker: Z.anker, punkte: Z.punkte.map((p) => p.ecef) });
 
+  /** Der Fang an einer Stelle — ohne etwas zu zeigen oder zu merken. */
+  function fangen(pos) {
+    return window.AufmassFang ? AufmassFang.fang(pos, fangKontext()) : rohPunkt(pos);
+  }
+
+  /**
+   * Fängt an `pos`, merkt das Ergebnis und zeigt es: Markierung in der Szene,
+   * Maßlinie, Ablesefeld. Das ist die einzige Stelle, an der gefangen wird —
+   * vom Ruhen des Zeigers und vom Klick aus.
+   */
+  function auswerten(pos) {
     const t0 = performance.now();
-    const treffer = window.AufmassFang
-      ? AufmassFang.fang(pos, { anker: Z.anker, punkte: Z.punkte.map((p) => p.ecef) })
-      : rohPunkt(pos);
-    Z.pause = Math.min(PAUSE_MAX, Math.max(PAUSE_MIN, 2 * (performance.now() - t0)));
-
+    const treffer = fangen(pos);
     Z.fang = treffer;
+    Z.fangPos = Cesium.Cartesian2.clone(pos);
     Z.vorschau = treffer ? treffer.position : null;
-    kreuzSetzen(treffer ? treffer.bildschirm : pos, treffer);
+    Z.hoverBauteil = treffer ? bauteilAn(treffer, pos) : null;
+    hoverZeigen(treffer);
     hudSchreiben();
+    Z.letzteSuche = performance.now();
+    Z.warte = Math.min(WARTE_MAX, Math.max(WARTE_MIN, 8 * (Z.letzteSuche - t0)));
+    return treffer;
+  }
+
+  /**
+   * Der Zeiger hat sich bewegt. Das kostet genau nichts, außer einem Zeitgeber:
+   * gelesen wird erst, wenn er ruht.
+   */
+  function zeigerBewegt(pos) {
+    if (!Z.aktiv || !pos) return;
+    Z.zeigerPos = Cesium.Cartesian2.clone(pos);
+    if (Z.gedrueckt) return;
+    // Wer vom gefangenen Punkt weggeht, hat ihn verlassen: die Markierung
+    // würde sonst auf etwas zeigen, worauf der Klick nicht mehr fängt.
+    if (Z.fangPos && abstandPx(Z.fangPos, pos) > ZEIGER_TOL) hoverLeeren();
+    suchePlanen();
+  }
+
+  function suchePlanen() {
+    if (!Z.aktiv || !Z.zeigerPos) return;
+    const jetzt = performance.now();
+    if (!Z.timer) Z.serieStart = jetzt; else clearTimeout(Z.timer);
+    Z.timer = null;
+    // Bei langer Fahrt kommt der Zeitgeber nie zum Ablauf. Dann wird zwischen-
+    // durch nachgesehen, damit das Ablesefeld nicht einfriert.
+    if (jetzt - Math.max(Z.serieStart, Z.letzteSuche) >= Z.warte) { hoverPruefen(); return; }
+    Z.timer = setTimeout(hoverPruefen, RUHE_MS);
+  }
+
+  function hoverPruefen() {
+    Z.timer = null;
+    if (!Z.aktiv || !Z.zeigerPos || Z.gedrueckt) return;
+    auswerten(Z.zeigerPos);
+  }
+
+  /** Verwirft Fang und Markierung — sie gelten nicht mehr. */
+  function hoverLeeren() {
+    const hatte = Z.fang || Z.fangPos || markenZahl();
+    entferneMarken();
+    Z.fang = null; Z.fangPos = null; Z.hoverBauteil = null; Z.vorschau = null;
+    if (hatte && Z.aktiv) hudSchreiben();
   }
 
   /** Rückfall ohne Fangmodul — der reine Tiefenpuffer. */
@@ -187,15 +294,13 @@
 
   function klickAn(pos) {
     if (!Z.aktiv) return;
-    // Es wird der Punkt gesetzt, der zu sehen war — nicht neu gepickt. Sonst
-    // kann zwischen Vorschau und Klick ein anderer Fang gewinnen, und man
-    // setzt woandershin, als das Fadenkreuz stand.
-    let treffer = Z.fang;
-    if (!treffer || abstandPx(treffer.bildschirm, pos) > 24) {
-      treffer = window.AufmassFang
-        ? AufmassFang.fang(pos, { anker: Z.anker, punkte: Z.punkte.map((p) => p.ecef) })
-        : rohPunkt(pos);
-    }
+    Z.zeigerPos = Cesium.Cartesian2.clone(pos);
+    // Es wird der Punkt gesetzt, der zu sehen war — solange der Zeiger seither
+    // nicht gewandert ist. Sonst kann zwischen Anzeige und Klick ein anderer
+    // Fang gewinnen, und man setzt woandershin, als die Markierung stand. Ist er
+    // gewandert, wird jetzt gefangen: **der Klick greift ab**, nicht die Bewegung.
+    let treffer = (Z.fang && Z.fangPos && abstandPx(Z.fangPos, pos) <= 2) ? Z.fang : null;
+    if (!treffer) treffer = auswerten(pos);
     if (!treffer) {
       const z = window.AufmassFang && AufmassFang.ziel;
       melden(z && z !== 'auto'
@@ -236,7 +341,12 @@
   function punktDaten(treffer, bildschirmPos) {
     const c = Cesium.Cartographic.fromCartesian(treffer.position);
     const o = ort(treffer.position);
-    const bauteil = bildschirmPos ? getroffenesBauteil(bildschirmPos) : null;
+    // Das Bauteil, das die Anzeige schon gefunden hat, wird übernommen — ein
+    // zweiter Pick-Durchgang an derselben Stelle käme zum selben Ergebnis.
+    const bauteil = treffer === Z.fang && Z.hoverBauteil
+      ? Z.hoverBauteil
+      : (bildschirmPos ? bauteilAn(treffer, bildschirmPos) : null);
+    mengenAnstossen(bauteil);
     return {
       ecef: treffer.position,
       lon: c ? Cesium.Math.toDegrees(c.longitude) : NaN,
@@ -263,7 +373,11 @@
   const NAME_NAMEN = ['Name', 'name', 'LongName', 'ObjectType'];
   const GESCHOSS_NAMEN = ['Storey', 'storey', 'BuildingStorey', 'Level', 'Geschoss'];
 
-  function getroffenesBauteil(pos) {
+  /**
+   * Das Bauteil an einem Bildpunkt, oder null. Liest nur die Batch Table —
+   * kein Abruf, kein Warten; die Mengen holt `mengenAnstossen`.
+   */
+  function bauteilLesen(pos) {
     const scene = BimViewer.viewer.scene;
     let f;
     try { f = scene.pick(pos); } catch (e) { return null; }
@@ -295,17 +409,44 @@
       _tileset: f.tileset,
     };
 
-    // Volumen, Material und CO₂ stehen nicht in der Batch Table, sondern in
-    // den Property-Sets im Backend. Der Abruf läuft **neben** dem Klick: ein
-    // Messpunkt darf nicht auf eine HTTP-Antwort warten. Beim Abschluss wird
-    // einmal auf alle offenen Abrufe gewartet, damit im Graphen nichts fehlt.
-    if (window.AufmassMengen && jobId) {
-      AufmassMengen.laden(jobId, gid).then((m) => {
-        bauteil.mengen = m;
-        if (window.BimViewerUI && BimViewerUI.aufmassStand) BimViewerUI.aufmassStand();
-      });
-    }
     return bauteil;
+  }
+
+  /**
+   * Das Bauteil für einen Fang: dort, wo der Fang Geometrie gefunden hat, dann
+   * am gefangenen Punkt, dann am Zeiger. Bei einer Kante steht der Zeiger gern
+   * einen Schritt daneben — im Himmel, auf der Nachbarwand —, die Geometrie des
+   * Fangs aber nicht.
+   */
+  function bauteilAn(treffer, pos) {
+    if (!treffer || treffer.art === 'messpunkt' || treffer.art === 'splat') return null;
+    const versucht = [];
+    for (const k of [treffer.pickPixel, treffer.bildschirm, pos]) {
+      if (!k) continue;
+      const schluessel = Math.round(k.x) + ',' + Math.round(k.y);
+      if (versucht.indexOf(schluessel) >= 0) continue;
+      versucht.push(schluessel);
+      const b = bauteilLesen(k);
+      if (b) return b;
+    }
+    return null;
+  }
+
+  /**
+   * Volumen, Material und CO₂ stehen nicht in der Batch Table, sondern in den
+   * Property-Sets im Backend. Der Abruf läuft **neben** dem Klick: ein Messpunkt
+   * darf nicht auf eine HTTP-Antwort warten. Beim Abschluss wird einmal auf alle
+   * offenen Abrufe gewartet, damit im Graphen nichts fehlt. Beim bloßen Zeigen
+   * wird gar nicht abgerufen — das hieße ein Netzwerkzugriff je Ruhepause.
+   */
+  function mengenAnstossen(bauteil) {
+    if (!bauteil || !bauteil.jobId || bauteil.mengen || bauteil._angefragt) return;
+    if (!window.AufmassMengen) return;
+    bauteil._angefragt = true;
+    AufmassMengen.laden(bauteil.jobId, bauteil.globalId).then((m) => {
+      bauteil.mengen = m;
+      if (window.BimViewerUI && BimViewerUI.aufmassStand) BimViewerUI.aufmassStand();
+    });
   }
 
   /**
@@ -366,6 +507,9 @@
     const folge = ['aus', 'cm', 'mm'];
     AufmassFang.raster = folge[(folge.indexOf(AufmassFang.raster) + 1) % 3];
     melden('Raster: ' + AufmassFang.raster);
+    // Was angezeigt war, galt für das alte Raster.
+    hoverLeeren();
+    suchePlanen();
     hudSchreiben();
     if (window.BimViewerUI && BimViewerUI.aufmassStand) BimViewerUI.aufmassStand();
   }
@@ -1214,7 +1358,7 @@
    * führen — der nächste Bildaufbau stirbt mit „Cannot read properties of
    * undefined (reading '_target')" und das Bild bleibt schwarz stehen. Die
    * Sammlung bleibt deshalb hängen und wird nur auf `enabled = false`
-   * gestellt; dasselbe tut `section-box.js` aus demselben Grund.
+   * gestellt; dasselbe tat die abgelöste Schnittbox aus demselben Grund.
    *
    * Ein Tileset, das bereits fremde Schnittebenen trägt (etwa von der
    * Schnittbox), wird ausgelassen statt übernommen. Zwei Werkzeuge, die sich
@@ -1302,24 +1446,96 @@
   // ══ HUD ═══════════════════════════════════════════════════════════════════
 
   function hudAnlegen() {
-    if (Z.hud) { Z.hud.style.display = ''; Z.kreuz.style.display = ''; return; }
-    const wrap = BimViewer.viewer.container;
-    Z.kreuz = document.createElement('div');
-    Z.kreuz.className = 'aufmass-kreuz';
-    Z.kreuz.innerHTML = '<span class="aufmass-kreuz__h"></span><span class="aufmass-kreuz__v"></span><span class="aufmass-kreuz__ring"></span>';
-    wrap.appendChild(Z.kreuz);
-
+    if (Z.hud) { Z.hud.style.display = ''; return; }
     Z.hud = document.createElement('div');
     Z.hud.className = 'aufmass-hud';
-    wrap.appendChild(Z.hud);
+    BimViewer.viewer.container.appendChild(Z.hud);
   }
 
-  function kreuzSetzen(bs, treffer) {
-    if (!Z.kreuz) return;
-    if (!bs) { Z.kreuz.style.opacity = '0.25'; return; }
-    Z.kreuz.style.opacity = '1';
-    Z.kreuz.style.transform = 'translate(' + Math.round(bs.x) + 'px,' + Math.round(bs.y) + 'px)';
-    Z.kreuz.dataset.art = treffer ? treffer.art : 'nichts';
+  // ══ Markierung des Fangs ══════════════════════════════════════════════════
+  //
+  // Eine Kante wird als Strecke markiert, eine Ecke als Ring.
+  //
+  // **Gezeichnet wird über der Leinwand (SVG), nicht in der Szene.** Alles, was
+  // in der Szene steht, nimmt am Picken teil: der nächste Fang fragt mit
+  // `scene.pick` nach dem Bauteil an der Stelle, und die Markierung liegt ja
+  // genau dort, wo der Zeiger hin will. Gemessen an Cesium 1.145: eine Entity
+  // wird als Treffer geliefert, und ein Primitive mit `allowPicking: false`
+  // liefert **keinen** Treffer und verdeckt trotzdem, was darunter liegt — `pick`
+  // gibt dann „nichts" zurück, auch über einem Bauteil. Eine Zeichnung im DOM
+  // sieht der Pick nie.
+  //
+  // Dass sie nicht mit der Kamera mitgeht, kostet nichts: bei jeder Kamerafahrt
+  // wird sie verworfen (`camera.moveStart`) und nach der Fahrt neu gesetzt.
+
+  const SVGNS = 'http://www.w3.org/2000/svg';
+
+  function svgAnlegen() {
+    if (Z.svg) return Z.svg;
+    Z.svg = document.createElementNS(SVGNS, 'svg');
+    Z.svg.setAttribute('class', 'aufmass-marke');
+    BimViewer.viewer.container.appendChild(Z.svg);
+    return Z.svg;
+  }
+
+  function svgForm(name, attribute, klasse) {
+    const el = document.createElementNS(SVGNS, name);
+    for (const k in attribute) el.setAttribute(k, attribute[k]);
+    el.setAttribute('class', klasse);
+    Z.svg.appendChild(el);
+    return el;
+  }
+
+  function entferneMarken() {
+    if (Z.svg) while (Z.svg.firstChild) Z.svg.removeChild(Z.svg.firstChild);
+  }
+
+  /** Wie viele Formen die Markierung gerade trägt — für Prüfsteine. */
+  const markenZahl = () => (Z.svg ? Z.svg.childElementCount : 0);
+
+  /** Zeigt, worauf der Fang gefangen hat: Kante als Strecke, Ecke als Ring. */
+  function hoverZeigen(t) {
+    entferneMarken();
+    if (!t || !BimViewer.viewer) return;
+    const scene = BimViewer.viewer.scene;
+    const bs = scene.cartesianToCanvasCoordinates(t.position);
+    if (!bs) return;
+    svgAnlegen();
+
+    if (t.art === 'ecke') {
+      svgForm('circle', { cx: bs.x, cy: bs.y, r: 11 }, 'aufmass-marke__saum');
+      svgForm('circle', { cx: bs.x, cy: bs.y, r: 11 }, 'aufmass-marke__ecke');
+      svgForm('circle', { cx: bs.x, cy: bs.y, r: 2 }, 'aufmass-marke__ecke aufmass-marke__fuell');
+    } else if ((t.art === 'kante' || t.art === 'silhouette') && t.richtung) {
+      // Die Richtung im Bild: der gefangene Punkt und ein Punkt weiter auf der
+      // Kante, beide projiziert. Eine Länge in Metern wäre bei perspektivischer
+      // Verkürzung mal 20, mal 200 Bildpunkte lang.
+      const m = pixelMeter(scene, t.position);
+      const weiter = Cesium.Cartesian3.add(t.position,
+        Cesium.Cartesian3.multiplyByScalar(t.richtung, 100 * m, new Cesium.Cartesian3()),
+        new Cesium.Cartesian3());
+      const w = m > 0 ? scene.cartesianToCanvasCoordinates(weiter) : null;
+      if (w) {
+        let dx = w.x - bs.x, dy = w.y - bs.y;
+        const l = Math.hypot(dx, dy);
+        if (l > 1e-3) {
+          dx = dx / l * MARKE_PX; dy = dy / l * MARKE_PX;
+          const linie = { x1: bs.x - dx, y1: bs.y - dy, x2: bs.x + dx, y2: bs.y + dy };
+          svgForm('line', linie, 'aufmass-marke__saum');
+          svgForm('line', linie, 'aufmass-marke__kante');
+        }
+      }
+      svgForm('circle', { cx: bs.x, cy: bs.y, r: 5 }, 'aufmass-marke__saum');
+      svgForm('circle', { cx: bs.x, cy: bs.y, r: 5 }, 'aufmass-marke__kante aufmass-marke__punkt');
+    }
+  }
+
+  /** Meter je Bildpunkt an einem Punkt — für die Länge der Kantenmarke. */
+  function pixelMeter(scene, p) {
+    const f = scene.camera.frustum;
+    const tan = f && f.fovy ? Math.tan(f.fovy / 2) : 0.577;
+    const h = scene.canvas.clientHeight || 1;
+    return 2 * Cesium.Cartesian3.distance(scene.camera.positionWC, p) * tan / h;
   }
 
   const ARTTEXT = {
@@ -1333,6 +1549,10 @@
   // sind gern zwei Dezimeter.
   const TRAEGERTEXT = { modell: 'Modell', splat: 'Splat', gelaende: 'Gelände' };
 
+  /** Text für innerHTML: Namen aus dem IFC dürfen kein Markup enthalten. */
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
   function hudSchreiben() {
     if (!Z.hud) return;
     const zeilen = [];
@@ -1340,11 +1560,24 @@
     const traeger = f && f.traeger ? TRAEGERTEXT[f.traeger] : null;
     const ziel = window.AufmassFang && AufmassFang.ziel && AufmassFang.ziel !== 'auto'
       ? AufmassFang.ziel : null;
-    zeilen.push('<b>' + (f ? (ARTTEXT[f.art] || f.art) : '—') + '</b>' +
+    // „…" heißt: der Zeiger fährt, der Fang hat noch nicht hingesehen. „—" heißt:
+    // er hat hingesehen und nichts gefunden. Beides sähe sonst gleich aus.
+    const art = f ? (ARTTEXT[f.art] || f.art) + (f.art === 'messpunkt' && f.index !== undefined ? ' P' + (f.index + 1) : '')
+      : (Z.fangPos ? '—' : '…');
+    zeilen.push('<b>' + art + '</b>' +
       (traeger ? ' <span class="aufmass-hud__dim">auf ' + traeger + '</span>' : '') +
       (ziel ? ' <span class="aufmass-hud__dim">· nur ' + (TRAEGERTEXT[ziel] || ziel) + '</span>' : '') +
       (window.AufmassFang && AufmassFang.raster !== 'aus'
         ? ' <span class="aufmass-hud__dim">Raster ' + AufmassFang.raster + '</span>' : ''));
+
+    // Das Bauteil, an dem gefangen wurde — die Frage, die beim Zielen im Raum
+    // steht: nicht „wo", sondern „woran".
+    const b = f ? Z.hoverBauteil : null;
+    if (b) {
+      zeilen.push(esc(b.ifcType || 'Bauteil') + (b.name ? ' · ' + esc(b.name) : ''));
+      const herkunft = [b.geschoss, kurzName(b.modell)].filter(Boolean).join(' · ');
+      if (herkunft) zeilen.push('<span class="aufmass-hud__dim">' + esc(herkunft) + '</span>');
+    }
 
     const r = rechnenAktuell();
     if (!Z.punkte.length && f) {
@@ -1474,7 +1707,8 @@
   function klick(x, y) {
     if (!Z.aktiv) start();
     const pos = new Cesium.Cartesian2(x, y);
-    zeiger(pos);
+    Z.zeigerPos = pos;
+    auswerten(pos);        // sofort, ohne auf die Ruhe des Zeigers zu warten
     klickAn(pos);
     return Z.punkte.length;
   }
@@ -1501,6 +1735,11 @@
         : null,
       letzterFang: Z.fang ? Z.fang.art : null,
       letzterTraeger: Z.fang ? (Z.fang.traeger || null) : null,
+      fangRadius: window.AufmassFang ? AufmassFang.radius : null,
+      fangMarke: markenZahl(),
+      fangBauteil: Z.hoverBauteil
+        ? { ifcType: Z.hoverBauteil.ifcType, name: Z.hoverBauteil.name, globalId: Z.hoverBauteil.globalId }
+        : null,
       ziel: window.AufmassFang ? AufmassFang.ziel : 'auto',
       laufend: rechnenJson(),
       messungen: Z.messungen.map(jsonFest),
@@ -1552,6 +1791,8 @@
     start, stop, umschalten,
     abschluss, abbrechen, zurueck, alleLoeschen,
     klick, klickWelt, zustand, rasterWeiter,
+    /** Reichweite des Fangs in Bildpunkten (18 … 48; 36 ≈ 1 cm am Schirm). */
+    setFangRadius: (px) => (window.AufmassFang ? AufmassFang.radiusSetzen(px) : null),
     /** Das topografische Aufmaß bei jeder fertigen Fläche mitrechnen lassen. */
     setAutoBaugrube: (an) => { Z.autoBaugrube = !!an; return Z.autoBaugrube; },
     /** Jede abgeschlossene Messung als Notiz ablegen. */

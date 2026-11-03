@@ -13,8 +13,8 @@
  * welche Werkzeuge sich anmelden.
  *
  * Struktur:
- *  - Rechte Activity-Bar (roleBar): oben die Rollen (Explore · Visualize ·
- *    Measure), darunter je ein Knopf für die Werkzeuge dieser Seite.
+ *  - Rechte Activity-Bar (roleBar): je ein Knopf für die Werkzeuge dieser
+ *    Seite. Die Rollenknöpfe (Architektur … Vermessung) gibt es hier nicht.
  *  - Der Werkzeugknopf öffnet ein Sliding-Panel links der roleBar und schaltet
  *    dabei auf seinen Reiter.
  *
@@ -114,31 +114,7 @@ const RightPanel = (() => {
     if (!bar) return;
     bar.innerHTML = '';
 
-    // ── Abschnitt 1: Explore / Visualize / Measure ─────────────────────────
-    const EXPLORE_ROLES = [
-      { id: 'architect',    icon: '📐', title: 'Architect · Explore' },
-      { id: 'engineer',     icon: '🏗️', title: 'Engineer · Visualize' },
-      { id: 'sitemanager',  icon: '👷', title: 'Site Manager' },
-      { id: 'fm',           icon: '🔧', title: 'Facility Manager' },
-      { id: 'surveyor',     icon: '📍', title: 'Surveyor · Measure' },
-    ];
-
-    EXPLORE_ROLES.forEach(r => {
-      const btn = _roleBtn(r.icon, r.title, () => {
-        _deactivateAnalysis();
-        BimViewerUI.switchRole(r.id);
-        _setActiveRoleBtn(btn);
-      });
-      btn.dataset.roleBtn = r.id;
-      bar.appendChild(btn);
-    });
-
-    // ── Trennlinie ──────────────────────────────────────────────────────────
-    const sep = document.createElement('div');
-    sep.style.cssText = 'width:24px;height:1px;background:rgba(255,255,255,0.12);margin:6px 0;';
-    bar.appendChild(sep);
-
-    // ── Abschnitt 2: die Werkzeuge dieser Seite ────────────────────────────
+    // ── Die Werkzeuge dieser Seite ─────────────────────────────────────────
     // Ein Knopf je Reiter: er öffnet das Panel *und* schaltet auf den Reiter.
     // Ein einziger Sammelknopf hätte bedeutet, dass man nach dem Öffnen noch
     // einmal zielen muss — bei fünf Reitern ist das ein Klick zu viel.
@@ -151,10 +127,6 @@ const RightPanel = (() => {
       btn.dataset.reiterBtn = r.id;
       bar.appendChild(btn);
     });
-
-    // Default: architect aktiv
-    const first = bar.querySelector('[data-role-btn="architect"]');
-    if (first) first.classList.add('active');
   }
 
   function _roleBtn(icon, title, onClick) {
@@ -169,10 +141,6 @@ const RightPanel = (() => {
   function _setActiveRoleBtn(btn) {
     document.querySelectorAll('#roleBar .role-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-  }
-
-  function _deactivateAnalysis() {
-    if (panelOpen) closePanel();
   }
 
   // ── Panel aufbauen ─────────────────────────────────────────────────────────

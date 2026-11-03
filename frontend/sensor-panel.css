@@ -1,0 +1,109 @@
+/*
+ * iLEEN — Sensor-Panel
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ *
+ * Schwebt über der Szene, rechts oben neben der Werkzeugleiste — rechts unten
+ * gehört dem Nav-HUD. Die Farbfelder und der Legendenverlauf bekommen ihre
+ * Farbe inline aus SensorFarben; hier steht nur, was für alle gleich ist.
+ */
+
+.ileen-sensoren {
+  position: fixed;
+  top: 72px;
+  right: 84px;
+  z-index: 900;
+  width: 300px;
+  max-height: 74vh;
+  overflow: auto;
+  padding: 12px 14px 10px;
+  color: var(--c-100);
+  background: rgba(20, 22, 26, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ileen-sensoren__kopf {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ileen-sensoren__titel { flex: 1; font-size: 13px; white-space: nowrap; }
+.ileen-sensoren__alter { font-size: 11px; opacity: 0.5; }
+
+/* Werte aus der Zukunft sind ein Befund, kein Zeitstempel — abgesetzt. */
+.ileen-sensoren__alter--zukunft { color: var(--ds-warning); opacity: 1; cursor: help; }
+
+.ileen-sensoren__zu {
+  padding: 0 2px;
+  color: inherit;
+  background: none;
+  border: 0;
+  font: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.ileen-sensoren__zu:hover { opacity: 1; }
+
+.ileen-sensoren__wahlen { display: flex; gap: 6px; margin-bottom: 8px; }
+.ileen-sensoren__wahl {
+  flex: 1;
+  padding: 3px 0;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ileen-sensoren__wahl--an {
+  border-color: var(--mib-green);
+  background: rgba(151, 191, 13, 0.14);
+}
+
+.ileen-sensoren__geschoss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 9px;
+  margin: 3px 0;
+}
+/* Ein insgesamt veraltetes Geschoss tritt zurück — wie im Modell entsättigt. */
+.ileen-sensoren__geschoss--alt { opacity: 0.55; }
+.ileen-sensoren__feld { flex: none; width: 12px; height: 12px; border-radius: 3px; }
+.ileen-sensoren__name { width: 52px; opacity: 0.8; }
+.ileen-sensoren__ausreisser { color: #ff00c8; }
+.ileen-sensoren__veraltet { color: var(--c-300); font-size: 11px; }
+
+.ileen-sensoren__verlauf { height: 6px; margin: 8px 0 2px; border-radius: 3px; }
+.ileen-sensoren__skala {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+.ileen-sensoren__trenner {
+  margin: 9px 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ileen-sensoren__sensor { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+.ileen-sensoren__kennung { flex: 1; opacity: 0.8; }
+.ileen-sensoren__einheit { width: 40px; opacity: 0.55; }
+.ileen-sensoren__punkt { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c-500); }
+.ileen-sensoren__punkt--ok { background: var(--mib-green); }
+.ileen-sensoren__punkt--veraltet { background: var(--c-400); }
+.ileen-sensoren__punkt--ausreisser { background: #ff00c8; }
+
+.ileen-sensoren__fuss { margin-top: 8px; font-size: 10.5px; opacity: 0.45; }
+.ileen-sensoren__steht { color: var(--ds-warning); }
+
+.ileen-sensoren__leer { margin: 4px 0 2px; opacity: 0.75; }

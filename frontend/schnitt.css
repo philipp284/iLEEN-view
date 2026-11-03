@@ -1,0 +1,262 @@
+/**
+ * iLEEN — Schnitt (schnitt.js, schnitt-karte.js)
+ * © 2026 Philipp Schäfer — PolyForm Noncommercial 1.0.0 (siehe LICENSE.md)
+ * SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+ *
+ * Zwei Teile: die schwebende Schnittkarte (`.snk-*`) im Stil der
+ * Navigationsanzeige unten rechts — dunkles, halb durchsichtiges Feld,
+ * kleine Schrift, Akzent nur für das, was man greifen kann — und die paar
+ * Bausteine des Reiters (`.snp-*`), die design-system.css nicht kennt.
+ */
+
+/* ── Schnittkarte ──────────────────────────────────────────────────────── */
+
+.snk {
+  position: fixed;
+  top: 60px;
+  right: 58px;
+  z-index: 950;
+  width: 322px;
+  padding: 8px 8px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: rgba(14, 15, 16, 0.9);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.82);
+  font-family: "Inter", "Helvetica Neue", sans-serif;
+  font-size: 10.5px;
+  user-select: none;
+  outline: none;
+}
+
+.snk:focus-visible { border-color: rgba(151, 191, 13, 0.6); }
+
+.snk-kopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  cursor: move;
+}
+
+.snk-titel {
+  flex: 1 1 auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.snk-neu {
+  display: flex;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.snk-k {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font: 600 11px "Inter", "Helvetica Neue", sans-serif;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.snk-k:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+
+.snk-k.is-aktiv {
+  border-color: #97BF0D;
+  background: rgba(151, 191, 13, 0.18);
+  color: #97BF0D;
+}
+
+.snk-rund {
+  border-color: rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.snk-bilder {
+  display: flex;
+  gap: 4px;
+}
+
+.snk-karte {
+  display: block;
+  border-radius: 5px;
+  touch-action: none;
+}
+
+.snk-leiste {
+  display: block;
+  touch-action: none;
+  cursor: ns-resize;
+}
+
+.snk-anzeige {
+  height: 16px;
+  margin: 5px 2px 3px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.72);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.snk-fuss {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.snk-dicken {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 3px;
+}
+
+.snk-pill {
+  flex: 1 1 0;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.7);
+  font: 500 10px "Inter", "Helvetica Neue", sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.snk-pill:hover { color: #fff; border-color: rgba(255, 255, 255, 0.3); }
+
+.snk-pill.is-aktiv {
+  border-color: #fff;
+  background: #fff;
+  color: #111;
+}
+
+.snk.is-klein .snk-rumpf,
+.snk.is-klein .snk-neu { display: none; }
+.snk.is-klein .snk-kopf { margin-bottom: 0; }
+.snk.is-klein { width: auto; }
+
+.snk.is-stift .snk-karte { cursor: crosshair; }
+
+/* ── Reiter ────────────────────────────────────────────────────────────── */
+
+.snp-status {
+  min-height: 14px;
+  margin-top: 6px;
+  color: var(--text-secondary, #888);
+  font-size: 10.5px;
+}
+
+.snp-status--warn { color: var(--ds-warning, #e0a33e); }
+.snp-status--busy { color: var(--ds-accent, #97BF0D); }
+
+.snp-masse {
+  float: right;
+  color: var(--text-secondary, #888);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Eine Achse: Name · von · … · bis · Einheit */
+.snp-achse {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 12px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: var(--ds-space-1, 4px);
+  margin-bottom: 4px;
+}
+
+.snp-achse__name {
+  color: var(--text-secondary, #888);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.snp-knoepfe,
+.snp-modus { margin-top: 8px; }
+
+.snp-modus .btn,
+.snp-knoepfe .btn { white-space: nowrap; }
+
+#snPick.is-aktiv,
+#snStift.is-aktiv {
+  border-color: var(--ds-accent, #97BF0D);
+  color: var(--ds-accent, #97BF0D);
+  animation: snp-warten 1.6s ease-in-out infinite;
+}
+
+@keyframes snp-warten {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+.snp-geschosse { margin-top: 8px; }
+.snp-geschosse .pill-group__label { width: auto; margin-right: 4px; }
+
+.snp-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.snp-leer {
+  color: var(--text-muted, #666);
+  font-size: 10.5px;
+}
+
+.snp-scheibe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 6px;
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.11));
+  border-radius: var(--ds-radius-sm, 4px);
+  cursor: pointer;
+}
+
+.snp-scheibe.is-aktiv { border-color: var(--ds-accent, #97BF0D); }
+.snp-scheibe.is-aus .snp-scheibe__text { opacity: 0.45; }
+
+.snp-scheibe__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary, #e8e8e8);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.snp-scheibe .btn--icon {
+  flex: 0 0 auto;
+  width: 22px;
+  min-height: 22px;
+  padding: 0;
+}
+
+.snp-dicken { margin-top: 8px; }
+
+.snp-plansatz { margin-top: 8px; }
+
+.snp-modell {
+  margin-top: 6px;
+  color: var(--text-secondary, #888);
+  font-size: 10.5px;
+}

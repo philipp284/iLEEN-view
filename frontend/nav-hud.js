@@ -550,11 +550,14 @@
       }
     });
 
-    // ---- VR toggle ----
+    // ---- VR: öffnet vr.html in einem neuen Tab — ein Knopf im Kleid eines
+    // Schalters, deshalb springt er gleich wieder zurück ----
+    vrRow.title = 'Modell in der Brille öffnen (WebXR, z. B. Meta Quest 3)';
     vrCb.addEventListener('change', () => {
       if (typeof BimViewer !== 'undefined' && BimViewer.toggleVR) {
         BimViewer.toggleVR();
       }
+      vrCb.checked = false;
     });
 
     // ---- Sync HUD switches from hidden DOM buttons (core.js sets .active class) ----

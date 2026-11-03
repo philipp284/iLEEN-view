@@ -104,7 +104,7 @@ sandbox.ILeenI18n.setLanguage('de');
 const ERWARTET = {
   ion:        ['ionAssetInput', 'ionAssetOptions', 'loadIonAsset', 'ionAssetsStatus'],
   backend:    ['backendUrlInput', 'backendRefresh', 'backendStatus', 'backendFilter', 'backendSearch', 'backendFilterPills', 'backendAssetsList', 'backendJobInput', 'loadBackendByInput'],
-  layer:      ['basemapList', 'toggleOSMBuildings', 'toggleGoogle3DTiles', 'googleTilesQualityRow',
+  layer:      ['basemapList', 'toggleGoogle3DTiles', 'googleTilesQualityRow',
                'tilesetLayersList', 'terrainList'],
   punktwolke: ['colorModeSelect', 'toggleEDL', 'edlStrengthGroup', 'edlStrengthSlider', 'edlRadiusGroup',
                'pointSizeSlider', 'toggleAttenuation', 'maxAttenuationGroup', 'geometricErrorSlider',
@@ -122,7 +122,9 @@ const allesMarkup = Object.values(panels).join('');
 const ENTFALLEN = ['ionAssetSelector', 'importSelectedAsset', 'loadIonAssets', 'ionAssetsLoading',
                    'ionAssetIdInput', 'terrainAssetId', 'terrainName', 'addTerrainBtn',
                    'overlayAssetId', 'overlayName', 'addOverlayBtn', 'overlayLayersList',
-                   'wmsUrl', 'wmsDiscoverBtn', 'wmsLayerPicker', 'wmsLayerPickerList', 'wmsLayersList'];
+                   'wmsUrl', 'wmsDiscoverBtn', 'wmsLayerPicker', 'wmsLayerPickerList', 'wmsLayersList',
+                   // OSM Buildings kam aus Cesium ion; LoD2 Deutschland steht in der Ebenenliste
+                   'toggleOSMBuildings'];
 for (const id of ENTFALLEN) {
   pruefe(`„${id}" ist restlos entfernt`,
          !allesMarkup.includes(id) && !uiQuelle.includes(`getElementById('${id}')`));
